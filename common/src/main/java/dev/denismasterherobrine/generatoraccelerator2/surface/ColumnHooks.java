@@ -110,6 +110,20 @@ public final class ColumnHooks {
         default boolean needsRuleContext() {
             return false;
         }
+
+        /**
+         * True unless the code is known never to read the NoiseChunk ({@link Frame#noiseChunk}). A chunk the GPU filled has none
+         * ({@code gpu.GpuTerrain}). It is made only while every hook of the column loop leaves it alone.
+         */
+        default boolean readsNoiseChunk() {
+            return true;
+        }
+    }
+
+    /** True when no hook of the column loop reads the NoiseChunk (or there are no hooks), and the hooks can all run. */
+    public static boolean noiseChunkFree() {
+        Resolved r = resolved();
+        return r == null || r.valid() && !r.readsNoiseChunk();
     }
 
     /** Builds a mixin's hooks by looking up its merged handler methods. Throws when the methods do not fit. */
@@ -255,6 +269,18 @@ public final class ColumnHooks {
         static final Resolved INVALID = new Resolved(new Hook[0], null, new Hook[0], new Hook[0], null, true, false, false);
 
         private static final Test PLAIN = Holder::is;
+
+        /** Whether some hook may read the NoiseChunk ({@link Hook#readsNoiseChunk}). */
+        boolean readsNoiseChunk() {
+            for (Hook[] hooks : new Hook[][] { top, rules, frozen, { topWrapper, frozenWrapper } }) {
+                for (Hook h : hooks) {
+                    if (h != null && h.readsNoiseChunk()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
 
         /** The hooks at the top of the column. Returns the eroded badlands test's answer. */
         public boolean top(Frame f, ResourceKey<Biome> erodedBadlands) {
