@@ -26,6 +26,9 @@ public interface DensityFunctionLowering {
 
         /** Interns a node so structurally identical subtrees share one instance. */
         <N extends Node> N intern(N node);
+
+        /** Records why the lowering is about to return {@code null}. The coverage report shows it. */
+        default void decline(String reason) {}
     }
 
     /**

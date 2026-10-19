@@ -50,12 +50,18 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     public static final LongAdder LATE = new LongAdder();
     private static final HookTargets.Hook SURFACE_ENTRY = HookTargets.hook(HookTargets.SURFACE_ENTRY);
     private static final HookTargets.Hook SURFACE_STEP = HookTargets.hook(HookTargets.SURFACE_STEP);
+    private static final HookTargets.Hook SURFACE_STEP_BODY = HookTargets.hook(HookTargets.SURFACE_STEP_BODY);
     private static final HookTargets.Hook GPU_SURFACE = HookTargets.hook(HookTargets.GPU_SURFACE);
 
-    /** Whether the GPU's surface is the surface step's whole work. No other mod's code may be in the step, its entry or the surface build. */
+    /**
+     * Whether the GPU's surface is the surface step's whole work. No other mod's code may be in the step, its entry or the surface build.
+     * Code before the step's generator call is the exception when GA2 knows the biomes it writes in
+     * ({@code SurfaceSpec.declareStepWriter}). Chunks near those biomes build the surface on the CPU.
+     */
     static boolean allowed() {
         return GpuTerrain.enabled() && GPU_SURFACE.allowed() && SURFACE_ENTRY.unchanged() && HookTargets.handled(HookTargets.SURFACE_ENTRY).isEmpty()
-            && SURFACE_STEP.unchanged();
+            && SURFACE_STEP.unchanged() && SURFACE_STEP_BODY.unchanged()
+            && dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.stepWritersDeclared(HookTargets.handledMixins(HookTargets.SURFACE_STEP_BODY));
     }
 
     /** Why {@link #allowed} is false, naming the other mods whose changes keep the surface on the CPU. Null when it is true. */
@@ -71,6 +77,13 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
                 // The GPU's surface runs its own handled changes (Tectonic's snow offset). For the other keys, GA2's CPU code runs the
                 // handled changes instead of the GPU surface.
                 mods.addAll(HookTargets.handledMixins(key));
+            }
+        }
+        // code before the step's generator call keeps the surface on the CPU unless GA2 knows the biomes it writes in
+        mods.addAll(HookTargets.foreign(HookTargets.SURFACE_STEP_BODY));
+        for (String m : HookTargets.handledMixins(HookTargets.SURFACE_STEP_BODY)) {
+            if (!dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.stepWritersDeclared(java.util.List.of(m))) {
+                mods.add(m);
             }
         }
         if (!dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferVanilla()) {
@@ -133,7 +146,8 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
                         }
                         if (found < 0) {
                             Integer b = wg.biomeIndex.get(h);
-                            if (b == null) {
+                            if (b == null || spec.stepWriter(b)) {
+                                // another mod writes this chunk before its surface (SurfaceSpec.declareStepWriter): the CPU builds it after that
                                 return false;
                             }
                             found = b;

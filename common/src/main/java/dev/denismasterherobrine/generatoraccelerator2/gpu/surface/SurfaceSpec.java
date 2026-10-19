@@ -88,6 +88,13 @@ public final class SurfaceSpec {
     private final String[] extRuleCode, extCondCode;
     /** An extern's code evaluates a noise of its own ({@code SF_SPEC}). */
     private boolean externNoise;
+    /** Per biome index, whether another mod's code writes the chunk before the surface in that biome ({@link #declareStepWriter}). */
+    private final boolean[] stepWriters;
+
+    /** Whether a chunk whose biome window holds biome {@code index} must build its surface on the CPU ({@link #declareStepWriter}). */
+    public boolean stepWriter(int index) {
+        return stepWriters[index];
+    }
     /** Tectonic's snow start offset ({@code compat.tectonic}), or 0. The temperature reads the height lowered by this offset. */
     private final int snowOffset;
     private final int nbands;
@@ -231,6 +238,7 @@ public final class SurfaceSpec {
         // table means the program's source does not depend on the seed, so one build serves every world of a pack.
         this.biomes = biomes;
         int nb = biomes.size();
+        this.stepWriters = new boolean[nb];
         this.predWords = Math.max(1, (program.biomeTests.size() + 31) / 32);
         List<int[]> perms = new ArrayList<>();
         PerlinSimplexNoise[] temps = { BiomeTemperatureAccessor.ga2$temperatureNoise(), BiomeTemperatureAccessor.ga2$frozenTemperatureNoise(), Biome.BIOME_INFO_NOISE };
@@ -288,12 +296,13 @@ public final class SurfaceSpec {
                 }
             }
             int flags = 0;
-            if (h.is(Biomes.ERODED_BADLANDS)) {
+            if (h.is(Biomes.ERODED_BADLANDS) || badlandsExtension(h)) {
                 flags |= 1;
             }
             if (h.is(Biomes.FROZEN_OCEAN) || h.is(Biomes.DEEP_FROZEN_OCEAN)) {
                 flags |= 2;
             }
+            stepWriters[b] = stepWriter(h);
             Biome.ClimateSettings climate = PlatformHooks.climateSettings(h.value());
             if (climate.temperatureModifier() == Biome.TemperatureModifier.FROZEN) {
                 flags |= 4;
@@ -314,6 +323,55 @@ public final class SurfaceSpec {
         }
         // Check that every rule and condition has OpenCL. Otherwise the surface stays on the CPU before the dimension's program is made.
         rule(new StringBuilder(), program.root, "");
+    }
+
+    /**
+     * Biomes that other mods give {@code SurfaceSystem}'s eroded badlands extension too (their mixins on {@code buildSurface},
+     * {@code compat/<modid>}). As for eroded badlands, a chunk with such a biome at a column's top builds its surface on the CPU, where
+     * the mod's code runs.
+     */
+    private static final java.util.Set<net.minecraft.resources.ResourceKey<Biome>> BADLANDS_EXTENSION = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public static void addBadlandsExtension(net.minecraft.resources.ResourceKey<Biome> biome) {
+        BADLANDS_EXTENSION.add(biome);
+    }
+
+    private static boolean badlandsExtension(Holder<Biome> h) {
+        for (net.minecraft.resources.ResourceKey<Biome> k : BADLANDS_EXTENSION) {
+            if (h.is(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Other mods' code that runs in the SURFACE step before the generator call and writes the chunk ({@code scheduling.surfaceStepBody}),
+     * by mixin: the biomes it writes in. The GPU computed the surface from the blocks the NOISE step left. So a chunk whose biome window
+     * holds such a biome builds its surface on the CPU, after the mod's code. The code must decide by the biome at the column, through the
+     * biome source and vanilla's zoom. The zoom reads only the window. The GPU's surface stays off while a mixin of that step is not
+     * declared here.
+     */
+    private static final Map<String, java.util.Set<net.minecraft.resources.ResourceKey<Biome>>> STEP_WRITERS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static void declareStepWriter(String mixin, java.util.Set<net.minecraft.resources.ResourceKey<Biome>> biomes) {
+        STEP_WRITERS.put(mixin, java.util.Set.copyOf(biomes));
+    }
+
+    /** Whether every one of {@code mixins} (of the SURFACE step before the generator call) is declared ({@link #declareStepWriter}). */
+    public static boolean stepWritersDeclared(java.util.Collection<String> mixins) {
+        return STEP_WRITERS.keySet().containsAll(mixins);
+    }
+
+    private static boolean stepWriter(Holder<Biome> h) {
+        for (java.util.Set<net.minecraft.resources.ResourceKey<Biome>> keys : STEP_WRITERS.values()) {
+            for (net.minecraft.resources.ResourceKey<Biome> k : keys) {
+                if (h.is(k)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private int noise(NormalNoise n) {

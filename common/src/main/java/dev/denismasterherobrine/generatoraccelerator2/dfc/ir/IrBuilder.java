@@ -73,6 +73,14 @@ public final class IrBuilder implements DensityFunctionLowering.Context {
         return node;
     }
 
+    /** The reason the running registered lowering gave for declining, or null. */
+    private String declined;
+
+    @Override
+    public void decline(String reason) {
+        declined = reason;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public <N extends Node> N intern(N node) {
@@ -225,7 +233,17 @@ public final class IrBuilder implements DensityFunctionLowering.Context {
         String reason;
         DensityFunctionLowering lowering = DensityFunctionLowering.find(fn.getClass());
         if (lowering != null) {
-            Node lowered = lowering.lower(fn, this);
+            // a child's lowering inside this one keeps its own reason
+            String outer = declined;
+            declined = null;
+            Node lowered;
+            String why;
+            try {
+                lowered = lowering.lower(fn, this);
+            } finally {
+                why = declined;
+                declined = outer;
+            }
             if (lowered != null) {
                 String err = LiftValidator.validate(fn, lowered, new Interpreter(specs, blended));
                 if (err == null) {
@@ -234,7 +252,7 @@ public final class IrBuilder implements DensityFunctionLowering.Context {
                 }
                 reason = "registered lowering rejected: " + err;
             } else {
-                reason = "registered lowering declined";
+                reason = "registered lowering declined" + (why != null ? " (" + why + ")" : "");
             }
         } else {
             reason = "no lowering registered";

@@ -291,6 +291,10 @@ public final class Gpu {
         out.add(String.format(java.util.Locale.ROOT, "  chunks: noise %,d on GPU, %,d on CPU; biomes %,d on GPU, %,d on CPU; %,d GPU errors; %,d batches, %,d regions (%,d let go once every chunk was answered); idle dimensions' memory given back %,d times",
             GpuSteps.NOISE_GPU.sum(), GpuSteps.NOISE_CPU.sum(), GpuSteps.BIOMES_GPU.sum(), GpuSteps.BIOMES_CPU.sum(), GpuSteps.GPU_ERRORS.sum(),
             GpuWorldgen.BATCHES.sum(), GpuWorldgen.REGIONS.sum(), GpuWorldgen.REGIONS_DONE.sum(), GpuWorldgen.TRIMS.sum()));
+        long handed = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.HANDED_POINTS.sum();
+        if (handed > 0) {
+            out.add(String.format(java.util.Locale.ROOT, "  Lithostitched's biome injectors: %,d climate points from the GPU (not sampled on the CPU)", handed));
+        }
         if (GpuWorldgen.C2D_CPU.sum() > 0) {
             out.add(String.format(java.util.Locale.ROOT, "  given back to the CPU: %,d chunks whose aquifer cells' order decides a cache_2d value",
                 GpuWorldgen.C2D_CPU.sum()));

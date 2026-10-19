@@ -105,6 +105,8 @@ public final class ClEmitter {
      * after a placeholder leaf ({@code compat.terrablender.TerraBlenderBiomes}).
      */
     public boolean biomeRegions;
+    /** {@code k_biome} also writes every quart's climate point ({@code targets}), for Lithostitched's injectors on the CPU. */
+    public boolean biomeTargets;
     /**
      * Also generate the certified float corner and block kernels (and the double recheck of the cells they flag) next to the double
      * program. {@link #source()} throws {@link Unsupported} when the router has something they do not cover.
@@ -759,10 +761,7 @@ public final class ClEmitter {
         // The climate parameters, once per quart column of every chunk of the region. Each one is written only when it depends on x and
         // z alone. In vanilla that holds for temperature, vegetation, continents, erosion and ridges, but not for depth.
         String[] climate = { "temperature", "vegetation", "continents", "erosion", "depth", "ridges" };
-        boolean[] xz = new boolean[climate.length];
-        for (int i = 0; i < climate.length; i++) {
-            xz[i] = pointDeps.of(routerRoot(climate[i])).isXzOrConst();
-        }
+        boolean[] xz = climateColumns();
         k.append("__kernel void k_climate(").append(COMMON_ARGS).append(", __global R* cz, int cx0, int cz0, int hchunks, int nchunks, __global int* tieCount) {\n");
         k.append("  int g = get_global_id(0); if (g == 0) *tieCount = 0; if (g >= nchunks * 16) return;\n").append(ctxInit()).append(COMMON_INIT);
         k.append("  int b = g / 16; int qx = (g % 16) / 4; int qz = g % 4;\n");
@@ -780,6 +779,7 @@ public final class ClEmitter {
             .append(", __global const long* tb, __global const long* toff, __global const int* tfirst, __global const int* tcount, __global const int* tleaf,"
                 + " __global int* biomes, int cx0, int cz0, int hchunks, int nchunks, __global const R* cz, __global long* tieList, __global int* tieCount, int tieCap")
             .append(biomeRegions ? ", __global const int* troot, int ntrees, __global const int* tdefer, __global const int* regionMap, __global int* fallbacks" : "")
+            .append(biomeTargets ? ", __global int* targets" : "")
             .append(") {\n");
         int quartsY = height / 4;
         // work-items in quart column order (y fastest). A warp's climate points differ in depth only, so the warp's walks meet the same
@@ -810,8 +810,42 @@ public final class ClEmitter {
         // the leaf. The CPU keeps vanilla's per-thread last result from it. On a tie, vanilla's answer depends on that last result. A tie
         // is marked and listed with its climate point, and the CPU searches it as vanilla does.
         k.append("  biomes[g] = leaf | (ties_n > 1 ? (int) 0x80000000 : 0);\n");
+        if (biomeTargets) {
+            // the climate point, for a biome source that works on after the search (Lithostitched's injectors). Parameters of x and z
+            // go once per quart column, the others per quart. A value beyond an int is marked, and the CPU samples that quart itself
+            k.append("  #define TGT(q) ((q) >= -2147483647L && (q) <= 2147483647L ? (int) (q) : (int) 0x80000000)\n");
+            k.append("  if (qy == 0) {\n");
+            for (int i = 0; i < climate.length; i++) {
+                if (xz[i]) {
+                    k.append("    targets[(b * 16 + qx * 4 + qz) * ").append(climate.length).append(" + ").append(i).append("] = TGT(q").append(i).append(");\n");
+                }
+            }
+            k.append("  }\n");
+            int nq = 0;
+            for (boolean c : xz) {
+                nq += c ? 0 : 1;
+            }
+            int j = 0;
+            for (int i = 0; i < climate.length; i++) {
+                if (!xz[i]) {
+                    k.append("  targets[(long) nchunks * ").append(16 * climate.length).append(" + (long) g * ").append(nq).append(" + ").append(j++).append("] = TGT(q")
+                        .append(i).append(");\n");
+                }
+            }
+            k.append("  #undef TGT\n");
+        }
         k.append("  if (ties_n > 1) {\n    int s = atomic_inc(tieCount);\n    if (s < tieCap) {\n      __global long* t = tieList + (long) s * 7;\n");
         k.append("      t[0] = g; t[1] = q0; t[2] = q1; t[3] = q2; t[4] = q3; t[5] = q4; t[6] = q5;\n    }\n  }\n}\n");
+    }
+
+    /** Per climate parameter (temperature, vegetation, continents, erosion, depth, ridges), whether it is a function of x and z only. */
+    public boolean[] climateColumns() {
+        String[] climate = { "temperature", "vegetation", "continents", "erosion", "depth", "ridges" };
+        boolean[] xz = new boolean[climate.length];
+        for (int i = 0; i < climate.length; i++) {
+            xz[i] = pointDeps.of(routerRoot(climate[i])).isXzOrConst();
+        }
+        return xz;
     }
 
     private void batchKernels(StringBuilder k, int cw, int per, int pc, int nh, int nb, int h) {
@@ -1590,6 +1624,8 @@ public final class ClEmitter {
                 case "java/lang/Math.ceil(D)D" -> "ceil(" + args.get(0) + ")";
                 case "java/lang/Math.sqrt(D)D" -> "sqrt(" + args.get(0) + ")";
                 case "net/minecraft/util/Mth.clamp(DDD)D" -> "jclamp(" + args.get(0) + ", " + args.get(1) + ", " + args.get(2) + ")";
+                // y_clamped_gradient at another position (dfc.ir.CoordSubstitution)
+                case "net/minecraft/util/Mth.clampedMap(DDDDD)D" -> "jclampedMap(" + String.join(", ", args) + ")";
                 default -> throw new Unsupported("static call " + key + " (not bit-exact on the GPU)");
             });
         }
@@ -1889,10 +1925,8 @@ public final class ClEmitter {
                     yield tmp(sb, a.v(), "(" + a.e() + " > 0.0f ? " + a.e() + " + RND(" + a.v() + ") : 0.0f)");
                 }
                 case Node.NoiseAt na -> {
-                    V x = ev(na.x(), sb);
-                    V y = ev(na.y(), sb);
-                    V z = ev(na.z(), sb);
-                    yield noise32(na.spec(), "((ff) (" + x.v() + ", 0.0f))", "((ff) (" + y.v() + ", 0.0f))", "((ff) (" + z.v() + ", 0.0f))", x.e(), y.e(), z.e(), sb);
+                    String[] x = ffCoordinate(na.x(), sb), y = ffCoordinate(na.y(), sb), z = ffCoordinate(na.z(), sb);
+                    yield noise32(na.spec(), x[0], y[0], z[0], x[1], y[1], z[1], sb);
                 }
                 default -> throw new Unsupported("certified fp32 does not cover " + n.getClass().getSimpleName());
             };
@@ -1920,6 +1954,15 @@ public final class ClEmitter {
                     sb.append("  if (").append(doubt).append(") c->unc |= 256;\n");
                 }
                 return tmp(sb, extern + "(" + externTables(c) + ", " + xyz[0] + ", " + xyz[1] + ", " + xyz[2] + ")", "0.0f");
+            }
+            if (!c.owner().equals("$op") && staticKey(c.owner(), c.name(), c.desc()).equals("net/minecraft/util/Mth.clampedMap(DDDDD)D")
+                && c.args().get(0) instanceof Node.IntToDouble yi && c.args().subList(1, 5).stream().allMatch(o -> o instanceof Node.Const)) {
+                // a y_clamped_gradient at another position: of an exact int, computed in double as Java computes it, then rounded once
+                StringBuilder lits = new StringBuilder();
+                for (Object o : c.args().subList(1, 5)) {
+                    lits.append(", ").append(dlit(((Node.Const) o).value()));
+                }
+                return readRounded(sb, "jclampedMap((double) (" + evInt32(yi.value(), sb) + ")" + lits + ")");
             }
             List<V> a = new ArrayList<>();
             for (Object o : c.args()) {
@@ -1997,6 +2040,12 @@ public final class ClEmitter {
                 String a = evInt32(c.intA(), sb);
                 String b = evInt32(c.intB(), sb);
                 cmp = "((" + a + ") < (" + b + ") ? -1 : ((" + a + ") == (" + b + ") ? 0 : 1))";
+            } else if (c.a() == c.b()) {
+                // a value against itself (a NaN test): equal unless NaN, whatever its error. A NaN float, or an unbounded error, is
+                // rechecked, since the float and the exact value could then disagree about NaN
+                V a = ev(c.a(), sb);
+                sb.append("  if (isnan(").append(a.v()).append(") || !isfinite(").append(a.e()).append(")) c->unc |= 256;\n");
+                cmp = "(isnan(" + a.v() + ") ? " + (c.kind() == Node.CmpKind.DCMPL ? "-1" : "1") + " : 0)";
             } else {
                 V a = ev(c.a(), sb);
                 V b = ev(c.b(), sb);
@@ -2040,6 +2089,19 @@ public final class ClEmitter {
                     };
                 }
                 case INode.IntNeg g -> "(-" + evInt32(g.a(), sb) + ")";
+                case INode.DoubleToInt d when d.value() instanceof Node.StaticCall s && s.owner().equals("$op") && s.name().equals("dadd")
+                    && s.args().get(0) instanceof Node.IntToDouble i && s.args().get(1) instanceof Node shift -> {
+                    // (int) ((double) coordinate + shift), a shifted position: the int part stays exact in double. Only the shift's error
+                    // can move the result across an integer
+                    String base = "(double) (" + evInt32(i.value(), sb) + ")";
+                    V v = ev(shift, sb);
+                    String r = "q" + tmp++;
+                    sb.append("  int ").append(r).append(" = convert_int_sat_rtz(").append(base).append(" + (double) ").append(v.v()).append(");\n");
+                    sb.append("  if (convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" - (double) ").append(v.e())
+                        .append(")) != convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" + (double) ").append(v.e())
+                        .append("))) c->unc |= 256;\n");
+                    yield r;
+                }
                 case INode.DoubleToInt d -> {
                     V v = ev(d.value(), sb);
                     String r = "q" + tmp++;
@@ -2067,6 +2129,43 @@ public final class ClEmitter {
                     yield "((" + cond + ") ? (" + a + ") : (" + b + "))";
                 }
             };
+        }
+
+        /**
+         * A noise coordinate as a double-float and its error. An int coordinate, alone or times a constant, is the same exact
+         * double-float a plain noise reads ({@link #ffCoord}). Plus another value, it carries that value's error. That is the shape
+         * of a function evaluated at another position ({@code dfc.ir.CoordSubstitution}). Anything else is its certified float.
+         */
+        private String[] ffCoordinate(Node n, StringBuilder sb) {
+            String exact = ffExact(n, sb);
+            if (exact != null) {
+                return new String[] { exact, "0.0f" };
+            }
+            if (n instanceof Node.StaticCall s && s.owner().equals("$op") && s.name().equals("dadd") && s.args().get(0) instanceof Node a
+                && s.args().get(1) instanceof Node b) {
+                String fa = ffExact(a, sb);
+                if (fa != null) {
+                    V v = ev(b, sb);
+                    return new String[] { "ff_add(" + fa + ", (ff) (" + v.v() + ", 0.0f))", v.e() };
+                }
+            }
+            V v = ev(n, sb);
+            return new String[] { "((ff) (" + v.v() + ", 0.0f))", v.e() };
+        }
+
+        /** {@code n} as an exact double-float when it is an int, or an int times a constant (see {@link #ffCoordinate}), else null. */
+        private String ffExact(Node n, StringBuilder sb) {
+            if (n instanceof Node.Const k && k.value() == 0.0 && Double.doubleToRawLongBits(k.value()) == 0L) {
+                return FF_ZERO;
+            }
+            if (n instanceof Node.IntToDouble i) {
+                return ffCoord("(" + evInt32(i.value(), sb) + ")", 1.0);
+            }
+            if (n instanceof Node.StaticCall s && s.owner().equals("$op") && s.name().equals("dmul") && s.args().get(0) instanceof Node.IntToDouble i
+                && s.args().get(1) instanceof Node.Const k) {
+                return ffCoord("(" + evInt32(i.value(), sb) + ")", k.value());
+            }
+            return null;
         }
 
         /** A block coordinate times a double scale as float-float. Exact for the usual scales, otherwise within the lattice's bound. */
@@ -3711,7 +3810,14 @@ public final class ClEmitter {
             return null;
         }
         var form = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpu(i.value());
-        return form != null && form.kind() == dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.FNL_CELLULAR ? "fnl_cellular" : null;
+        if (form == null) {
+            return null;
+        }
+        return switch (form.kind()) {
+            case dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.FNL_CELLULAR -> "fnl_cellular";
+            case dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.LITHO_CELLULAR -> "litho_cellular";
+            default -> null;
+        };
     }
 
     private final Map<Integer, String> externArgs = new java.util.LinkedHashMap<>();

@@ -118,7 +118,10 @@ public class GpuProbe {
             Method parameters = MultiNoiseBiomeSource.class.getDeclaredMethod("parameters");
             parameters.setAccessible(true);
             @SuppressWarnings("unchecked")
-            Climate.ParameterList<Holder<Biome>> list = (Climate.ParameterList<Holder<Biome>>) parameters.invoke(world.biomeSource);
+            // under Lithostitched's injectors, the source they wrap
+            Object multi = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.isInjector(world.biomeSource)
+                ? dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.base(world.biomeSource) : world.biomeSource;
+            Climate.ParameterList<Holder<Biome>> list = (Climate.ParameterList<Holder<Biome>>) parameters.invoke(multi);
             Climate.RTree<Holder<Biome>> tree = list.index;
             List<Climate.RTree.Node<Holder<Biome>>> order = new ArrayList<>();
             List<int[]> children = new ArrayList<>();

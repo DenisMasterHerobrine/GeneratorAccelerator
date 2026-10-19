@@ -56,6 +56,7 @@ public final class CompatModules {
         }
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
             LithostitchedDensity.register();
+            dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedFunctions.register();
             // nothing to set up: the fossil probe's early answer leaves Lithostitched's wrapped call to vanilla's method
             CompatAdapters.register(HookTargets.STRUCTURE_FOSSIL_PROBE, LithostitchedMixins.NETHER_FOSSIL, () -> true);
             // nothing to set up: GPU biomes are for a plain multi-noise source only, which the wrapping passes through

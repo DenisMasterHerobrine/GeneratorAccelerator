@@ -35,6 +35,16 @@ final class ChunkCompare {
     /** @param cellPrograms whether every cell cache must be filled by a cell program (false: some may keep vanilla's fill) */
     static long compareChunk(String label, NoiseGeneratorSettings settings, RandomState state, int chunkX, int chunkZ,
                              DensityFunctions.BeardifierOrMarker vanillaBeard, DensityFunctions.BeardifierOrMarker compiledBeard, boolean cellPrograms) {
+        return compareChunk(label, settings, state, chunkX, chunkZ, vanillaBeard, compiledBeard, cellPrograms, true);
+    }
+
+    /**
+     * @param allInterpolators whether the column program must fill every interpolator (false: an interpolator the program never
+     *                         reads, such as one inside a mod's shifted function, may keep vanilla's fill)
+     */
+    static long compareChunk(String label, NoiseGeneratorSettings settings, RandomState state, int chunkX, int chunkZ,
+                             DensityFunctions.BeardifierOrMarker vanillaBeard, DensityFunctions.BeardifierOrMarker compiledBeard, boolean cellPrograms,
+                             boolean allInterpolators) {
         int minX = chunkX * 16;
         int minZ = chunkZ * 16;
         NoiseChunk[] holder = new NoiseChunk[1];
@@ -47,7 +57,7 @@ final class ChunkCompare {
         List<NoiseChunk.NoiseInterpolator> ci = ((NoiseChunkAccessor) compiled).ga2$interpolators();
         assertEquals(vi.size(), ci.size(), label + ": interpolator count");
         for (NoiseChunk.NoiseInterpolator it : ci) {
-            assertTrue(binding.handles(it), label + ": interpolator not covered by the column program");
+            assertTrue(!allInterpolators || binding.handles(it), label + ": interpolator not covered by the column program");
         }
         List<DensityFunction> vc = ((NoiseChunkAccessor) vanilla).ga2$cellCaches();
         List<DensityFunction> cc = ((NoiseChunkAccessor) compiled).ga2$cellCaches();

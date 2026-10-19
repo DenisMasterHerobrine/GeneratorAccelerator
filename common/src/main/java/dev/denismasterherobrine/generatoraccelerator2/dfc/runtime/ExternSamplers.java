@@ -54,6 +54,8 @@ public final class ExternSamplers {
     public record GpuForm(int kind, int[] ints, float[] floats, float[] table) {
         /** FastNoiseLite's cellular noise in 3D ({@code fnl_cellular}). */
         public static final int FNL_CELLULAR = 1;
+        /** Lithostitched's {@code cellular} density function without a condition ({@code litho_cellular}). */
+        public static final int LITHO_CELLULAR = 2;
     }
 
     private static final java.util.Map<Integer, GpuForm> GPU = new java.util.concurrent.ConcurrentHashMap<>();

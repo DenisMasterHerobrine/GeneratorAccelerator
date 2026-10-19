@@ -44,6 +44,15 @@ public final class BiomesWeveGoneTerrain {
 
     public static void register() {
         StepHandlers.register(BiomesWeveGoneMixins.STEP, BiomesWeveGoneTerrain::handlers);
+        // the handler writes a column only where the biome at its land height (through the biome source and vanilla's zoom) is one
+        // of these two. The GPU's surface leaves chunks near them to the CPU, which builds the surface after the handler
+        dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.declareStepWriter(BiomesWeveGoneMixins.STEP, java.util.Set.of(
+            biome("crag_gardens"), biome("basalt_barrera")));
+    }
+
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.biome.Biome> biome(String path) {
+        return net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.BIOME,
+            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     /** The lock of a chunk's generator height cache ({@code mixin.ChunkAccessHeightsMixin}). */

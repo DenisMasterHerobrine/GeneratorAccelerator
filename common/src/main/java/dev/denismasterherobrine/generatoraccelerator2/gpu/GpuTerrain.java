@@ -212,13 +212,15 @@ public final class GpuTerrain {
     /**
      * Whether chunks the GPU fills may go without a NoiseChunk. This requires that no other mod changes the code that reads this data
      * in the NoiseChunk's place. That code is the surface step's call, the rule context's levels, the surface system's methods that hand
-     * the NoiseChunk on, the aquifer and the surface level methods. Even changes that GA2 runs itself are excluded, since that code could
-     * read the NoiseChunk.
+     * the NoiseChunk on, the aquifer and the surface level methods. Changes that GA2 runs itself are excluded too, since that code could
+     * read the NoiseChunk. The exception is code in the surface system's column loop that GA2 knows leaves the NoiseChunk alone
+     * ({@code ColumnHooks.Hook.readsNoiseChunk}). GA2's surface builder hands such code no NoiseChunk.
      */
     public static boolean enabled() {
         Boolean e = enabled;
         if (e == null) {
-            enabled = e = ENABLED && HOOK.allowed() && SURFACE_BUILD.unchanged() && HookTargets.handled(HookTargets.SURFACE_BUILD).isEmpty()
+            enabled = e = ENABLED && HOOK.allowed() && SURFACE_BUILD.unchanged()
+                && dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks.noiseChunkFree()
                 && TOP_MATERIAL.unchanged() && HookTargets.handled(HookTargets.SURFACE_TOP_MATERIAL).isEmpty() && MixinTargets.aquiferVanilla()
                 && MixinTargets.surfaceLevelAllowed();
         }

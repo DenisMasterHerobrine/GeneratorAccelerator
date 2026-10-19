@@ -6,7 +6,8 @@
   "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
   "mixins": [
     "BiomeRegionsMixin",
-    "InjectorBiomeSourceMixin"
+    "InjectorBiomeSourceMixin",
+    "InjectorBiomeSourceGpuMixin"
   ],
   "injectors": {
     "defaultRequire": 1

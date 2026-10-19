@@ -25,6 +25,8 @@ public final class BiomesWeveGoneMixins {
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.SURFACE_BUILD, SURFACE, Set.of("injectShatteredGlacierExtension"),
             "Shattered Glacier and Eroded Borealis surfaces still generate. GA2 runs them inside its own faster surface step."),
+        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, SURFACE, Set.of("injectShatteredGlacierExtension"),
+            "Shattered Glacier and Eroded Borealis surfaces still generate. Their chunks build the surface on the CPU, the others on the GPU."),
         new KnownMixins.Entry(MOD_ID, HookTargets.SURFACE_STEP_BODY, STEP, Set.of("injectExtensions"),
             "Crag Garden and Basalt Barrera terrain still generates. GA2 builds it on the same worker thread, right before the surface step."));
 }

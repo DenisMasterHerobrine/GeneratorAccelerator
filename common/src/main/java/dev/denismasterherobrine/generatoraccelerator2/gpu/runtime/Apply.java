@@ -13,6 +13,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeResolver;
+import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -326,7 +327,11 @@ public final class Apply {
         int[] quarts = r.quarts();
         // A chunk taller than the program has quarts the GPU did not decide. The CPU's climate sampler answers those.
         boolean taller = chunk.getHeight() != wg.height;
-        Climate.Sampler sampler = taller || !r.complete() && r.ties() > 0 ? tieSampler.get() : null;
+        // Lithostitched's injectors run on each quart's base biome, with the GPU's climate point. A point the GPU could not give is
+        // sampled on the CPU
+        BiomeSource injector = wg.biomeInjector();
+        boolean missingPoints = injector != null && missingTargets(r);
+        Climate.Sampler sampler = taller || !r.complete() && r.ties() > 0 || missingPoints ? tieSampler.get() : null;
         // every tree's last result. A search sets the last result of the tree it searched. With TerraBlender's regions, a quart searches
         // its region's tree, then region 0's tree after a placeholder
         Climate.RTree.Leaf<Holder<Biome>>[] last = wg.lastResults();
@@ -334,12 +339,14 @@ public final class Apply {
         BiomeResolver resolver = (x, y, z, s) -> {
             if (y < qy0 || y >= qy0 + qyn) {
                 wg.setLastResults(last);
-                Holder<Biome> biome = wg.findBiome(x, y, z, s);
+                Holder<Biome> biome = injector != null ? injector.getNoiseBiome(x, y, z, s) : wg.findBiome(x, y, z, s);
                 wg.readLastResults(last);
                 return biome;
             }
             int i = (y - qy0) * 16 + (x - qx0) * 4 + (z - qz0);
             int v = quarts[i];
+            Holder<Biome> base;
+            Climate.TargetPoint point = null;
             if (v >= 0) {
                 Climate.RTree.Leaf<Holder<Biome>> leaf = wg.leaf(v);
                 last[wg.treeOf(v)] = leaf;
@@ -347,17 +354,43 @@ public final class Apply {
                     leaf = wg.leaf(fallbacks[i]);
                     last[wg.treeOf(fallbacks[i])] = leaf;
                 }
-                return leaf.value;
+                base = leaf.value;
+                if (injector != null) {
+                    point = wg.target(r, i);
+                }
+            } else {
+                wg.setLastResults(last);
+                long[] t = r.target(i);
+                if (t != null) {
+                    point = new Climate.TargetPoint(t[0], t[1], t[2], t[3], t[4], t[5]);
+                    base = wg.findBiome(point, x, y, z);
+                } else {
+                    base = wg.findBiome(x, y, z, s);
+                }
+                wg.readLastResults(last);
             }
-            wg.setLastResults(last);
-            long[] t = r.target(i);
-            Holder<Biome> biome = t != null ? wg.findBiome(new Climate.TargetPoint(t[0], t[1], t[2], t[3], t[4], t[5]), x, y, z) : wg.findBiome(x, y, z, s);
-            wg.readLastResults(last);
-            return biome;
+            if (injector == null) {
+                return base;
+            }
+            return dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.inject(injector, x, y, z, s,
+                point != null ? point : s.sample(x, y, z), base);
         };
         chunk.fillBiomesFromNoise(resolver, sampler);
         wg.setLastResults(last);
         return true;
+    }
+
+    /** Whether some climate point of {@code r} did not fit an int, or some tie was not listed with its point. */
+    private static boolean missingTargets(GpuWorldgen.BiomeResult r) {
+        if (!r.complete() && r.ties() > 0) {
+            return true;
+        }
+        for (int v : r.targets()) {
+            if (v == Integer.MIN_VALUE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** {@code Holder} of a quart's answer, for tests. For a tie, it is the leaf the GPU's walk found. */
