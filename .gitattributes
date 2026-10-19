@@ -1,0 +1,6 @@
+# Resolve build number conflicts automatically (driver registered by build.gradle).
+build_number.properties merge=buildnumber
+
+# Shell scripts must keep LF line endings to run under sh.
+*.sh text eol=lf
+gradlew text eol=lf

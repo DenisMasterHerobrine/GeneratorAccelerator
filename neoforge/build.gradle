@@ -1,21 +1,10 @@
 plugins {
-    id 'com.github.johnrengelman.shadow'
+    id 'com.gradleup.shadow'
 }
 
 architectury {
     platformSetupLoomIde()
     neoForge()
-}
-
-loom {
-    runs {
-        client {
-            def gaVmArgs = [
-                "-Dga.dfc.fillSliceLazyCompile=true"
-            ]
-            vmArgs gaVmArgs
-        }
-    }
 }
 
 configurations {
@@ -42,86 +31,21 @@ repositories {
     }
 }
 
-def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
-def lwjglNatives = osName.contains('win')
-        ? 'natives-windows'
-        : (osName.contains('mac') ? 'natives-macos' : 'natives-linux')
-def javaToGpuLocalCoordinate = "io.github.deussixik:processor:${rootProject.java_to_gpu_version}"
-def javaToGpuRuntimeLibraries = [
-        javaToGpuLocalCoordinate,
-        "io.github.deussixik:packager:1.0.0-alpha.1",
-        "com.github.javaparser:javaparser-core:3.28.1",
-        "org.lwjgl:lwjgl-opencl:3.3.3",
-        "org.lwjgl:lwjgl:3.3.3:${lwjglNatives}"
-]
-
 dependencies {
     neoForge "net.neoforged:neoforge:$rootProject.neoforge_version"
 
+    // Bundled: lets GA2 cancel the mixins it takes over from other performance mods (see compat/Takeover)
+    include(implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:$rootProject.mixinsquared_version"))
 
-    common(project(path: ':common', configuration: 'namedElements')) { transitive false }
+    common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
     shadowBundle project(path: ':common', configuration: 'transformProductionNeoForge')
-
-    include(implementation(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:0.3.7-beta.1")))
-    include(minecraftRuntimeLibraries("com.github.ben-manes.caffeine:caffeine:3.1.8"))
-    include(minecraftRuntimeLibraries("com.github.JCTools.JCTools:jctools-core:v4.0.3"))
-    include(minecraftRuntimeLibraries("com.github.DeusSixik:JavaNativeCollections:$rootProject.java_native_collections_version"))
-    include(minecraftRuntimeLibraries("org.yaml:snakeyaml:2.2"))
-    include(minecraftRuntimeLibraries("ca.spottedleaf:yamlconfig:1.0.2"))
-    include(minecraftRuntimeLibraries("com.github.Team-Argentum:ConcurrentLibrary:${concurrent_library_version}"))
-
-    javaToGpuRuntimeLibraries.each { coordinate ->
-        if(coordinate.contains("org.lwjgl:lwjgl:3.3.3")) {
-            minecraftRuntimeLibraries(coordinate)
-        } else include(minecraftRuntimeLibraries(coordinate))
-    }
-    annotationProcessor javaToGpuLocalCoordinate
-    annotationProcessor "io.github.deussixik:javatogpu-ir-validation:${rootProject.java_to_gpu_version}"
-
-    modCompileOnly(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.7-beta.1"))
-    modCompileOnly "maven.modrinth:modernfix:$rootProject.modernfix_version"
-    compileOnlyApi "curse.maven:confluence-1209464:7677430"
-
-    modRuntimeOnly "curse.maven:spark-361579:6225208"
-
-    if (project.hasProperty('withMoonrise')) {
-        modRuntimeOnly "curse.maven:moonrise-1096335:7089177"
-    }
-
-    if(project.hasProperty('withC2ME')) {
-        modRuntimeOnly "curse.maven:c2me-533097:7694225"
-    }
-
-    if(project.hasProperty('withModernFix')) {
-        modRuntimeOnly "maven.modrinth:modernfix:$rootProject.modernfix_version"
-    }
-
-    modCompileOnly "curse.maven:zeta-968868:7980010"
-
-    modCompileOnly "curse.maven:alexs-caves-unofficial-port-1420348:7981977"
-    modCompileOnly "curse.maven:citadel-1-21-1-port-1415723:7982052"
-
-    modRuntimeOnly "foundry.imguimc:imguimc-neoforge-${minecraft_version}:$imguimc_version"
-
-    minecraftRuntimeLibraries("io.github.spair:imgui-java-binding:$imguiVersion")
-    minecraftRuntimeLibraries("io.github.spair:imgui-java-lwjgl3:$imguiVersion")
-    minecraftRuntimeLibraries("io.github.spair:imgui-java-natives-windows:$imguiVersion")
 }
 
 processResources {
     inputs.property 'version', project.version
-    def commonProject = project(':common')
-    def commonMixinConfigListFile = commonProject.ext.gaGeneratedCommonMixinConfigListFile
-    dependsOn commonProject.tasks.named('generateGAMixinMetadata')
-    inputs.file commonMixinConfigListFile
 
     filesMatching('META-INF/neoforge.mods.toml') {
-        def mixinConfigs = commonMixinConfigListFile.readLines('UTF-8').findAll { !it.isBlank() }
-        def mixinBlocks = mixinConfigs.collect { String configName -> "[[mixins]]\nconfig = \"${configName}\"" }.join('\n\n')
-        expand(
-                version: project.version,
-                gaMixinBlocks: mixinBlocks
-        )
+        expand version: project.version
     }
 }
 
@@ -134,12 +58,9 @@ remapJar {
     input.set shadowJar.archiveFile
 }
 
-tasks.matching { it.name.startsWith("run") || it.name.startsWith("prepareRun") }.configureEach {
-    dependsOn project(":common").tasks.named("processResources")
-}
-
-tasks.withType(JavaExec).configureEach {
-    if (rootProject.hasProperty("gaJvmArgs")) {
-        jvmArgs rootProject.property("gaJvmArgs").toString().split("\\s+").findAll { !it.isBlank() }
+loom {
+    neoForge {
+        // NeoForge has no access widener support: convert the common AW into META-INF/accesstransformer.cfg.
+        convertAccessWideners(tasks.named('remapJar'), 'generatoraccelerator2.accesswidener')
     }
 }

@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.biomeswevegone.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "ChunkAccessHeightsMixin",
+    "SurfaceSystemBandsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

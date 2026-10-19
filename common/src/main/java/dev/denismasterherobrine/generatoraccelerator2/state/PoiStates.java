@@ -1,0 +1,67 @@
+package dev.denismasterherobrine.generatoraccelerator2.state;
+
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.world.entity.ai.village.poi.PoiTypes;
+import net.minecraft.world.level.block.state.BlockState;
+
+/**
+ * Every block a generation region writes goes to {@code ServerLevel.onBlockStateChange}. That method looks both states up in
+ * the POI types' state map ({@code PoiTypes.forState}, two hash lookups). It does nothing when neither state has a POI type,
+ * which holds for almost every block worldgen writes. Whether a state has a POI type is fixed while a server runs. The types
+ * are registered before the server starts, and NeoForge rebuilds the map only when registries are swapped, between servers.
+ * So each state computes the answer once per server start and stores it in a field ({@code BlockStateFlagsMixin}). A change
+ * between two states without a POI type skips the call. Off when another mod changes {@code onBlockStateChange},
+ * {@code PoiTypes.forState} or the call in {@code WorldGenRegion.setBlock} (hook {@code state.poiSkip}).
+ */
+public final class PoiStates {
+    private PoiStates() {}
+
+    /** Implemented by every block state. The stamp is the server start of the cached answer times 2, plus 1 for a POI type. */
+    public interface Holder {
+        int ga2$poiStamp();
+
+        void ga2$setPoiStamp(int stamp);
+    }
+
+    private static final HookTargets.Hook HOOK = HookTargets.hook(HookTargets.STATE_POI_SKIP);
+    private static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.poiSkip"));
+    private static volatile int epoch = 1;
+    /** Calls left out (both states without a POI type). Per-block counter, kept with {@code -Dgeneratoraccelerator2.features.stats=true}. */
+    public static final LongAdder SKIPPED = new LongAdder();
+
+    /** A server is about to start. The answers cached so far may belong to another registry. */
+    public static void serverStarting() {
+        epoch = (epoch + 1) & 0x3FFFFFFF;
+    }
+
+    /** Set when another mod's handler of the call acts on the server thread only (Pastel's). That thread always makes the call. */
+    private static volatile boolean keepOnServerThread;
+
+    public static void keepOnServerThread() {
+        keepOnServerThread = true;
+    }
+
+    /** True when {@code level.onBlockStateChange(pos, oldState, newState)} can be left out (it would do nothing). */
+    public static boolean skip(net.minecraft.server.level.ServerLevel level, BlockState oldState, BlockState newState) {
+        if (!ENABLED || !HOOK.allowed() || poi(oldState) || poi(newState) || keepOnServerThread && level.getServer().isSameThread()) {
+            return false;
+        }
+        if (dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats.DETAILED) {
+            SKIPPED.increment();
+        }
+        return true;
+    }
+
+    private static boolean poi(BlockState state) {
+        Holder h = (Holder) state;
+        int e = epoch;
+        int stamp = h.ga2$poiStamp();
+        if (stamp >>> 1 == e) {
+            return (stamp & 1) != 0;
+        }
+        boolean poi = PoiTypes.forState(state).isPresent();
+        h.ga2$setPoiStamp(e << 1 | (poi ? 1 : 0));
+        return poi;
+    }
+}

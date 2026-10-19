@@ -1,5 +1,5 @@
 plugins {
-    id 'com.github.johnrengelman.shadow'
+    id 'com.gradleup.shadow'
 }
 
 architectury {
@@ -14,6 +14,8 @@ configurations {
     }
     compileClasspath.extendsFrom common
     runtimeClasspath.extendsFrom common
+    testCompileClasspath.extendsFrom common
+    testRuntimeClasspath.extendsFrom common
     developmentFabric.extendsFrom common
 
     // Files in this configuration will be bundled into your mod using the Shadow plugin.
@@ -24,75 +26,22 @@ configurations {
     }
 }
 
-def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
-def lwjglNatives = osName.contains('win')
-        ? 'natives-windows'
-        : (osName.contains('mac') ? 'natives-macos' : 'natives-linux')
-def javaToGpuLocalCoordinate = "io.github.deussixik:processor:${rootProject.java_to_gpu_version}"
-def javaToGpuRuntimeLibraries = [
-        javaToGpuLocalCoordinate,
-        "io.github.deussixik:packager:1.0.0-alpha.1",
-        "com.github.javaparser:javaparser-core:3.28.1",
-        "org.lwjgl:lwjgl-opencl:3.3.3",
-        "org.lwjgl:lwjgl:3.3.3:${lwjglNatives}"
-]
-
 dependencies {
     modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
-
-    common(project(path: ':common', configuration: 'namedElements')) { transitive false }
-    shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
-
-    include(implementation(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-fabric:0.3.7-beta.1")))
-
     modImplementation "net.fabricmc.fabric-api:fabric-api:$rootProject.fabric_api_version"
 
-    include(minecraftRuntimeLibraries("com.github.ben-manes.caffeine:caffeine:3.1.8"))
-    include(minecraftRuntimeLibraries("com.github.JCTools.JCTools:jctools-core:v4.0.3"))
-    include(minecraftRuntimeLibraries("com.github.DeusSixik:JavaNativeCollections:$rootProject.java_native_collections_version"))
+    // Bundled: lets GA2 cancel the mixins it takes over from other performance mods (see compat/Takeover)
+    include(implementation("com.github.bawnorton.mixinsquared:mixinsquared-fabric:$rootProject.mixinsquared_version"))
 
-    include(minecraftRuntimeLibraries("org.yaml:snakeyaml:2.2"))
-    include(minecraftRuntimeLibraries("ca.spottedleaf:yamlconfig:1.0.2"))
-    include(minecraftRuntimeLibraries("com.github.Team-Argentum:ConcurrentLibrary:${concurrent_library_version}"))
-
-    javaToGpuRuntimeLibraries.each { coordinate ->
-        if(coordinate.contains("org.lwjgl:lwjgl:3.3.3")) {
-            minecraftRuntimeLibraries(coordinate)
-        } else include(minecraftRuntimeLibraries(coordinate))
-    }
-    annotationProcessor javaToGpuLocalCoordinate
-    annotationProcessor "io.github.deussixik:javatogpu-ir-validation:${rootProject.java_to_gpu_version}"
-
-    modRuntimeOnly 'me.lucko:fabric-permissions-api:0.3.3'
-//    modRuntimeOnly "curse.maven:spark-361579:5759670"
-
-    if (project.hasProperty('withMoonrise')) {
-        modRuntimeOnly "curse.maven:moonrise-1096335:7089176"
-    }
-
-    if (project.hasProperty('withC2ME')) {
-        modImplementation "curse.maven:c2me-533097:7176425"
-    }
-
+    common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
+    shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
 }
 
 processResources {
     inputs.property 'version', project.version
-    def commonProject = project(':common')
-    def commonMixinConfigListFile = commonProject.ext.gaGeneratedCommonMixinConfigListFile
-    dependsOn commonProject.tasks.named('generateGAMixinMetadata')
-    inputs.file commonMixinConfigListFile
 
     filesMatching('fabric.mod.json') {
         expand version: project.version
-    }
-
-    doLast {
-        def mixinConfigs = commonMixinConfigListFile.readLines('UTF-8').findAll { !it.isBlank() }
-        def outputFile = file("${destinationDir}/fabric.mod.json")
-        def parsed = new groovy.json.JsonSlurper().parse(outputFile) as Map
-        parsed.mixins = mixinConfigs
-        outputFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(parsed)) + System.lineSeparator(), 'UTF-8')
     }
 }
 
@@ -105,12 +54,37 @@ remapJar {
     input.set shadowJar.archiveFile
 }
 
-tasks.matching { it.name.startsWith("run") || it.name.startsWith("prepareRun") }.configureEach {
-    dependsOn project(":common").tasks.named("processResources")
+apply from: file('names.gradle')
+
+// The tests run inside Fabric Loader (fabric-loader-junit), so GA2's mixins are applied to the game they test, as they were
+// in NeoForge's unit test environment. The game is bootstrapped once by testutil.GameBootstrap.
+dependencies {
+    testImplementation "net.fabricmc:fabric-loader-junit:$rootProject.fabric_loader_version"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testCompileOnly "com.google.code.findbugs:jsr305:3.0.2"
+    testImplementation "org.lwjgl:lwjgl-opencl:$rootProject.lwjgl_version"
 }
 
-tasks.withType(JavaExec).configureEach {
-    if (rootProject.hasProperty("gaJvmArgs")) {
-        jvmArgs rootProject.property("gaJvmArgs").toString().split("\\s+").findAll { !it.isBlank() }
+test {
+    useJUnitPlatform()
+    systemProperty 'generatoraccelerator2.dfc.strict', 'true'
+    // the GPU path stays out of the exactness tests' CPU references unless a test run turns it on (-Dgeneratoraccelerator2.gpu=true)
+    systemProperty 'generatoraccelerator2.gpu', System.getProperty('generatoraccelerator2.gpu', 'false')
+    // GA2 switches read once at class load, opt-in benchmarks (-Dga2.bench=true), the GPU harness's options and Mixin's debug
+    // options (-Dmixin.debug.export=true) pass through
+    System.getProperties().stringPropertyNames().findAll { it.startsWith('generatoraccelerator2.') || it.startsWith('ga2.') || it.startsWith('mixin.') }.each { p ->
+        systemProperty p, System.getProperty(p)
     }
+    // GA2 is one mod made of this module's and the common module's outputs (the common one holds the access widener and the
+    // mixin configs); Loom groups them for its run configurations, the tests are told here
+    doFirst {
+        def own = classpath.files.findAll { f ->
+            def p = f.absolutePath.replace(File.separatorChar, '/' as char)
+            (p.contains('/fabric/build/') || p.contains('/common/build/')) && !p.contains('/test')
+        }
+        systemProperty 'fabric.classPathGroups', own*.absolutePath.join(File.pathSeparator)
+    }
+    maxHeapSize = '4G'
+    testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full'; showStandardStreams = true }
 }

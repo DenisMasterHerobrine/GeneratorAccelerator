@@ -1,13 +1,18 @@
 pluginManagement {
     repositories {
-        maven { url "https://maven.fabricmc.net/" }
-        maven { url "https://maven.architectury.dev/" }
-        maven { url "https://files.minecraftforge.net/maven/" }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.architectury.dev/' }
+        maven { url = 'https://maven.neoforged.net/releases/' }
         gradlePluginPortal()
     }
 }
 
-rootProject.name = 'generator_accelerator'
+plugins {
+    // provisions the Java 21 toolchain the build compiles with when no such JDK is installed
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'generatoraccelerator2'
 
 include 'common'
 include 'fabric'

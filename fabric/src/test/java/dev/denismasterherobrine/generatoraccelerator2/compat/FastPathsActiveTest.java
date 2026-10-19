@@ -1,0 +1,218 @@
+package dev.denismasterherobrine.generatoraccelerator2.compat;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.VeinRule;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightQueue;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import java.lang.reflect.Field;
+import java.util.List;
+import javax.annotation.Nullable;
+import net.minecraft.core.SectionPos;
+import net.minecraft.util.CubicSpline;
+import net.minecraft.util.ToFloatFunction;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.chunk.LightChunk;
+import net.minecraft.world.level.chunk.LightChunkGetter;
+import net.minecraft.world.level.levelgen.Aquifer;
+import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.lighting.LevelLightEngine;
+import net.minecraft.world.level.lighting.LightEngine;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The fast paths whose results equal vanilla's either way are in place. An exactness test cannot tell them from vanilla's
+ * code. They are the ore vein rule's transcription, the light engine's queues that keep their arrays, and the spline points
+ * mapped without a stream.
+ */
+public class FastPathsActiveTest {
+    @Test
+    void veinRuleIsTranscribed() {
+        TerrainHarness.World w = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        NoiseChunk chunk = FillHarness.chunk(w.randomState, w.settings, 3, -7, DensityFunctions.BeardifierMarker.INSTANCE, w.fluidPicker);
+        FastFill.Rules rules = (FastFill.Rules) (Object) chunk;
+        Object[] made = rules.ga2$materialRules();
+        assertNotNull(made, "the constructor's material rules were recorded");
+        assertNotNull(made[1], "the overworld has ore veins");
+        assertTrue(rules.ga2$fastVeinRule((NoiseChunk.BlockStateFiller) made[1]) instanceof VeinRule, "the vein rule's transcription is bound");
+    }
+
+    @Test
+    void samplersAndAquiferMakeNoObjectsPerPoint() throws Exception {
+        TerrainHarness.World w = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        Field pure = BoundSampler.class.getDeclaredField("pure");
+        pure.setAccessible(true);
+        BoundSampler shared = BoundSampler.lookup(w.randomState.sampler());
+        assertNotNull(shared, "the RandomState's sampler is bound");
+        assertTrue(pure.getBoolean(shared), "the overworld's climate program calls no other function: its points are a moved context");
+        NoiseChunk chunk = FillHarness.chunk(w.randomState, w.settings, 3, -7, DensityFunctions.BeardifierMarker.INSTANCE, w.fluidPicker);
+        Aquifer aquifer = chunk.aquifer();
+        Field xoroshiro = aquifer.getClass().getDeclaredField("ga2$xoroshiro");
+        xoroshiro.setAccessible(true);
+        assertTrue(xoroshiro.getBoolean(aquifer), "the aquifer draws its cell centres from the Xoroshiro seeds");
+        assertTrue(aquifer instanceof Ga2Aquifer, "carvers ask the aquifer by coordinates");
+    }
+
+    @Test
+    void lightQueuesKeepTheirArrays() throws Exception {
+        TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        BlockGetter level = new BlockGetter() {
+            @Nullable
+            @Override
+            public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity(net.minecraft.core.BlockPos pos) {
+                return null;
+            }
+
+            @Override
+            public net.minecraft.world.level.block.state.BlockState getBlockState(net.minecraft.core.BlockPos pos) {
+                return net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            }
+
+            @Override
+            public net.minecraft.world.level.material.FluidState getFluidState(net.minecraft.core.BlockPos pos) {
+                return net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
+            }
+
+            @Override
+            public int getHeight() {
+                return 384;
+            }
+
+            @Override
+            public int getMinBuildHeight() {
+                return -64;
+            }
+        };
+        LightChunkGetter getter = new LightChunkGetter() {
+            @Nullable
+            @Override
+            public LightChunk getChunkForLighting(int x, int z) {
+                return null;
+            }
+
+            @Override
+            public BlockGetter getLevel() {
+                return level;
+            }
+
+            @Override
+            public void onLightUpdate(LightLayer layer, SectionPos pos) {
+            }
+        };
+        LevelLightEngine engine = new LevelLightEngine(getter, true, true);
+        for (LightLayer layer : LightLayer.values()) {
+            LightEngine<?, ?> e = (LightEngine<?, ?>) engine.getLayerListener(layer);
+            for (String name : List.of("increaseQueue", "decreaseQueue")) {
+                Field f = LightEngine.class.getDeclaredField(name);
+                f.setAccessible(true);
+                assertTrue(f.get(e) instanceof LightQueue, layer + " " + name + " is " + f.get(e).getClass().getName());
+            }
+        }
+    }
+
+    @Test
+    void splinePointsMappedWithoutAStream() {
+        TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        CubicSpline<Float, ToFloatFunction<Float>> inner = CubicSpline.<Float, ToFloatFunction<Float>>builder(ToFloatFunction.IDENTITY)
+            .addPoint(-1.0F, 0.5F).addPoint(1.0F, 2.0F).build();
+        CubicSpline<Float, ToFloatFunction<Float>> spline = CubicSpline.<Float, ToFloatFunction<Float>>builder(ToFloatFunction.IDENTITY)
+            .addPoint(-1.0F, inner).addPoint(0.0F, 1.0F).addPoint(1.0F, inner).build();
+        CubicSpline<Float, ToFloatFunction<Float>> mapped = spline.mapAll(c -> c);
+        List<?> values = ((CubicSpline.Multipoint<?, ?>) mapped).values();
+        // Stream.toList's list is java.util.ImmutableCollections$ListN
+        assertFalse(values.getClass().getName().startsWith("java.util.ImmutableCollections"), "values list " + values.getClass().getName());
+        for (float x = -2.0F; x <= 2.0F; x += 0.125F) {
+            assertTrue(Float.floatToIntBits(spline.apply(x)) == Float.floatToIntBits(mapped.apply(x)), "mapped spline at " + x);
+        }
+        assertTrue(spline.minValue() == mapped.minValue() && spline.maxValue() == mapped.maxValue(), "bounds");
+    }
+
+    @Test
+    void poiSkipLeavesOutOnlyWritesWithoutPoiTypes() {
+        TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        assertTrue(HookTargets.allowed(HookTargets.STATE_POI_SKIP), "no other mod changes the POI bookkeeping here");
+        assertTrue(java.util.Arrays.stream(net.minecraft.server.level.WorldGenRegion.class.getDeclaredMethods()).anyMatch(m -> m.getName().endsWith("ga2$skipWithoutPoi")),
+            "the wrapper of the call in WorldGenRegion.setBlock is in place");
+        net.minecraft.world.level.block.state.BlockState stone = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
+        net.minecraft.world.level.block.state.BlockState granite = net.minecraft.world.level.block.Blocks.GRANITE.defaultBlockState();
+        net.minecraft.world.level.block.state.BlockState bell = net.minecraft.world.level.block.Blocks.BELL.defaultBlockState();
+        assertTrue(net.minecraft.world.entity.ai.village.poi.PoiTypes.forState(bell).isPresent(), "a bell is a meeting point");
+        for (int round = 0; round < 2; round++) {
+            // the second round reads the answers the states keep
+            assertTrue(dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.skip(null, stone, granite), "stone to granite changes no POI");
+            assertFalse(dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.skip(null, stone, bell), "placing a bell adds a POI");
+            assertFalse(dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.skip(null, bell, stone), "replacing a bell removes one");
+        }
+        dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.serverStarting();
+        assertFalse(dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.skip(null, bell, granite), "answers found again after a server start");
+    }
+    @Test
+    void protoChunkReadsAreVanillas() throws Exception {
+        int fluids = 0;
+        // filled chunks: stone, caves, water and lava, air above
+        for (int[] at : new int[][] { { 3, -7 }, { 40, 12 }, { -60, 25 }, { 0, 0 } }) {
+        net.minecraft.world.level.chunk.ProtoChunk chunk = dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness.site(
+            TerrainHarness.Preset.OVERWORLD, 1234567L, at[0], at[1]).center();
+        Field bounds = net.minecraft.world.level.chunk.ProtoChunk.class.getDeclaredField("ga2$bounds");
+        bounds.setAccessible(true);
+        assertTrue(bounds.getLong(chunk) == 0L, "bounds not read yet");
+        int min = chunk.getMinBuildHeight();
+        int max = chunk.getMaxBuildHeight();
+        net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+        for (int y = min - 2; y < max + 2; y++) {
+            for (int z = 0; z < 16; z++) {
+                for (int x = 0; x < 16; x++) {
+                    pos.set(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z);
+                    net.minecraft.world.level.block.state.BlockState expected;
+                    net.minecraft.world.level.material.FluidState expectedFluid;
+                    if (y < min || y >= max) {
+                        expected = net.minecraft.world.level.block.Blocks.VOID_AIR.defaultBlockState();
+                        expectedFluid = net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState();
+                    } else {
+                        net.minecraft.world.level.chunk.LevelChunkSection section = chunk.getSection(chunk.getSectionIndex(y));
+                        expected = section.hasOnlyAir() ? net.minecraft.world.level.block.Blocks.AIR.defaultBlockState() : section.getBlockState(x, y & 15, z);
+                        expectedFluid = section.hasOnlyAir() ? net.minecraft.world.level.material.Fluids.EMPTY.defaultFluidState() : section.getFluidState(x, y & 15, z);
+                    }
+                    assertTrue(chunk.getBlockState(pos) == expected, "block at " + pos);
+                    assertTrue(chunk.getFluidState(pos) == expectedFluid, "fluid at " + pos);
+                    if (!expectedFluid.isEmpty()) {
+                        fluids++;
+                    }
+                }
+            }
+        }
+        assertTrue(bounds.getLong(chunk) != 0L, "the reads are GA2's (bounds kept)");
+        }
+        assertTrue(fluids > 0, "some chunk holds fluids");
+    }
+
+    /** {@code ChunkAccess.getMinBuildHeight} and {@code getHeight}: the height accessor's answers, read once (the overwrite is in). */
+    @Test
+    void chunkHeightsAreTheAccessors() throws Exception {
+        net.minecraft.world.level.chunk.ProtoChunk chunk = dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness.site(
+            TerrainHarness.Preset.OVERWORLD, 98765L, 5, -3).center();
+        Field heights = net.minecraft.world.level.chunk.ChunkAccess.class.getDeclaredField("ga2$heights");
+        heights.setAccessible(true);
+        Field accessorField = net.minecraft.world.level.chunk.ChunkAccess.class.getDeclaredField("levelHeightAccessor");
+        accessorField.setAccessible(true);
+        net.minecraft.world.level.LevelHeightAccessor accessor = (net.minecraft.world.level.LevelHeightAccessor) accessorField.get(chunk);
+        heights.setLong(chunk, 0L);
+        assertTrue(chunk.getMinBuildHeight() == accessor.getMinBuildHeight(), "min build height");
+        assertTrue(heights.getLong(chunk) != 0L, "the getters are GA2's (heights kept)");
+        assertTrue(chunk.getHeight() == accessor.getHeight(), "height");
+        assertTrue(chunk.getMaxBuildHeight() == accessor.getMaxBuildHeight(), "max build height");
+        assertTrue(chunk.getMinSection() == accessor.getMinSection() && chunk.getMaxSection() == accessor.getMaxSection()
+            && chunk.getSectionsCount() == accessor.getSectionsCount(), "sections");
+        for (int y = accessor.getMinBuildHeight() - 20; y < accessor.getMaxBuildHeight() + 20; y++) {
+            assertTrue(chunk.getSectionIndex(y) == accessor.getSectionIndex(y) && chunk.isOutsideBuildHeight(y) == accessor.isOutsideBuildHeight(y), "y " + y);
+        }
+    }
+}

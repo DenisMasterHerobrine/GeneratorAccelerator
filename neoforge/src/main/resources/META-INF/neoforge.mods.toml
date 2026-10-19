@@ -1,41 +1,56 @@
 modLoader = "javafml"
-loaderVersion = "[2,)"
+loaderVersion = "[4,)"
 #issueTrackerURL = ""
-license = "Polyform Shield 1.0.0"
+license = "PolyForm-Shield-1.0.0"
 
 [[mods]]
-modId = "generator_accelerator"
+modId = "generatoraccelerator2"
 version = "${version}"
-displayName = "Generator Accelerator"
-authors = "Sixik"
+displayName = "Generator Accelerator 2"
+authors = "DenisMasterHerobrine"
 description = '''
-
 '''
 #logoFile = ""
 
-[[dependencies.generator_accelerator]]
+[[dependencies.generatoraccelerator2]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21,)"
+versionRange = "[21.1,)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.generator_accelerator]]
+[[dependencies.generatoraccelerator2]]
 modId = "minecraft"
 type = "required"
-versionRange = "[1.21.1,)"
+versionRange = "[1.21.1,1.21.2)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.generator_accelerator]]
-modId = "confluence"
-type = "optional"
-versionRange = "[0,)"
-ordering = "AFTER"
-side = "BOTH"
+[[mixins]]
+config = "generatoraccelerator2.mixins.json"
 
+# Compat with other worldgen mods, one config per mod (compat/<modid>/mixin); each applies only while its mod is loaded
+[[mixins]]
+config = "generatoraccelerator2.compat.biolith.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.blueprint.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.biomeswevegone.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.c2me.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.lithostitched.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.terrablender.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.zeta.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.quark.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.spelunkery.mixins.json"
 
-${gaMixinBlocks}
+[[mixins]]
+config = "generatoraccelerator2.parallellight.mixins.json"
 
 [[accessTransformers]]
-file="META-INF/accesstransformer.cfg"
+file = "META-INF/accesstransformer.cfg"

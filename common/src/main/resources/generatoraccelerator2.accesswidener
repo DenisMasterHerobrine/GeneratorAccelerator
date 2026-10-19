@@ -1,0 +1,139 @@
+accessWidener v2 named
+# Density function node types are package-private records; the compiler needs to read them.
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Ap2
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$TwoArgumentSimpleFunction
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$TwoArgumentSimpleFunction$Type
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$MulOrAdd
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$MulOrAdd$Type
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Mapped
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Mapped$Type
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$PureTransformer
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$TransformerWithContext
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Clamp
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Constant
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$RangeChoice
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$YClampedGradient
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Noise
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$ShiftedNoise
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$ShiftNoise
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$ShiftA
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$ShiftB
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Shift
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$WeirdScaledSampler
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$WeirdScaledSampler$RarityValueMapper
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$BlendDensity
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$BlendAlpha
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$BlendOffset
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$BeardifierMarker
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$EndIslandDensityFunction
+accessible field net/minecraft/world/level/levelgen/DensityFunctions$EndIslandDensityFunction islandNoise Lnet/minecraft/world/level/levelgen/synth/SimplexNoise;
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Marker
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$Marker$Type
+
+# features: placement modifier fields read by the transcribed placement pipeline
+accessible field net/minecraft/world/level/levelgen/placement/CountPlacement count Lnet/minecraft/util/valueproviders/IntProvider;
+accessible field net/minecraft/world/level/levelgen/placement/CountOnEveryLayerPlacement count Lnet/minecraft/util/valueproviders/IntProvider;
+accessible field net/minecraft/world/level/levelgen/placement/HeightmapPlacement heightmap Lnet/minecraft/world/level/levelgen/Heightmap$Types;
+accessible field net/minecraft/world/level/levelgen/placement/HeightRangePlacement height Lnet/minecraft/world/level/levelgen/heightproviders/HeightProvider;
+accessible field net/minecraft/world/level/levelgen/placement/RarityFilter chance I
+accessible field net/minecraft/world/level/levelgen/placement/BlockPredicateFilter predicate Lnet/minecraft/world/level/levelgen/blockpredicates/BlockPredicate;
+accessible field net/minecraft/world/level/levelgen/placement/SurfaceWaterDepthFilter maxWaterDepth I
+accessible field net/minecraft/world/level/levelgen/placement/SurfaceRelativeThresholdFilter heightmap Lnet/minecraft/world/level/levelgen/Heightmap$Types;
+accessible field net/minecraft/world/level/levelgen/placement/SurfaceRelativeThresholdFilter minInclusive I
+accessible field net/minecraft/world/level/levelgen/placement/SurfaceRelativeThresholdFilter maxInclusive I
+accessible field net/minecraft/world/level/levelgen/placement/NoiseThresholdCountPlacement noiseLevel D
+accessible field net/minecraft/world/level/levelgen/placement/NoiseThresholdCountPlacement belowNoise I
+accessible field net/minecraft/world/level/levelgen/placement/NoiseThresholdCountPlacement aboveNoise I
+accessible field net/minecraft/world/level/levelgen/placement/NoiseBasedCountPlacement noiseToCountRatio I
+accessible field net/minecraft/world/level/levelgen/placement/NoiseBasedCountPlacement noiseFactor D
+accessible field net/minecraft/world/level/levelgen/placement/NoiseBasedCountPlacement noiseOffset D
+accessible field net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement xzSpread Lnet/minecraft/util/valueproviders/IntProvider;
+accessible field net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement ySpread Lnet/minecraft/util/valueproviders/IntProvider;
+
+# features: single-value shortcut for PalettedContainer.getAll (decoration biome set)
+accessible field net/minecraft/world/level/chunk/PalettedContainer data Lnet/minecraft/world/level/chunk/PalettedContainer$Data;
+accessible class net/minecraft/world/level/chunk/PalettedContainer$Data
+
+# surface: the rule compiler reads the vanilla rule and condition source records, and builds a
+# vanilla Context only to run rule types it does not know (other mods' rules)
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$AbovePreliminarySurface
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Bandlands
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$BiomeConditionSource
+accessible field net/minecraft/world/level/levelgen/SurfaceRules$BiomeConditionSource biomeNameTest Ljava/util/function/Predicate;
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$BlockRuleSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Condition
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Context
+accessible method net/minecraft/world/level/levelgen/SurfaceRules$Context <init> (Lnet/minecraft/world/level/levelgen/SurfaceSystem;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;Ljava/util/function/Function;Lnet/minecraft/core/Registry;Lnet/minecraft/world/level/levelgen/WorldGenerationContext;)V
+accessible method net/minecraft/world/level/levelgen/SurfaceRules$Context updateXZ (II)V
+accessible method net/minecraft/world/level/levelgen/SurfaceRules$Context updateY (IIIIII)V
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Hole
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$NoiseThresholdConditionSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$NotConditionSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$SequenceRuleSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Steep
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$StoneDepthCheck
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$SurfaceRule
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$Temperature
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$TestRuleSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$VerticalGradientConditionSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$WaterConditionSource
+accessible class net/minecraft/world/level/levelgen/SurfaceRules$YConditionSource
+
+# carvers: the path simulation reads the cave floor level provider
+accessible field net/minecraft/world/level/levelgen/carver/CaveCarverConfiguration floorLevel Lnet/minecraft/util/valueproviders/FloatProvider;
+
+# biomes: the climate search tree, read by the flattened exact search (biome/FlatClimateTree)
+accessible class net/minecraft/world/level/biome/Climate$RTree
+accessible class net/minecraft/world/level/biome/Climate$RTree$Node
+accessible class net/minecraft/world/level/biome/Climate$RTree$Leaf
+accessible class net/minecraft/world/level/biome/Climate$RTree$SubTree
+accessible field net/minecraft/world/level/biome/Climate$RTree root Lnet/minecraft/world/level/biome/Climate$RTree$Node;
+accessible field net/minecraft/world/level/biome/Climate$RTree lastResult Ljava/lang/ThreadLocal;
+accessible field net/minecraft/world/level/biome/Climate$RTree$Node parameterSpace [Lnet/minecraft/world/level/biome/Climate$Parameter;
+accessible field net/minecraft/world/level/biome/Climate$RTree$Leaf value Ljava/lang/Object;
+accessible field net/minecraft/world/level/biome/Climate$RTree$SubTree children [Lnet/minecraft/world/level/biome/Climate$RTree$Node;
+# TerraBlender compat: its region searches pass the distance metric GA2's wrapper sees (compat/terrablender)
+accessible class net/minecraft/world/level/biome/Climate$DistanceMetric
+accessible field net/minecraft/world/level/biome/Climate$ParameterList index Lnet/minecraft/world/level/biome/Climate$RTree;
+
+# noise fill: the interpolator steps, called from plain loops instead of List.forEach (NoiseChunkMixin)
+accessible method net/minecraft/world/level/levelgen/NoiseChunk$NoiseInterpolator selectCellYZ (II)V
+accessible method net/minecraft/world/level/levelgen/NoiseChunk$NoiseInterpolator updateForY (D)V
+accessible method net/minecraft/world/level/levelgen/NoiseChunk$NoiseInterpolator updateForX (D)V
+
+# tests: the noise fill exactness test compares the sections' block counts
+accessible field net/minecraft/world/level/chunk/LevelChunkSection nonEmptyBlockCount S
+accessible field net/minecraft/world/level/chunk/LevelChunkSection tickingBlockCount S
+accessible field net/minecraft/world/level/chunk/LevelChunkSection tickingFluidCount S
+# storage: exact one-pass palette packing for saving
+accessible method net/minecraft/world/level/chunk/PalettedContainer$Strategy calculateBitsForSerialization (Lnet/minecraft/core/IdMap;I)I
+# storage: the region old-chunk scan as one IO task
+accessible class net/minecraft/world/level/chunk/storage/IOWorker$PendingStore
+accessible field net/minecraft/world/level/chunk/storage/IOWorker$PendingStore data Lnet/minecraft/nbt/CompoundTag;
+# The noise fill skips the ore vein rule over whole cells where its toggle stays below the vein threshold; the y ranges come from here.
+accessible class net/minecraft/world/level/levelgen/OreVeinifier$VeinType
+accessible field net/minecraft/world/level/levelgen/OreVeinifier$VeinType minY I
+accessible field net/minecraft/world/level/levelgen/OreVeinifier$VeinType maxY I
+# the vein rule transcribed without its per-block random source (dfc.runtime.VeinRule)
+accessible field net/minecraft/world/level/levelgen/OreVeinifier$VeinType ore Lnet/minecraft/world/level/block/state/BlockState;
+accessible field net/minecraft/world/level/levelgen/OreVeinifier$VeinType rawOreBlock Lnet/minecraft/world/level/block/state/BlockState;
+accessible field net/minecraft/world/level/levelgen/OreVeinifier$VeinType filler Lnet/minecraft/world/level/block/state/BlockState;
+# The nether fossil probe replays the structure context's random draws on a copy of its generator.
+accessible field net/minecraft/world/level/levelgen/WorldgenRandom randomSource Lnet/minecraft/util/RandomSource;
+accessible field net/minecraft/world/level/levelgen/LegacyRandomSource seed Ljava/util/concurrent/atomic/AtomicLong;
+accessible field net/minecraft/world/level/levelgen/LegacyRandomSource gaussianSource Lnet/minecraft/world/level/levelgen/MarsagliaPolarGaussian;
+accessible field net/minecraft/world/level/levelgen/MarsagliaPolarGaussian haveNextNextGaussian Z
+# scheduling: the distance manager's player ticket throttler runs on the dimension's scheduler thread (ChunkMapMailboxMixin)
+accessible class net/minecraft/server/level/ChunkMap$DistanceManager
+# The palette mixins shadow the palettes' resize handler (state.palette).
+accessible class net/minecraft/world/level/chunk/PaletteResize
+
+# Fabric: the monster room mob without NeoForge's MonsterRoomHooks (platform.fabric.PlatformHooksImpl)
+accessible field net/minecraft/world/level/levelgen/feature/MonsterRoomFeature MOBS [Lnet/minecraft/world/entity/EntityType;
+
+# Made public by NeoForge's own access transformer, so the code relied on them; Fabric needs them opened here.
+# gpu.surface.SurfaceSpec reads the biome's climate (on NeoForge through the biome modifiers, platform.PlatformHooks). The field
+# itself is read through a Fabric-only accessor: NeoForge's coremod that routes it through the modifiers requires it private.
+accessible class net/minecraft/world/level/biome/Biome$ClimateSettings
+# join.JoinWait looks up the spawn area's chunk holders
+accessible method net/minecraft/server/level/ChunkMap getVisibleChunkIfPresent (J)Lnet/minecraft/server/level/ChunkHolder;

@@ -1,0 +1,161 @@
+package dev.denismasterherobrine.generatoraccelerator2;
+
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.tree.CommandNode;
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferCommand;
+import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeConfig;
+import dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree;
+import dev.denismasterherobrine.generatoraccelerator2.carver.CarverConfig;
+import dev.denismasterherobrine.generatoraccelerator2.carver.CarverPaths;
+import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatConfig;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedInjectors;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedRegions;
+import dev.denismasterherobrine.generatoraccelerator2.config.ConfigManager;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.verify.DfcCommand;
+import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesConfig;
+import dev.denismasterherobrine.generatoraccelerator2.features.StructureSteps;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuCommand;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuConfig;
+import dev.denismasterherobrine.generatoraccelerator2.join.JoinConfig;
+import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightConfig;
+import dev.denismasterherobrine.generatoraccelerator2.noise.SelfCheck;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightConfig;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.PregenBench;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.SchedulingConfig;
+import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
+import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
+import dev.denismasterherobrine.generatoraccelerator2.storage.StorageConfig;
+import dev.denismasterherobrine.generatoraccelerator2.structure.StructureLocks;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceConfig;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * The loader-neutral side of the mod. {@link #init} runs from each platform's entry point. The platform forwards its
+ * server events to the {@code on*} methods here.
+ */
+public final class GeneratorAccelerator {
+    public static final String MOD_ID = "generatoraccelerator2";
+    public static final String MOD_NAME = "Generator Accelerator 2";
+    public static final Logger LOGGER = LoggerFactory.getLogger("GeneratorAccelerator2");
+
+    /** The command root and its alias. Every GA2 command lives under both. */
+    public static final String COMMAND = "ga2";
+    public static final String COMMAND_ALIAS = MOD_ID;
+
+    private static final List<Consumer<MinecraftServer>> TICK_LISTENERS = new CopyOnWriteArrayList<>();
+    private static volatile MinecraftServer server;
+
+    private GeneratorAccelerator() {}
+
+    public static void init() {
+        ConfigFiles.migrate(Ga2Log.get("Config"));
+        // The light switches follow the light config. They are read again whenever a config file changes.
+        ConfigManager.onLoad(FastLight::refresh);
+        ConfigManager.onReload(FastLight::refresh);
+        ConfigManager.register(DfcConfig.SPEC, ConfigFiles.name("common"));
+        ConfigManager.register(FeaturesConfig.SPEC, ConfigFiles.name("features"));
+        ConfigManager.register(SchedulingConfig.SPEC, ConfigFiles.name("scheduling"));
+        ConfigManager.register(SurfaceConfig.SPEC, ConfigFiles.name("surface"));
+        ConfigManager.register(CarverConfig.SPEC, ConfigFiles.name("carvers"));
+        ConfigManager.register(BiomeConfig.SPEC, ConfigFiles.name("biomes"));
+        ConfigManager.register(CompatConfig.SPEC, ConfigFiles.name("compat"));
+        ConfigManager.register(StorageConfig.SPEC, ConfigFiles.name("storage"));
+        ConfigManager.register(LightConfig.SPEC, ConfigFiles.name("light"));
+        ConfigManager.register(JoinConfig.SPEC, ConfigFiles.name("join"));
+        ConfigManager.register(ParallelLightConfig.SPEC, ConfigFiles.name("parallel-light"));
+        ConfigManager.register(GpuConfig.SPEC, ConfigFiles.name("gpu"));
+        // The parallel light package knows nothing of GA2's compat inspection. It asks through this gate.
+        ParallelLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
+        StructureLocks.prewarm();
+        CompatModules.init();
+        if (Boolean.getBoolean("generatoraccelerator2.selfcheck")) {
+            SelfCheck.run(Ga2Log.get("SelfCheck"));
+        }
+    }
+
+    /** The running server, or null between worlds. */
+    public static MinecraftServer server() {
+        return server;
+    }
+
+    /** Runs at the end of every server tick from now on. */
+    public static void addServerTickListener(Consumer<MinecraftServer> listener) {
+        TICK_LISTENERS.add(listener);
+    }
+
+    public static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        GpuCommand.register(dispatcher);
+        DfcCommand.register(dispatcher);
+        AquiferCommand.register(dispatcher);
+        // The alias gets every subcommand the root has. Registering a literal twice merges the children of both.
+        CommandNode<CommandSourceStack> root = dispatcher.getRoot().getChild(COMMAND);
+        if (root != null) {
+            LiteralArgumentBuilder<CommandSourceStack> alias = Commands.literal(COMMAND_ALIAS).requires(root.getRequirement());
+            if (root.getCommand() != null) {
+                alias.executes(root.getCommand());
+            }
+            for (CommandNode<CommandSourceStack> child : root.getChildren()) {
+                alias.then(child);
+            }
+            dispatcher.register(alias);
+        }
+    }
+
+    /** A level's GPU program builds as soon as the level loads. The level's spawn area is generated after that. */
+    public static void onLevelLoad(ServerLevel level) {
+        Gpu.prewarm(level);
+    }
+
+    public static void onTagsUpdated() {
+        TagEpoch.bump();
+    }
+
+    public static void onServerStarting(MinecraftServer starting) {
+        server = starting;
+        PoiStates.serverStarting();
+    }
+
+    /** Caches of a world's worldgen objects are dropped with it. A singleplayer client opens many worlds per session. */
+    public static void onServerStopped(MinecraftServer stopped) {
+        CarverPaths.clear();
+        CarverRunner.clearKinds();
+        Gpu.closeWorlds();
+        // These would otherwise keep the stopped server's registries or levels until the next world replaces them.
+        SavePrep.onServerStopped();
+        PregenBench.onServerStopped();
+        StructureSteps.clear();
+        FlatClimateTree.forgetWorlds();
+        if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
+            LithostitchedInjectors.forgetWorlds();
+            LithostitchedRegions.forgetWorlds();
+        }
+        if (server == stopped) {
+            server = null;
+        }
+    }
+
+    public static void onServerTickPost(MinecraftServer ticking) {
+        for (Consumer<MinecraftServer> listener : TICK_LISTENERS) {
+            listener.accept(ticking);
+        }
+    }
+}

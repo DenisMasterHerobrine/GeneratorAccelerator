@@ -1,0 +1,17 @@
+package dev.denismasterherobrine.generatoraccelerator2.mixin.gpu;
+
+import net.minecraft.world.level.levelgen.Aquifer;
+import net.minecraft.world.level.levelgen.DensityFunction;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
+
+/** The status of an aquifer cell and the barrier noise, as the chunk's aquifer has them (verification). */
+@Mixin(Aquifer.NoiseBasedAquifer.class)
+public interface AquiferStatusInvoker {
+    @Invoker("getAquiferStatus")
+    Aquifer.FluidStatus ga2$getAquiferStatus(long location);
+
+    @Accessor("barrierNoise")
+    DensityFunction ga2$barrierNoise();
+}

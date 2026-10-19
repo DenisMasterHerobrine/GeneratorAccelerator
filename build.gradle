@@ -1,176 +1,110 @@
 plugins {
-    id 'dev.architectury.loom' version '1.13-SNAPSHOT' apply false
-    id 'architectury-plugin' version '3.4-SNAPSHOT'
-    id 'com.github.johnrengelman.shadow' version '8.1.1' apply false
-}
-
-def configureBenchmarkServerProperties = { String seedValue ->
-    if (seedValue == null || seedValue.isBlank()) {
-        return
-    }
-
-    def runDir = file("neoforge/run")
-    runDir.mkdirs()
-    def propsFile = file("neoforge/run/server.properties")
-    def lines = propsFile.exists() ? propsFile.readLines("ISO-8859-1") : []
-    def updated = false
-
-    for (int i = 0; i < lines.size(); i++) {
-        if (lines[i].startsWith("level-seed=")) {
-            lines[i] = "level-seed=${seedValue}"
-            updated = true
-            break
-        }
-    }
-
-    if (!updated) {
-        lines.add("level-seed=${seedValue}")
-    }
-
-    propsFile.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), "ISO-8859-1")
+    id 'dev.architectury.loom' version '1.17-SNAPSHOT' apply false
+    id 'architectury-plugin' version '3.5-SNAPSHOT'
+    id 'com.gradleup.shadow' version '9.6.1' apply false
 }
 
 architectury {
     minecraft = project.minecraft_version
 }
 
+// Full version is `<minecraft_version>-<mod_version>.<build_number>`, e.g. 1.21.1-2.0.19.143.
+// The build number lives in build_number.properties and is bumped after every successful local `build`.
+// CI builds use the committed number as-is.
+def isCi = providers.environmentVariable('CI').map { it.toBoolean() }.getOrElse(false)
+def buildNumberFile = file('build_number.properties')
+def buildNumberProps = new Properties()
+buildNumberFile.withInputStream { buildNumberProps.load(it) }
+def buildNumber = buildNumberProps.getProperty('build_number').trim() as int
+
 allprojects {
     group = rootProject.maven_group
-    version = rootProject.mod_version
+    version = "${rootProject.minecraft_version}-${rootProject.mod_version}.${buildNumber}"
+}
 
-    repositories {
-        mavenCentral()
-        maven { url = "https://maven.bawnorton.com/releases" }
-        maven { url = "https://maven.enjarai.dev/mirrors" }
+def incrementBuildNumber = tasks.register('incrementBuildNumber') {
+    group = 'versioning'
+    description = 'Increments the build number in build_number.properties.'
 
-        maven {
-            name = 'NeoForged'
-            url = 'https://maven.neoforged.net/releases'
-        }
-        maven {
-            url "https://repo.papermc.io/repository/maven-public/"
-            mavenContent {
-                includeGroup("ca.spottedleaf")
-            }
-        }
-        maven { url = "https://maven.createmod.net" } // Ponder, Flywheel
-        maven { url = "https://maven.ithundxr.dev/snapshots" }
-        maven { url = "https://maven.blamejared.com" }
-        maven { url = "https://harleyoconnor.com/maven" }
-        maven { url = "https://maven.theillusivec4.top/" }
-        maven { url = "https://maven.squiddev.cc" }
-        maven { url = "https://www.cursemaven.com" }
-        maven { url = "https://api.modrinth.com/maven" }
-        maven { url = "https://maven.ftb.dev/releases" }
-        maven { url = "https://maven.architectury.dev" }
-        maven { url = "https://raw.githubusercontent.com/Fuzss/modresources/main/maven" }
-        maven { url = "https://jitpack.io" }
+    def buildTasks = providers.provider { gradle.taskGraph.allTasks.findAll { it.name == 'build' } }
+    onlyIf { !isCi && buildTasks.get().every { it.state.executed && it.state.failure == null } }
 
-        maven {
-            url "https://maven.su5ed.dev/releases"
-        }
-
-        maven {
-            url = "https://jm.gserv.me/repository/maven-public"
-            content {
-                includeGroup "info.journeymap"
-                includeGroup "mysticdrew"
-            }
-        }
-
-        maven {
-            name "latviandevReleases"
-            url "https://maven.latvian.dev/releases"
-        }
-        maven {
-            name "kTT MavenReleases"
-            url "https://maven.kessokuteatime.work/releases"
-        }
-
-        maven {
-            name 'luck-repo'
-            url 'https://repo.lucko.me/'
-            content {
-                includeModule 'me.lucko', 'spark-api'
-            }
-        }
-        maven {
-            url = 'https://maven.ryanhcode.dev/releases/'
-        }
+    doLast {
+        buildNumberFile.text = buildNumberFile.text.replaceFirst(/(?m)^build_number=\d+/, "build_number=${buildNumber + 1}")
+        logger.lifecycle("Build number: ${buildNumber} -> ${buildNumber + 1}")
     }
 }
 
-
+// Concurrent bumps on different branches would conflict in build_number.properties.
+// .gitattributes routes that file through a merge driver that keeps the higher number;
+// register the driver in the local git config so it works in every clone without manual setup.
+if (!isCi && file('.git').exists()) {
+    def gitConfig = { String... args ->
+        providers.exec {
+            commandLine(['git', 'config', '--local'] + args.toList())
+            ignoreExitValue = true
+        }.standardOutput.asText.get().trim()
+    }
+    def driver = 'sh gradle/merge-build-number.sh %O %A %B'
+    if (gitConfig('--get', 'merge.buildnumber.driver') != driver) {
+        gitConfig('merge.buildnumber.name', 'Keep the highest build number')
+        gitConfig('merge.buildnumber.driver', driver)
+    }
+}
 
 subprojects {
     apply plugin: 'dev.architectury.loom'
     apply plugin: 'architectury-plugin'
     apply plugin: 'maven-publish'
 
-    configurations.configureEach {
-        exclude group: 'io.github.deussixik', module: 'javatogpu'
-    }
-
-    def dfcNativeMissingMarker = rootProject.layout.buildDirectory.file("dfcNative/status/no-natives.marker").get().asFile
-    def dfcArchiveFileName = { AbstractArchiveTask archiveTask ->
-        def classifier = archiveTask.archiveClassifier.orNull
-        def classifierSuffix = classifier ? "-${classifier}" : ""
-        def nativeSuffix = dfcNativeMissingMarker.isFile() && classifier != "sources" ? "-nn" : ""
-        return "[${project.version}] ${rootProject.archives_name}-${project.name}${classifierSuffix}${nativeSuffix}.${archiveTask.archiveExtension.get()}"
-    }
-
     base {
-        // Set up a suffixed format for the mod jar names, e.g. `example-fabric`.
+        // Set up a suffixed format for the mod jar names, e.g. `generatoraccelerator2-fabric`.
         archivesName = "$rootProject.archives_name-$project.name"
     }
 
     loom {
-        accessWidenerPath = file("../common/src/main/resources/btsengineconcurrent.accesswidener")
-    }
-
-    tasks.withType(AbstractArchiveTask).configureEach { archiveTask ->
-        archiveFileName.set(provider { dfcArchiveFileName(archiveTask) })
-        doFirst {
-            archiveFileName.set(dfcArchiveFileName(archiveTask))
-        }
+        accessWidenerPath = rootProject.file('common/src/main/resources/generatoraccelerator2.accesswidener')
     }
 
     repositories {
         // Add repositories to retrieve artifacts from in here.
-        // You should only use this when depending on other mods because
         // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-        // See https://docs.gradle.org/current/userguide/declaring_repositories.html
-        // for more information about repositories.
-        flatDir {
-            dirs rootProject.file('libs')
+        mavenCentral()
+        // MixinSquared (cancels other performance mods' mixins on the code GA2 takes over)
+        maven {
+            url = 'https://jitpack.io'
+            content { includeGroup 'com.github.bawnorton.mixinsquared' }
         }
     }
 
     dependencies {
         minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
         mappings loom.officialMojangMappings()
+    }
 
-        testImplementation platform('org.junit:junit-bom:5.10.0')
-        testImplementation 'org.junit.jupiter:junit-jupiter'
-        testImplementation 'org.mockito:mockito-core:5.11.0'
-        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // Compile against NeoForge's Mixin, not the newer one Fabric Loader brings: Mixin 0.17.4 made @Redirect's `at` an array,
+    // so javac writes it as one, and MixinExtras (and older Mixin) read it as a single @At and crash on every class GA2 redirects in.
+    configurations.named('compileClasspath') {
+        resolutionStrategy.force "net.fabricmc:sponge-mixin:$rootProject.compile_mixin_version"
     }
 
     java {
-        // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-        // if it is present.
-        // If you remove this line, sources will not be generated.
+        // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task if it is present.
         withSourcesJar()
 
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        // compiled by a Java 21 compiler, as FNR was: Mixin reads a mixin's field initialisers from its constructor by line number,
+        // and newer compilers number the implicit constructor differently (the initialisers are then not applied)
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
     }
 
     tasks.withType(JavaCompile).configureEach {
         it.options.release = 21
     }
 
-    // Configure Maven publishing.
+    tasks.named('build') {
+        finalizedBy incrementBuildNumber
+    }
+
     publishing {
         publications {
             mavenJava(MavenPublication) {
@@ -181,198 +115,6 @@ subprojects {
 
         // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
         repositories {
-            // Add repositories to publish to here.
-            // Notice: This block does NOT have the same function as the block in the top level.
-            // The repositories here will be used for publishing your artifact, not for
-            // retrieving dependencies.
         }
-    }
-}
-
-tasks.register("runBenchmarks") {
-    group = "benchmark"
-    description = "Runs Vanilla and Moonrise benchmarks 2 times each sequentially."
-
-    doLast {
-        def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
-        def gradleCmd = isWindows ? "gradlew.bat" : "./gradlew"
-
-        // Берем путь к Java, на которой сейчас работает этот скрипт (например, из настроек IDE)
-        def currentJavaHome = System.getProperty("java.home")
-
-        def runTest = { String name, String extraArgs, int count ->
-            println "======================================="
-            println "  START TESTING: $name"
-            println "======================================="
-
-            for (int i = 1; i <= count; i++) {
-                println "\n---> [$name] Прогон $i из $count <---"
-
-                exec {
-                    // Принудительно передаем правильный JAVA_HOME в консоль
-                    environment "JAVA_HOME", currentJavaHome
-
-                    // --no-daemon нужен чтобы процессы не слипались и память очищалась
-                    def fullCommand = "$gradleCmd :neoforge:runServer $extraArgs --no-daemon"
-
-                    if (isWindows) {
-                        commandLine 'cmd', '/c', fullCommand
-                    } else {
-                        commandLine 'bash', '-c', fullCommand
-                    }
-                }
-
-                // Ждем 2 секунды после того как сервер ПОЛНОСТЬЮ умер
-                sleep(2000)
-            }
-        }
-
-//        runTest("Vanilla", "", 2)
-        runTest("Moonrise", "-PwithMoonrise", 4)
-
-        println "\nBenchmarks end!"
-    }
-}
-
-tasks.register("runFeatureVmBenchmarks") {
-    group = "benchmark"
-    description = "Runs raw vanilla-ish vs FeatureVM-only server benchmarks."
-
-    doLast {
-        def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
-        def gradleCmd = isWindows ? "gradlew.bat" : "./gradlew"
-        def currentJavaHome = System.getProperty("java.home")
-        def runs = (findProperty("benchRuns") ?: "3") as int
-        def benchWorldSeed = (findProperty("benchWorldSeed") ?: "918273645546372819").toString()
-
-        def runTest = { String name, String jvmArgs ->
-            println "======================================="
-            println "  START FEATURE VM TEST: $name"
-            println "  JVM ARGS: $jvmArgs"
-            println "  WORLD SEED: $benchWorldSeed"
-            println "======================================="
-
-            for (int i = 1; i <= runs; i++) {
-                println "\n---> [$name] run $i of $runs <---"
-                configureBenchmarkServerProperties(benchWorldSeed)
-                exec {
-                    environment "JAVA_HOME", currentJavaHome
-                    commandLine gradleCmd, ":neoforge:runServer", "-PgaJvmArgs=$jvmArgs", "--no-daemon"
-                }
-                sleep(2000)
-            }
-        }
-
-        runTest("Vanilla-ish GA disabled", "-Dga.benchmark.disableAllPatches=true")
-        runTest("FeatureVM only", "-Dga.benchmark.featuresOnly=true -Dga.benchmark.featureVmOnly=true -Dga.benchmark.featureVm=true")
-        runTest("FeatureVM only with metrics", "-Dga.benchmark.featuresOnly=true -Dga.benchmark.featureVmOnly=true -Dga.benchmark.featureVm=true -Dga.featureVm.metrics=true")
-
-        println "\nFeatureVM benchmarks end!"
-    }
-}
-
-tasks.register("runDecorationPipelineBenchmarks") {
-    group = "benchmark"
-    description = "Runs raw vanilla-ish vs Java data-oriented decoration pipeline benchmarks."
-
-    doLast {
-        def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
-        def gradleCmd = isWindows ? "gradlew.bat" : "./gradlew"
-        def currentJavaHome = System.getProperty("java.home")
-        def runs = (findProperty("benchRuns") ?: "3") as int
-        def watchdogArgs = "-Dga.benchmark.startupWatchdogSeconds=180 -Dga.benchmark.tickWatchdogSeconds=90"
-        def benchWorldSeed = (findProperty("benchWorldSeed") ?: "918273645546372819").toString()
-
-        def runTest = { String name, String jvmArgs ->
-            println "======================================="
-            println "  START DECORATION PIPELINE TEST: $name"
-            println "  JVM ARGS: $jvmArgs"
-            println "  WORLD SEED: $benchWorldSeed"
-            println "======================================="
-
-            for (int i = 1; i <= runs; i++) {
-                println "\n---> [$name] run $i of $runs <---"
-                configureBenchmarkServerProperties(benchWorldSeed)
-                exec {
-                    environment "JAVA_HOME", currentJavaHome
-                    commandLine gradleCmd, ":neoforge:runServer", "-PgaJvmArgs=$jvmArgs", "--no-daemon"
-                }
-                sleep(2000)
-            }
-        }
-
-        runTest("Vanilla-ish GA disabled", "-Dga.benchmark.disableAllPatches=true $watchdogArgs")
-        runTest("Decoration pipeline with metrics", "-Dga.benchmark.featuresOnly=true -Dga.decorationPipeline.metrics=true -Dga.config.enableFlatBlockStructurePatch=true $watchdogArgs")
-
-        println "\nDecoration pipeline benchmarks end!"
-    }
-}
-
-tasks.register("runDecorationPipelineQuickBenchmarks") {
-    group = "benchmark"
-    description = "Runs a short no-Spark baseline vs Java decoration pipeline comparison."
-
-    doLast {
-        def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
-        def gradleCmd = isWindows ? "gradlew.bat" : "./gradlew"
-        def currentJavaHome = System.getProperty("java.home")
-        def runs = (findProperty("benchRuns") ?: "1") as int
-        def quickStartTick = findProperty("quickStartTick") ?: "20"
-        def quickStopTick = findProperty("quickStopTick") ?: "260"
-        def quickHaltTick = findProperty("quickHaltTick") ?: "320"
-        def quickTicksBetweenBatches = findProperty("quickTicksBetweenBatches") ?: "10"
-        def quickRenderDistance = findProperty("quickRenderDistance") ?: "8"
-        def quickResetWorld = findProperty("quickResetWorld") ?: "true"
-        def quickStartupWatchdogSeconds = findProperty("quickStartupWatchdogSeconds") ?: "90"
-        def quickTickWatchdogSeconds = findProperty("quickTickWatchdogSeconds") ?: "30"
-        def quickMaxBatches = findProperty("quickMaxBatches")
-        def quickWorldSeed = (findProperty("quickWorldSeed") ?: "918273645546372819").toString()
-        def quickMode = (findProperty("quickMode") ?: "both").toString()
-        def quickPipelineMetrics = (findProperty("quickPipelineMetrics") ?: "false").toString().toBoolean()
-        def quickPipelineFlatBlocks = (findProperty("quickPipelineFlatBlocks") ?: "true").toString().toBoolean()
-        def quickArgs = "-Dga.benchmark.useSpark=false " +
-                "-Dga.benchmark.startTick=$quickStartTick " +
-                "-Dga.benchmark.stopTick=$quickStopTick " +
-                "-Dga.benchmark.haltTick=$quickHaltTick " +
-                "-Dga.benchmark.ticksBetweenBatches=$quickTicksBetweenBatches " +
-                "-Dga.benchmark.renderDistance=$quickRenderDistance " +
-                "-Dga.benchmark.resetWorld=$quickResetWorld " +
-                "-Dga.benchmark.startupWatchdogSeconds=$quickStartupWatchdogSeconds " +
-                "-Dga.benchmark.tickWatchdogSeconds=$quickTickWatchdogSeconds"
-        if (quickMaxBatches != null) {
-            quickArgs += " -Dga.benchmark.maxBatches=$quickMaxBatches"
-        }
-
-        def runTest = { String name, String jvmArgs ->
-            println "======================================="
-            println "  START QUICK DECORATION TEST: $name"
-            println "  JVM ARGS: $jvmArgs"
-            println "  WORLD SEED: $quickWorldSeed"
-            println "======================================="
-
-            for (int i = 1; i <= runs; i++) {
-                println "\n---> [$name] run $i of $runs <---"
-                def sparkConfigDir = file("neoforge/run/config/spark")
-                sparkConfigDir.mkdirs()
-                file("neoforge/run/config/spark/config.json").text = '{"backgroundProfiler":false}\n'
-                configureBenchmarkServerProperties(quickWorldSeed)
-                exec {
-                    environment "JAVA_HOME", currentJavaHome
-                    commandLine gradleCmd, ":neoforge:runServer", "-PgaJvmArgs=$jvmArgs", "--no-daemon"
-                }
-                sleep(1000)
-            }
-        }
-
-        if (quickMode == "both" || quickMode == "baseline") {
-            runTest("Quick baseline GA disabled", "-Dga.benchmark.disableAllPatches=true $quickArgs")
-        }
-        if (quickMode == "both" || quickMode == "pipeline") {
-            def metricsArg = quickPipelineMetrics ? "-Dga.decorationPipeline.metrics=true " : ""
-            def flatBlocksArg = quickPipelineFlatBlocks ? "-Dga.config.enableFlatBlockStructurePatch=true " : ""
-            runTest("Quick decoration pipeline", "-Dga.benchmark.featuresOnly=true ${metricsArg}${flatBlocksArg}$quickArgs")
-        }
-
-        println "\nQuick decoration pipeline benchmarks end!"
     }
 }

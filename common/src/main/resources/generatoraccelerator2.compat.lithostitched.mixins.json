@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "BiomeRegionsMixin",
+    "InjectorBiomeSourceMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

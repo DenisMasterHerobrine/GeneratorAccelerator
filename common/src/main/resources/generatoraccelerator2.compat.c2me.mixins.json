@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.c2me.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "ChunkSerializerPostProcessingMixin",
+    "ServerBlockTickingMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

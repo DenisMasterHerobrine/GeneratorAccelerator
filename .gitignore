@@ -1,25 +1,29 @@
-# Project exclude paths
-/common/.gradle
-/neoforge/.gradle
-/fabric/.gradle
-/.gradle/
-/build/
-/common/build/
-/fabric/.gradle/
-/fabric/build/
-/neoforge/.gradle/
-/neoforge/build/
-/neoforge/run/
+# Gradle
+.gradle/
+build/
+.architectury-transformer/
+
+# Run directories
 /fabric/run/
-/.idea/
-/.architectury-transformer
-/.densitycompiler/
+/neoforge/run/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Misc
 *.log
-*.gz
-TASK.md
-/common/natives/dfc/build/
-common/src/main/resources/natives/dfc_native.dll
-/other_library
 *.jfr
-/net/minecraft
-/old_compiler
+
+# Mixin debug export (-Dmixin.debug.export=true)
+.mixin.out/
+/docs/
+/fabric/config/
+/fabric/logs/
+/fabric/mods/
+
+# Backups
+*.bak
+/fabric/.ga2
+/neoforge/.ga2

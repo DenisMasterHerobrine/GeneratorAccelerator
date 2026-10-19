@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "BlockStripeFeatureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.InspectedMixinPlugin",
+  "mixins": [
+    "LightEngineAccessor",
+    "LayerLightSectionStorageAccessor",
+    "DataLayerStorageMapAccessor",
+    "SkyLightSectionStorageAccessor",
+    "LightEngineParallelMixin",
+    "SkyLightEngineInspectMixin",
+    "BlockLightEngineInspectMixin",
+    "ThreadedLevelLightEngineMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
