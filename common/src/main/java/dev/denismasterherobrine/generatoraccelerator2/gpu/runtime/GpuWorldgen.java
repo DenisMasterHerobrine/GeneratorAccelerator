@@ -239,7 +239,16 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     public static final LongAdder BATCH_CHUNKS = new LongAdder();
 
     // ---- device objects ----
-    long program;
+    /** The program's parts ({@link #parts}). 0 where a part is not built yet. */
+    long[] programs = new long[0];
+    /** Each kernel's part. */
+    private final java.util.Map<String, Integer> kernelPart = new java.util.HashMap<>();
+    /** The parts still building. Null once every part is taken. */
+    private ProgramCache.Parts building;
+    /** The surface part's index, or -1. It is taken after the dimension is ready ({@link #prepareSurface}). */
+    private int surfacePart = -1;
+    /** When the surface part was ready, in ms after the build started. */
+    private double surfaceReadyMs;
     long kFlat, kHoist, kCorner, kBHoist, kSurface, kSurfaceIn, kStatus, kLevels, kClimate, kBiome, kCornerPc, kBlock, kPack, kHeights, kTerrain;
     /** Flags, per chunk, whether the columns of the chunk's aquifer cells disagree on an order-sensitive cache_2d ({@link ClEmitter.C2d#FLOODED}). 0 if absent. */
     long kC2Flags;
@@ -467,37 +476,57 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int per = 16 / cellWidth;
         cellsPerChunk3d = per * per * (height / cellHeight);
 
-        long t0 = System.nanoTime();
         StringBuilder log = new StringBuilder();
-        program = ProgramCache.build(device, src, "-cl-std=CL1.2 -cl-fp32-correctly-rounded-divide-sqrt" + buildDefines, log);
-        buildMs = (System.nanoTime() - t0) / 1e6;
-        kFlat = cl.createKernel(program, "k_flat");
-        kHoist = cl.createKernel(program, "k_hoist");
-        kCorner = certified ? 0 : cl.createKernel(program, "k_corner"); // a certified program runs the float corners and blocks
-        kBHoist = cl.createKernel(program, "k_bhoist");
-        kSurface = cl.createKernel(program, "k_surface");
-        kSurfaceIn = cl.createKernel(program, "k_surface_in");
-        kStatus = cl.createKernel(program, "k_status");
-        kLevels = cl.createKernel(program, "k_levels");
+        List<List<String>> parts = buildParts ? parts(ProgramParts.names(src)) : List.of(ProgramParts.names(src));
+        List<String> partSources = new ArrayList<>(parts.size());
+        for (List<String> p : parts) {
+            partSources.add(parts.size() == 1 ? src : ProgramParts.only(src, p));
+        }
+        building = ProgramCache.start(device, partSources, "-cl-std=CL1.2 -cl-fp32-correctly-rounded-divide-sqrt" + buildDefines);
+        programs = new long[parts.size()];
+        for (int i = 0; i < parts.size(); i++) {
+            for (String k : parts.get(i)) {
+                kernelPart.putIfAbsent(k, i);
+            }
+            if (surfaceSpec != null && parts.size() > 1 && parts.get(i).containsAll(SURFACE_KERNELS)) {
+                // the surface stays on the CPU until this part is ready
+                surfacePart = i;
+                surfaceOff = "building its program";
+            } else {
+                programs[i] = building.take(i, log);
+            }
+        }
+        buildMs = Arrays.stream(building.readyMs).max().orElse(0);
+        if (surfacePart < 0) {
+            building = null;
+        }
+        kFlat = kernel("k_flat");
+        kHoist = kernel("k_hoist");
+        kCorner = certified ? 0 : kernel("k_corner"); // a certified program runs the float corners and blocks
+        kBHoist = kernel("k_bhoist");
+        kSurface = kernel("k_surface");
+        kSurfaceIn = kernel("k_surface_in");
+        kStatus = kernel("k_status");
+        kLevels = kernel("k_levels");
         if (g.c2dKind == ClEmitter.C2d.FLOODED) {
-            kC2Flags = cl.createKernel(program, "k_c2flags");
+            kC2Flags = kernel("k_c2flags");
         }
         // the program has the climate kernels only when it decides biomes
-        kClimate = decidesBiomes() ? cl.createKernel(program, "k_climate") : 0;
-        kBiome = decidesBiomes() ? cl.createKernel(program, "k_biome") : 0;
-        kCornerPc = certified ? 0 : cl.createKernel(program, "k_corner_pc");
-        kBlock = certified ? 0 : cl.createKernel(program, "k_block");
-        kPack = cl.createKernel(program, "k_pack");
-        kHeights = cl.createKernel(program, "k_heights");
-        kTerrain = cl.createKernel(program, "k_terrain");
+        kClimate = decidesBiomes() ? kernel("k_climate") : 0;
+        kBiome = decidesBiomes() ? kernel("k_biome") : 0;
+        kCornerPc = certified ? 0 : kernel("k_corner_pc");
+        kBlock = certified ? 0 : kernel("k_block");
+        kPack = kernel("k_pack");
+        kHeights = kernel("k_heights");
+        kTerrain = kernel("k_terrain");
         if (certified) {
-            kCorner32 = cl.createKernel(program, "k_corner32");
-            kCorner32Pc = cl.createKernel(program, "k_corner32_pc");
-            kBlock32 = cl.createKernel(program, "k_block32");
-            kZero = cl.createKernel(program, "k_zero");
-            kRecheckMark = cl.createKernel(program, "k_recheck_mark");
-            kRecheckCorners = cl.createKernel(program, "k_recheck_corners");
-            kRecheckBlocks = cl.createKernel(program, "k_recheck_blocks");
+            kCorner32 = kernel("k_corner32");
+            kCorner32Pc = kernel("k_corner32_pc");
+            kBlock32 = kernel("k_block32");
+            kZero = kernel("k_zero");
+            kRecheckMark = kernel("k_recheck_mark");
+            kRecheckCorners = kernel("k_recheck_corners");
+            kRecheckBlocks = kernel("k_recheck_blocks");
         }
         long ro = ClApi.MEM_READ_ONLY;
         perm = cl.createBuffer(device.context, ro, bytes(g.permTable()));
@@ -513,9 +542,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         tdefer = cl.createBuffer(device.context, ro, ints(treeDefer != null ? treeDefer : new int[4]));
         bk = cl.createBuffer(device.context, ro, floats(beardKernel));
         checkExterns(g);
-        if (surfaceSpec != null) {
-            surfaces = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue, program, surfaceSpec,
-                height, perm, od, oi, of, device::wake);
+        if (surfaceSpec != null && surfacePart < 0) {
+            surfaces = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue,
+                programs[kernelPart.get("k_sbuild")], surfaceSpec, height, perm, od, oi, of, device::wake);
         }
         long budget = (long) (device.info.globalMemory() * GpuConfig.vramShare());
         // each cached region also keeps its biome answers on the heap (finishRegion). They may use at most 1/128 of the heap, so a
@@ -535,6 +564,98 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             heapRegions = Math.max(16, Runtime.getRuntime().maxMemory() / 128 / Math.max(1, heapPerRegion));
         }
         maxRegions = (int) Math.max(4, Math.min(Math.min(256, heapRegions), budget / Math.max(1, regionBytes())));
+    }
+
+    /** {@code -Dgeneratoraccelerator2.gpu.buildParts=false} builds the program as one ({@link #parts}). Tests set it per dimension. */
+    public boolean buildParts = Boolean.parseBoolean(System.getProperty("generatoraccelerator2.gpu.buildParts", "true"));
+
+    /** The surface's kernels ({@code gpu.surface.SurfaceSpec}). */
+    static final List<String> SURFACE_KERNELS = List.of("k_sunpack", "k_sbuild", "k_spack", "k_sheights");
+
+    /**
+     * The kernels of each part after the first ({@link #parts}). A part builds in about the time of its own kernels. Built at the
+     * same time, the parts the dimension needs are ready once the slowest of them is. The surface part comes last. Terralith's
+     * overworld, cold, every processor busy: the whole program 12 s, the dimension on in 4.6 s, the surface in 9 s.
+     */
+    private static final List<List<String>> NAMED_PARTS = List.of(
+        List.of("k_corner", "k_corner_pc", "k_block", "k_corner32", "k_corner32_pc", "k_block32"),
+        List.of("k_recheck_mark", "k_recheck_corners", "k_recheck_blocks"),
+        List.of("k_climate", "k_biome"),
+        SURFACE_KERNELS);
+
+    /**
+     * The program's kernels by part, each part built as a program of its own ({@link ProgramParts}, {@link ProgramCache#start}). The
+     * first part holds every kernel no named part lists. Named parts the source lacks are left out. {@code k_nonce} is in every part.
+     */
+    public static List<List<String>> parts(List<String> kernels) {
+        List<List<String>> out = new ArrayList<>();
+        List<String> rest = new ArrayList<>(kernels);
+        for (List<String> named : NAMED_PARTS) {
+            List<String> part = new ArrayList<>();
+            for (String k : named) {
+                if (rest.remove(k)) {
+                    part.add(k);
+                }
+            }
+            if (!part.isEmpty()) {
+                out.add(part);
+            }
+        }
+        out.add(0, rest);
+        if (rest.contains("k_nonce")) {
+            for (List<String> p : out.subList(1, out.size())) {
+                p.add("k_nonce");
+            }
+        }
+        return out;
+    }
+
+    /** A kernel of the part that holds it. */
+    private long kernel(String name) {
+        Integer part = kernelPart.get(name);
+        if (part == null || programs[part] == 0) {
+            throw new IllegalStateException("no built part has kernel " + name);
+        }
+        return cl.createKernel(programs[part], name);
+    }
+
+    /**
+     * Takes the surface part once it is built and puts the surface on the GPU. Called on the prepare thread after the dimension is
+     * ready. Until then the CPU builds every surface.
+     */
+    public void prepareSurface() {
+        if (surfacePart < 0 || building == null) {
+            return;
+        }
+        ProgramCache.Parts b = building;
+        try {
+            long prog = b.take(surfacePart, new StringBuilder());
+            surfaceReadyMs = b.readyMs[surfacePart];
+            var s = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue, prog, surfaceSpec,
+                height, perm, od, oi, of, device::wake);
+            CompletableFuture<Void> published = new CompletableFuture<>();
+            device.submit(() -> {
+                if (state == State.FAILED || closed()) {
+                    s.close();
+                    cl.releaseProgram(prog);
+                } else {
+                    programs[surfacePart] = prog;
+                    surfaces = s;
+                    surfaceOff = null;
+                    GpuDevice.LOGGER.info("{}: surface program ready {} s after the build started ({}) -> surface on GPU", name,
+                        String.format(java.util.Locale.ROOT, "%.1f", surfaceReadyMs / 1e3), b.how[surfacePart]);
+                }
+                building = null;
+                published.complete(null);
+            });
+            published.join();
+        } catch (Throwable e) {
+            if (!closed()) {
+                GpuDevice.LOGGER.warn("surface program for {} failed -> surface on CPU", name, e);
+            }
+            surfaceOff = "its program failed: " + e;
+            building = null;
+        }
     }
 
     /**
@@ -562,7 +683,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             var form = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpu(index);
             boolean wide = form.kind() == dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.LITHO_CELLULAR;
             int size = wide ? 8 : 4;
-            long k = cl.createKernel(program, wide ? "k_litho_cellular_test" : "k_fnl_cellular_test");
+            long k = kernel(wide ? "k_litho_cellular_test" : "k_fnl_cellular_test");
             long in = cl.createBuffer(device.context, ClApi.MEM_READ_ONLY, doubles(xyz));
             long out = cl.createBuffer(device.context, ClApi.MEM_WRITE_ONLY, (long) n * size);
             try {
@@ -906,7 +1027,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     /** The SURFACE step on the GPU ({@code gpu.surface}), or null with the reason in {@link #surfaceOff}. */
     public dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec surfaceSpec;
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches surfaces;
+    public volatile dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches surfaces;
     /** The GPU's copy of chunks for decoration ({@code gpu.decor}, an option), or null. Set on the GPU thread once the decoration program is built. */
     public volatile dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor decor;
     /** GPU decoration's own program (0 until built), and why it is not on. */
@@ -962,7 +1083,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             GpuDevice.LOGGER.warn("decoration off for {}", name, e);
         }
     }
-    public String surfaceOff = "not set up";
+    public volatile String surfaceOff = "not set up";
     private net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator surfaceGenerator;
     private long worldSeed;
     /** The GPU's biome index of each biome the source returns. */
@@ -2550,9 +2671,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
         kFlat = kHoist = kCorner = kBHoist = kSurface = kSurfaceIn = kStatus = kLevels = kClimate = kBiome = kCornerPc = kBlock = kPack = kHeights = kTerrain = 0;
         kCorner32 = kCorner32Pc = kBlock32 = kZero = kRecheckMark = kRecheckCorners = kRecheckBlocks = kC2Flags = 0;
-        if (program != 0) {
-            cl.releaseProgram(program);
-            program = 0;
+        // a part still building is released by prepareSurface, which sees the world closed
+        for (int i = 0; i < programs.length; i++) {
+            if (programs[i] != 0) {
+                cl.releaseProgram(programs[i]);
+                programs[i] = 0;
+            }
         }
         // a second release (a world closed while its program built) releases only what was made in between. Drop the world's objects.
         levelHeights = null;
@@ -2568,7 +2692,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             case READY -> "on, " + (certified ? "certified fp32 (cells in doubt rechecked in fp64)" : "fp64 (" + certifiedOff + ")") + ", "
                 + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : "on CPU (" + biomesOff + ")")
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
-                + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s, %d regions cached (at most %d)", sourceChars, buildMs / 1e3, regions.size(), maxRegions)
+                + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
+                + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(java.util.Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")
+                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions)
                 + (!dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ENABLED ? ""
                     : decorOff == null ? String.format(java.util.Locale.ROOT, "; decoration on (its program built in %.1f s)", decorBuildMs / 1e3) : "; decoration off (" + decorOff + ")");
         };

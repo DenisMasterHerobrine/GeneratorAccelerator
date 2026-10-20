@@ -50,7 +50,16 @@ final class GpuDatapack {
             throw new IllegalStateException("vanilla worldgen data not on the classpath");
         }
         // .../data/minecraft/worldgen/noise_settings/overworld.json -> the pack root above data/
-        Path vanillaRoot = Path.of(u.toURI()).getParent().getParent().getParent().getParent().getParent();
+        java.net.URI uri = u.toURI();
+        if (uri.getScheme().equals("jar")) {
+            // the game jar's file system, opened once
+            try {
+                java.nio.file.FileSystems.getFileSystem(uri);
+            } catch (java.nio.file.FileSystemNotFoundException e) {
+                java.nio.file.FileSystems.newFileSystem(uri, java.util.Map.of());
+            }
+        }
+        Path vanillaRoot = Path.of(uri).getParent().getParent().getParent().getParent().getParent();
         PackResources vanilla = new PathPackResources(new PackLocationInfo("vanilla", Component.literal("vanilla"), PackSource.BUILT_IN, Optional.empty()), vanillaRoot);
         PackResources pack = new PathPackResources(new PackLocationInfo("datapack", Component.literal("datapack"), PackSource.WORLD, Optional.empty()), dataRoot);
         RegistryAccess.Frozen loaded;

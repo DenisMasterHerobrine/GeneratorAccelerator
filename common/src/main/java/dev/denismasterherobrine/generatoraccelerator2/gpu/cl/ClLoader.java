@@ -94,9 +94,46 @@ public final class ClLoader {
         return null;
     }
 
+    /**
+     * The command that starts {@code gpu.cl.lwjgl.BuildWorker} in a process of its own, without the worker's arguments. Its class path
+     * holds the worker class, the bundled LWJGL core and lwjgl-opencl. The core's native library is copied out once beforehand.
+     * Processes started together then do not extract it at the same time.
+     */
+    public static List<String> workerCommand(Path libDir) throws IOException {
+        String natives = nativesClassifier();
+        if (natives == null) {
+            throw new IOException("no LWJGL natives bundled for " + System.getProperty("os.name") + " " + System.getProperty("os.arch"));
+        }
+        Path opencl = extract(libDir, "lwjgl-opencl-" + LWJGL_VERSION + ".jar");
+        Path core = extract(libDir, "lwjgl-" + LWJGL_VERSION + ".jar");
+        Path nativeDir = libDir.resolve(natives);
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(Files.newInputStream(extract(libDir, "lwjgl-" + LWJGL_VERSION + "-" + natives + ".jar")))) {
+            for (java.util.zip.ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                String n = e.getName();
+                if (!e.isDirectory() && (n.endsWith(".dll") || n.endsWith(".so") || n.endsWith(".dylib"))) {
+                    writeOnce(nativeDir, n.substring(n.lastIndexOf('/') + 1), zip.readAllBytes());
+                }
+            }
+        }
+        String worker = IMPL_PACKAGE + "BuildWorker";
+        String path = worker.replace('.', '/') + ".class";
+        Path classes = libDir.resolve("worker");
+        try (InputStream in = ClLoader.class.getClassLoader().getResourceAsStream(path)) {
+            if (in == null) {
+                throw new IOException("GA2's jar has no " + path);
+            }
+            Path file = classes.resolve(path);
+            writeOnce(file.getParent(), file.getFileName().toString(), in.readAllBytes());
+        }
+        boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        Path jvm = Path.of(System.getProperty("java.home"), "bin", windows ? "javaw.exe" : "java");
+        String cp = String.join(java.io.File.pathSeparator, classes.toString(), core.toString(), opencl.toString());
+        return List.of(jvm.toString(), "-XX:+IgnoreUnrecognizedVMOptions", "-Xmx64m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Djava.awt.headless=true",
+            "-Dorg.lwjgl.librarypath=" + nativeDir, "-cp", cp, worker);
+    }
+
     /** Copies a bundled jar out of GA2's jar, once per content. The file is replaced when its size or contents differ. */
     private static Path extract(Path dir, String name) throws IOException {
-        Path out = dir.resolve(name);
         byte[] bytes;
         try (InputStream in = ClLoader.class.getClassLoader().getResourceAsStream(BUNDLE + name)) {
             if (in == null) {
@@ -104,6 +141,12 @@ public final class ClLoader {
             }
             bytes = in.readAllBytes();
         }
+        return writeOnce(dir, name, bytes);
+    }
+
+    /** Writes {@code bytes} to {@code dir/name} unless the file already holds them. */
+    private static Path writeOnce(Path dir, String name, byte[] bytes) throws IOException {
+        Path out = dir.resolve(name);
         if (Files.isRegularFile(out) && Files.size(out) == bytes.length && java.util.Arrays.equals(Files.readAllBytes(out), bytes)) {
             return out;
         }

@@ -230,6 +230,7 @@ public final class Gpu {
                 return;
             }
             LOGGER.info("on: {}; {}", wg.status(), test);
+            wg.prepareSurface();
             wg.prepareDecoration();
         } catch (ClEmitter.Unsupported e) {
             GpuRuntime.fail(wg, e.getMessage());
