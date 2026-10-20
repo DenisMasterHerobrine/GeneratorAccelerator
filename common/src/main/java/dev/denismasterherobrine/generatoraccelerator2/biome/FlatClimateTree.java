@@ -632,6 +632,8 @@ public final class FlatClimateTree {
             java.util.Arrays.fill(recentTree, null);
             java.util.Arrays.fill(recent, null);
             recentNext = 0;
+            // the column slots keep their arrays for the next world. Without its tree a slot matches no lookup.
+            java.util.Arrays.fill(parts.trees, null);
         }
 
         int[] walkStack(int size) {

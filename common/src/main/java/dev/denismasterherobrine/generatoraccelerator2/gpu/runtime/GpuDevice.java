@@ -59,6 +59,8 @@ public final class GpuDevice {
     private final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
     private final CopyOnWriteArrayList<Pump> pumps = new CopyOnWriteArrayList<>();
     private volatile boolean running = true;
+    /** The thread has ended ({@link #close}). Tasks submitted after that run on the submitting thread. */
+    private volatile boolean stopped;
 
     GpuDevice(ClApi cl, ClDeviceInfo info, String binding) {
         this.cl = cl;
@@ -100,10 +102,61 @@ public final class GpuDevice {
         return Thread.currentThread() == thread;
     }
 
-    /** Runs {@code task} on the GPU thread. */
+    /** Runs {@code task} on the GPU thread, or on this thread once the device is closed. */
     public void submit(Runnable task) {
         tasks.add(task);
-        wake();
+        if (stopped) {
+            synchronized (tasks) {
+                runTasks();
+            }
+        } else {
+            wake();
+        }
+    }
+
+    /**
+     * Releases the queues and the context, then ends the GPU thread. Runs after the tasks submitted before. Worlds closed before
+     * release their objects first. A world released later still can. The driver frees the context once its last object is released.
+     */
+    public void close() {
+        submit(() -> {
+            java.util.Set<Long> all = new java.util.LinkedHashSet<>();
+            all.add(queue);
+            all.add(sideQueue);
+            all.add(hostQueue);
+            all.add(residentQueue);
+            for (long q : regionQueues) {
+                all.add(q);
+            }
+            for (long q : decorQueues) {
+                all.add(q);
+            }
+            for (long q : all) {
+                try {
+                    cl.finish(q);
+                } catch (RuntimeException ignored) {
+                    // a lost device: the queue goes with the context
+                }
+            }
+            for (long q : all) {
+                cl.releaseQueue(q);
+            }
+            cl.releaseContext(context);
+            pumps.clear();
+            running = false;
+            LOGGER.info("closed: {}", info.name().trim());
+        });
+    }
+
+    private void runTasks() {
+        Runnable t;
+        while ((t = tasks.poll()) != null) {
+            try {
+                t.run();
+            } catch (Throwable e) {
+                LOGGER.error("task failed", e);
+            }
+        }
     }
 
     public void addPump(Pump pump) {
@@ -117,13 +170,9 @@ public final class GpuDevice {
 
     private void loop() {
         while (running) {
-            Runnable t;
-            while ((t = tasks.poll()) != null) {
-                try {
-                    t.run();
-                } catch (Throwable e) {
-                    LOGGER.error("task failed", e);
-                }
+            runTasks();
+            if (!running) {
+                break;
             }
             long wait = 50_000_000L;
             for (Pump p : pumps) {
@@ -137,6 +186,11 @@ public final class GpuDevice {
             if (wait > 0 && tasks.isEmpty()) {
                 LockSupport.parkNanos(this, wait);
             }
+        }
+        // A task submitted while the thread ended runs here or on its submitting thread.
+        stopped = true;
+        synchronized (tasks) {
+            runTasks();
         }
     }
 

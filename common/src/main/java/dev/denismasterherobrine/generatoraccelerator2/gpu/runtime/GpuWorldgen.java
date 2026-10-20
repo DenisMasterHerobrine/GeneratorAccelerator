@@ -1171,6 +1171,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         final List<BiomeReq> waiting = new ArrayList<>();
         int users;
         long launched;
+        /** When a request last used the region ({@link #evict}). */
+        long used;
         /** The region queue's event after the work that batches read (corners, hoists, aquifer cells). 0 once known complete. */
         long done;
         /** Per chunk, whether the columns of its aquifer cells disagree ({@link ClEmitter.C2d#FLOODED}), or null. Read before {@link #done}. */
@@ -1225,6 +1227,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** One region's device buffers, pooled. Allocating them per region cost more GPU thread time than the region's kernels. */
     private static final class RegionBuffers {
         long flat, hz, corners, corners32, cornersE, bh, surf, surfIn, cells, levels, biomes, climate, tieList, tieCount;
+        /** Device memory of these buffers ({@link #REGION_BYTES}). */
+        long bytes;
         /** With TerraBlender's regions: the region of every quart column, and region 0's answers. 0 otherwise. */
         long regionMap, fallbacks;
         /** With Lithostitched's injectors: every quart's climate point ({@link #targetInts}). 0 otherwise. */
@@ -1250,6 +1254,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             if (decidesBiomes() && b.tieCap < tieCap()) {
                 // the dimension's tie lists grew since these were made
                 cl.releaseMem(b.tieList);
+                long grown = (long) (tieCap() - b.tieCap) * 7 * 8;
+                b.bytes += grown;
+                REGION_BYTES.add(grown);
                 b.tieCap = tieCap();
                 b.tieList = cl.createBuffer(device.context, ClApi.MEM_WRITE_ONLY, (long) b.tieCap * 7 * 8);
             }
@@ -1298,8 +1305,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         allRegionBuffers.add(b);
+        b.bytes = regionBytes();
+        REGION_BYTES.add(b.bytes);
         return b;
     }
+
+    /** Device memory of every dimension's region buffers, cached and pooled (F3, status). */
+    public static final LongAdder REGION_BYTES = new LongAdder();
 
     /** Buffers for one batch of up to {@link GpuConfig#batchChunks} chunks, reused. */
     private final class Slot {
@@ -1492,6 +1504,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 break; // all slots in flight: a completion wakes the thread
             }
             Region r = regions.getAndMoveToLast(regionKey(first.pos));
+            r.used = now;
             List<NoiseReq> take = new ArrayList<>();
             for (Iterator<NoiseReq> it = pending.iterator(); it.hasNext() && take.size() < slot.cap; ) {
                 NoiseReq n = it.next();
@@ -1522,6 +1535,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         evict();
+        shrinkPools(now);
         if (incoming.isEmpty() && pending.isEmpty() && inflight.isEmpty() && reading.isEmpty() && !waiting()) {
             if (idleSince == 0) {
                 idleSince = now;
@@ -1570,17 +1584,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
         RegionBuffers b;
         while ((b = freeRegionBuffers.poll()) != null) {
-            for (long m : b.all()) {
-                cl.releaseMem(m);
-            }
-            allRegionBuffers.remove(b);
+            releaseRegionBuffers(b);
         }
         RegionHost h;
         while ((h = regionHosts.poll()) != null) {
-            cl.unpin(device.hostQueue, h.mem, h.biomes);
-            cl.unpin(device.hostQueue, h.tiesMem, h.ties);
-            cl.unpin(device.hostQueue, h.tieCountMem, h.tieCount);
-            allRegionHosts.remove(h);
+            releaseRegionHost(h);
         }
         Slot sl;
         while ((sl = slots.poll()) != null) {
@@ -1591,6 +1599,67 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             surfaces.trim();
         }
         TRIMS.increment();
+    }
+
+    /**
+     * {@code -Dgeneratoraccelerator2.gpu.poolTrimSeconds=N}: pooled region buffers that no region took for N seconds go back to the
+     * device, also while the dimension generates. The pool otherwise keeps its largest size until the dimension idles ({@link #trim}).
+     * 0 turns this off.
+     */
+    private static final long POOL_TRIM_NS = Long.getLong("generatoraccelerator2.gpu.poolTrimSeconds", 10L) * 1_000_000_000L;
+    private long poolWindow;
+    /** The fewest pooled region buffers and readback buffers seen in this window. No region needed those. */
+    private int spareBuffers = Integer.MAX_VALUE;
+    private int spareHosts = Integer.MAX_VALUE;
+    /** Pooled region buffers given back while their dimension generated (status). */
+    public static final LongAdder POOL_RELEASED = new LongAdder();
+
+    /** Gives back the pooled buffers that stayed unused for a whole window (GPU thread). */
+    private void shrinkPools(long now) {
+        if (POOL_TRIM_NS <= 0) {
+            return;
+        }
+        spareBuffers = Math.min(spareBuffers, freeRegionBuffers.size());
+        spareHosts = Math.min(spareHosts, regionHosts.size());
+        if (poolWindow == 0) {
+            poolWindow = now;
+            return;
+        }
+        if (now - poolWindow < POOL_TRIM_NS) {
+            return;
+        }
+        RegionBuffers b;
+        for (int i = 0; i < spareBuffers && (b = freeRegionBuffers.poll()) != null; i++) {
+            releaseRegionBuffers(b);
+            POOL_RELEASED.increment();
+        }
+        RegionHost h;
+        for (int i = 0; i < spareHosts && (h = regionHosts.poll()) != null; i++) {
+            releaseRegionHost(h);
+        }
+        poolWindow = now;
+        spareBuffers = spareHosts = Integer.MAX_VALUE;
+    }
+
+    private void releaseRegionBuffers(RegionBuffers b) {
+        for (long m : b.all()) {
+            cl.releaseMem(m);
+        }
+        allRegionBuffers.remove(b);
+        REGION_BYTES.add(-b.bytes);
+    }
+
+    private void releaseRegionHost(RegionHost h) {
+        cl.unpin(device.hostQueue, h.mem, h.biomes);
+        cl.unpin(device.hostQueue, h.tiesMem, h.ties);
+        cl.unpin(device.hostQueue, h.tieCountMem, h.tieCount);
+        if (h.fallbacks != null) {
+            cl.unpin(device.hostQueue, h.fallbacksMem, h.fallbacks);
+        }
+        if (h.targets != null) {
+            cl.unpin(device.hostQueue, h.targetsMem, h.targets);
+        }
+        allRegionHosts.remove(h);
     }
 
     /** Regions found still running by one {@link #readyFirst} call (GPU thread). */
@@ -1709,6 +1778,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             long h0 = System.nanoTime(); launchRegion(r); HOST_NS[3].add(System.nanoTime() - h0);
             REGIONS.increment();
         }
+        r.used = System.nanoTime();
         return r;
     }
 
@@ -2526,6 +2596,14 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * Once all have, keeping the region until the budget evicts it only kept its pooled buffers (and their device memory) from going
      * back to the pool.
      */
+    /**
+     * {@code -Dgeneratoraccelerator2.gpu.regionIdleSeconds=N}: a cached region that no request used for N seconds is released. Its
+     * buffers go back to the pool. Asking there again later redoes the region's shared work. 0 keeps regions until the cache is full.
+     */
+    private static final long REGION_IDLE_NS = Long.getLong("generatoraccelerator2.gpu.regionIdleSeconds", 5L) * 1_000_000_000L;
+    /** Regions released after going unused ({@link #REGION_IDLE_NS}). */
+    public static final LongAdder REGIONS_IDLE = new LongAdder();
+
     private void evict() {
         if (!completed.isEmpty()) {
             for (Iterator<Region> it = completed.iterator(); it.hasNext(); ) {
@@ -2545,6 +2623,20 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 }
                 doneRegions.add(r.key);
                 REGIONS_DONE.increment();
+            }
+        }
+        if (REGION_IDLE_NS > 0 && !regions.isEmpty()) {
+            // A player who travels leaves regions behind that are only partly generated. Those along the view's sides never
+            // complete. Without this they stay until the cache is full.
+            long now = System.nanoTime();
+            for (Iterator<Region> it = regions.values().iterator(); it.hasNext(); ) {
+                Region r = it.next();
+                if (now - r.used < REGION_IDLE_NS || r.users > 0 || r.readEvent != 0 || !r.waiting.isEmpty() || pendingFor(r)) {
+                    continue;
+                }
+                it.remove();
+                r.release();
+                REGIONS_IDLE.increment();
             }
         }
         if (regions.size() <= maxRegions) {
@@ -2653,6 +2745,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             for (long m : b.all()) {
                 cl.releaseMem(m);
             }
+            REGION_BYTES.add(-b.bytes);
         }
         allRegionBuffers.clear();
         freeRegionBuffers.clear();

@@ -42,6 +42,12 @@ public final class GpuRuntime {
         wg.fail(why);
     }
 
+    /** On the GPU thread. Releases what a failed program build made. The pump of a world without a program never does. */
+    public static void release(GpuWorldgen wg) {
+        wg.closed = true;
+        wg.close();
+    }
+
     /** On the GPU thread. */
     public static void close(GpuWorldgen wg) {
         wg.closed = true;

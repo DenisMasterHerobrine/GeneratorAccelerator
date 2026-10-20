@@ -12,6 +12,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.PointTemplate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.ProgramCompiler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BorderColumnCache;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.IrBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
@@ -35,6 +36,12 @@ public final class Compiler {
     private Compiler() {}
 
     public static ProgramSet compile(NoiseRouter router, Climate.Sampler sampler) {
+        // the program set keeps the other mods' samplers its programs call by index
+        List<ExternSamplers.Sampler> externs = new ArrayList<>();
+        return ExternSamplers.own(() -> compile(router, sampler, externs), externs);
+    }
+
+    private static ProgramSet compile(NoiseRouter router, Climate.Sampler sampler, List<ExternSamplers.Sampler> externs) {
         long t0 = System.nanoTime();
         CoverageReport report = new CoverageReport();
         IrBuilder builder = new IrBuilder(report);
@@ -189,7 +196,7 @@ public final class Compiler {
         BorderColumnCache borderCache = column != null && DfcConfig.borderColumnCache() ? new BorderColumnCache(8192) : null;
         long nanos = System.nanoTime() - t0;
         ProgramSet set = new ProgramSet(routerRoots, samplerRoots, builder.specs(), builder.blendedSpecs(), interpreter, column, List.copyOf(cells),
-            chunkSampler, globalSampler, surfaceLevels, borderCache, report, builder.internedNodeCount(), nanos);
+            chunkSampler, globalSampler, surfaceLevels, borderCache, report, builder.internedNodeCount(), nanos, List.copyOf(externs));
 
         report.mergeInto(CoverageReport.global());
         LOGGER.info("lowered {} router + {} sampler roots -> {} nodes, {} noise specs, {} blended; column: {} roots, {} externs; {} cell programs ({} ms)",

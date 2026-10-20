@@ -10,6 +10,7 @@ import dev.denismasterherobrine.generatoraccelerator2.carver.CarverConfig;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverPaths;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatConfig;
+import dev.denismasterherobrine.generatoraccelerator2.logging.RepeatedWarnings;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
@@ -71,6 +72,8 @@ public final class GeneratorAccelerator {
         // The light switches follow the light config. They are read again whenever a config file changes.
         ConfigManager.onLoad(FastLight::refresh);
         ConfigManager.onReload(FastLight::refresh);
+        // Turning the GPU off in the config gives its memory back without a restart.
+        ConfigManager.onReload(Gpu::configReloaded);
         ConfigManager.register(DfcConfig.SPEC, ConfigFiles.name("common"));
         ConfigManager.register(FeaturesConfig.SPEC, ConfigFiles.name("features"));
         ConfigManager.register(SchedulingConfig.SPEC, ConfigFiles.name("scheduling"));
@@ -139,10 +142,14 @@ public final class GeneratorAccelerator {
     public static void onServerStopped(MinecraftServer stopped) {
         CarverPaths.clear();
         CarverRunner.clearKinds();
-        Gpu.closeWorlds();
+        // The device goes too. A singleplayer client back at the title screen then holds no VRAM for it.
+        Gpu.release("the server stopped");
         // These would otherwise keep the stopped server's registries or levels until the next world replaces them.
         SavePrep.onServerStopped();
         PregenBench.onServerStopped();
+        RepeatedWarnings.serverStopped();
+        dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats.serverStopped();
+        dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast.forgetSeeds();
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
@@ -155,6 +162,7 @@ public final class GeneratorAccelerator {
     }
 
     public static void onServerTickPost(MinecraftServer ticking) {
+        RepeatedWarnings.tick();
         for (Consumer<MinecraftServer> listener : TICK_LISTENERS) {
             listener.accept(ticking);
         }

@@ -44,9 +44,12 @@ public final class LithostitchedRegions {
         COLUMN_ONLY.clear();
     }
 
-    /** The last 16 quart columns of one function, per thread. */
+    /**
+     * The last 16 quart columns of one function, per thread. The function is held weakly. It leads to its world's registries, and a
+     * worker thread outlives the world.
+     */
     private static final class Memo {
-        DensityFunction function;
+        java.lang.ref.WeakReference<DensityFunction> function = new java.lang.ref.WeakReference<>(null);
         final int[] x = new int[16];
         final int[] z = new int[16];
         final double[] value = new double[16];
@@ -64,8 +67,8 @@ public final class LithostitchedRegions {
         int x = context.blockX();
         int z = context.blockZ();
         int slot = ((x >> 2) & 3) << 2 | ((z >> 2) & 3);
-        if (memo.function != function) {
-            memo.function = function;
+        if (memo.function.get() != function) {
+            memo.function = new java.lang.ref.WeakReference<>(function);
             java.util.Arrays.fill(memo.set, false);
         } else if (memo.set[slot] && memo.x[slot] == x && memo.z[slot] == z) {
             REMEMBERED.increment();

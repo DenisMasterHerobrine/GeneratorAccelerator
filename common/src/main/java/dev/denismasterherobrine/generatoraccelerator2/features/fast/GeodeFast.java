@@ -51,6 +51,12 @@ public final class GeodeFast {
 
     private static volatile Last last;
 
+    /** A server stopped. Each world adds its seed's entry, so the map is emptied between worlds. */
+    public static void forgetSeeds() {
+        NOISE.clear();
+        last = null;
+    }
+
     private static Last noise(long seed) {
         Last l = last;
         if (l != null && l.seed == seed) {

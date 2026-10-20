@@ -1,6 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Other mods' noise samplers that compiled density code calls by index. A lowering in {@code compat/<modid>} registers
@@ -21,29 +24,85 @@ public final class ExternSamplers {
         double sample(double x, double y, double z);
     }
 
-    private static volatile Sampler[] samplers = new Sampler[0];
-    private static volatile Object[] keys = new Object[0];
+    /**
+     * The samplers by index, held weakly. A compile keeps the samplers its programs call ({@link #own}), in the RandomState's
+     * {@link ProgramSet}. A slot therefore lives while a program that calls it can run. A key is a world's object (a density
+     * function or a datapack config) and leads to that world's registries. Strong slots kept every world ever opened.
+     */
+    @SuppressWarnings("unchecked")
+    private static volatile WeakReference<Sampler>[] samplers = new WeakReference[0];
+    @SuppressWarnings("unchecked")
+    private static volatile WeakReference<Object>[] keys = new WeakReference[0];
+    /** Samplers registered outside a compile (tests that build IR directly). Nothing owns them, so they are held here. */
+    private static final List<Sampler> UNOWNED = new ArrayList<>();
+    /** The samplers of the compile running on this thread, or null. */
+    private static final ThreadLocal<List<Sampler>> COMPILING = new ThreadLocal<>();
 
-    /** The index of the sampler registered for {@code key} (by identity), registering {@code sampler} if there is none. */
+    /**
+     * Runs a compile and returns the samplers it registered. Its programs call them by index, so the caller keeps the list for as
+     * long as the programs can run.
+     */
+    public static <T> T own(java.util.function.Supplier<T> compile, List<Sampler> owned) {
+        List<Sampler> outer = COMPILING.get();
+        COMPILING.set(owned);
+        try {
+            return compile.get();
+        } finally {
+            COMPILING.set(outer);
+        }
+    }
+
+    /**
+     * The index of the sampler registered for {@code key} (by identity), registering {@code sampler} if there is none. A slot whose
+     * sampler was collected is used again. No program that could call it is left.
+     */
+    @SuppressWarnings("unchecked")
     public static synchronized int register(Object key, Sampler sampler) {
-        Object[] k = keys;
+        WeakReference<Object>[] k = keys;
+        WeakReference<Sampler>[] s = samplers;
+        int free = -1;
         for (int i = 0; i < k.length; i++) {
-            if (k[i] == key) {
+            Sampler live = s[i].get();
+            if (k[i].get() == key) {
+                if (live == null) {
+                    // the key outlived the programs that used this slot
+                    live = sampler;
+                    s[i] = new WeakReference<>(sampler);
+                }
+                keep(live);
                 return i;
             }
+            if (live == null && free < 0) {
+                free = i;
+            }
         }
-        int index = k.length;
-        Object[] nk = Arrays.copyOf(k, index + 1);
-        nk[index] = key;
-        Sampler[] ns = Arrays.copyOf(samplers, index + 1);
-        ns[index] = sampler;
-        samplers = ns;
-        keys = nk;
+        int index = free;
+        if (index < 0) {
+            index = k.length;
+            k = Arrays.copyOf(k, index + 1);
+            s = Arrays.copyOf(s, index + 1);
+        } else {
+            GPU.remove(index);
+        }
+        k[index] = new WeakReference<>(key);
+        s[index] = new WeakReference<>(sampler);
+        samplers = s;
+        keys = k;
+        keep(sampler);
         return index;
     }
 
+    private static void keep(Sampler sampler) {
+        List<Sampler> owned = COMPILING.get();
+        if (owned != null) {
+            owned.add(sampler);
+        } else if (!UNOWNED.contains(sampler)) {
+            UNOWNED.add(sampler);
+        }
+    }
+
     public static double sample(int index, double x, double y, double z) {
-        return samplers[index].sample(x, y, z);
+        return samplers[index].get().sample(x, y, z);
     }
 
     /**

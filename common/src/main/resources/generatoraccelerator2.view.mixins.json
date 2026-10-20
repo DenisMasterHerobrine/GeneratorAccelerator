@@ -7,7 +7,11 @@
   "mixins": [],
   "client": [
     "SectionOcclusionGraphMixin",
-    "LevelRendererMeshMixin"
+    "LevelRendererMeshMixin",
+    "VertexBufferMixin",
+    "RenderSectionBuffersMixin",
+    "DebugVramMixin",
+    "LevelRendererEvictMixin"
   ],
   "injectors": {
     "defaultRequire": 1

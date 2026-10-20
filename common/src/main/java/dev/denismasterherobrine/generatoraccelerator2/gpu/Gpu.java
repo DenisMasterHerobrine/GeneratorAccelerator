@@ -41,6 +41,9 @@ public final class Gpu {
     public static final String BUILD_OPTIONS = "-cl-std=CL1.2 -cl-fp32-correctly-rounded-divide-sqrt";
 
     private static volatile boolean started;
+    /** Bumped by every start and release. An init that finishes after a release closes its device again. */
+    private static int generation;
+    private static ClLoader.Loaded loaded;
     private static volatile GpuDevice device;
     private static volatile String status = "not started (no chunk generated yet)";
     private static volatile List<ClDeviceInfo> seen = List.of();
@@ -77,14 +80,24 @@ public final class Gpu {
         }
         started = true;
         status = "starting";
-        Thread t = new Thread(Gpu::init, "GA2 GPU init");
+        int gen = ++generation;
+        Thread t = new Thread(() -> init(gen), "GA2 GPU init");
         t.setDaemon(true);
         t.start();
     }
 
-    private static void init() {
+    /** The binding, loaded once. A second load would define LWJGL's classes again in another class loader. */
+    private static synchronized ClLoader.Loaded binding() throws Exception {
+        if (loaded == null) {
+            loaded = ClLoader.load(dataDir().resolve("gpu-lib"));
+        }
+        return loaded;
+    }
+
+    private static void init(int gen) {
+        GpuDevice d = null;
         try {
-            ClLoader.Loaded loaded = ClLoader.load(dataDir().resolve("gpu-lib"));
+            ClLoader.Loaded loaded = binding();
             List<ClDeviceInfo> all = loaded.api().devices(false);
             seen = all;
             if (all.isEmpty()) {
@@ -105,17 +118,28 @@ public final class Gpu {
                 LOGGER.info("{}", status);
                 return;
             }
-            GpuDevice d = GpuRuntime.open(loaded, pick);
+            d = GpuRuntime.open(loaded, pick);
             String bad = SelfTest.arithmetic(d, BUILD_OPTIONS);
             if (!bad.isEmpty()) {
+                d.close();
                 status = "off: " + pick.name().trim() + " fails the arithmetic self-test: " + bad;
                 LOGGER.warn("{}", status);
                 return;
             }
-            device = d;
-            status = "ready: " + d.describe();
+            synchronized (Gpu.class) {
+                if (gen != generation) {
+                    // Released while this device opened.
+                    d.close();
+                    return;
+                }
+                device = d;
+                status = "ready: " + d.describe();
+            }
             LOGGER.info("ready: {}", d.describe());
         } catch (Throwable e) {
+            if (d != null) {
+                d.close();
+            }
             status = "off: " + e;
             LOGGER.warn("off: OpenCL setup failed", e);
         }
@@ -178,6 +202,15 @@ public final class Gpu {
             if (wg != null) {
                 return wg;
             }
+            // A step can still finish after its server stopped. closeWorlds runs after the server stops running, so an entry made
+            // now would keep the stopped world until the next server stops. Such a step runs on the CPU.
+            if (level != null && !level.getServer().isRunning()) {
+                return null;
+            }
+            // The device was released meanwhile. A world made on it now would never be closed.
+            if (d != device) {
+                return null;
+            }
             String name = level != null ? level.dimension().location().toString() : settings.unwrapKey().map(k -> k.location().toString()).orElse("?");
             wg = GpuRuntime.worldgen(d, name, settings.value(), randomState);
             WORLDS.put(randomState, wg);
@@ -194,6 +227,10 @@ public final class Gpu {
 
     private static void prepare(GpuWorldgen wg, GpuDevice d, NoiseBasedChunkGenerator generator, Holder<NoiseGeneratorSettings> settings,
                                 Supplier<Aquifer.FluidPicker> picker, RandomState randomState, ServerLevel level) {
+        if (wg.closed()) {
+            // The world closed before its build started. Nothing was made yet.
+            return;
+        }
         try {
             if (level != null) {
                 wg.surfaceInputs(generator, level.getSeed());
@@ -234,20 +271,52 @@ public final class Gpu {
             wg.prepareDecoration();
         } catch (ClEmitter.Unsupported e) {
             GpuRuntime.fail(wg, e.getMessage());
+            d.submit(() -> GpuRuntime.release(wg));
         } catch (Throwable e) {
             LOGGER.error("program for {} failed", wg.name, e);
             GpuRuntime.fail(wg, e.toString());
+            // A build that failed partway made programs and buffers already.
+            d.submit(() -> GpuRuntime.release(wg));
         }
     }
 
-    /** Releases every dimension's device objects (server stopped). */
-    public static void closeWorlds() {
+    /**
+     * Releases every dimension's device objects and the device. The context alone holds VRAM even with no world on it. The next
+     * chunk that asks for the GPU opens the device again.
+     */
+    public static void release(String why) {
+        GpuDevice d;
+        synchronized (Gpu.class) {
+            if (!started) {
+                return;
+            }
+            generation++;
+            started = false;
+            d = device;
+            device = null;
+            status = "released (" + why + ")";
+        }
+        closeWorlds(d);
+        if (d != null) {
+            // After the builds queued before. Each one releases what it made on this device.
+            PREPARE.execute(d::close);
+            LOGGER.info("released: {}", why);
+        }
+    }
+
+    /** Config reload: turning the GPU off releases its memory at once. */
+    public static void configReloaded() {
+        if (!GpuConfig.enabled()) {
+            release("disabled in the config");
+        }
+    }
+
+    private static void closeWorlds(GpuDevice d) {
         List<GpuWorldgen> ws;
         synchronized (WORLDS) {
             ws = new ArrayList<>(WORLDS.values());
             WORLDS.clear();
         }
-        GpuDevice d = device;
         for (GpuWorldgen w : ws) {
             // Marked immediately, so a program still building sees the flag ({@link #prepare}).
             GpuRuntime.markClosed(w);
@@ -289,9 +358,11 @@ public final class Gpu {
             }
         }
         levelLines(out);
-        out.add(String.format(java.util.Locale.ROOT, "  chunks: noise %,d on GPU, %,d on CPU; biomes %,d on GPU, %,d on CPU; %,d GPU errors; %,d batches, %,d regions (%,d let go once every chunk was answered); idle dimensions' memory given back %,d times",
+        out.add(String.format(java.util.Locale.ROOT, "  chunks: noise %,d on GPU, %,d on CPU; biomes %,d on GPU, %,d on CPU; %,d GPU errors; %,d batches, %,d regions (%,d let go once every chunk was answered); idle dimensions' memory given back %,d times, unused pooled region buffers %,d",
             GpuSteps.NOISE_GPU.sum(), GpuSteps.NOISE_CPU.sum(), GpuSteps.BIOMES_GPU.sum(), GpuSteps.BIOMES_CPU.sum(), GpuSteps.GPU_ERRORS.sum(),
-            GpuWorldgen.BATCHES.sum(), GpuWorldgen.REGIONS.sum(), GpuWorldgen.REGIONS_DONE.sum(), GpuWorldgen.TRIMS.sum()));
+            GpuWorldgen.BATCHES.sum(), GpuWorldgen.REGIONS.sum(), GpuWorldgen.REGIONS_DONE.sum(), GpuWorldgen.TRIMS.sum(), GpuWorldgen.POOL_RELEASED.sum()));
+        out.add(String.format(java.util.Locale.ROOT, "  region buffers: %,d MB on the GPU now; %,d regions let go after going unused",
+            GpuWorldgen.REGION_BYTES.sum() >> 20, GpuWorldgen.REGIONS_IDLE.sum()));
         long handed = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.HANDED_POINTS.sum();
         if (handed > 0) {
             out.add(String.format(java.util.Locale.ROOT, "  Lithostitched's biome injectors: %,d climate points from the GPU (not sampled on the CPU)", handed));

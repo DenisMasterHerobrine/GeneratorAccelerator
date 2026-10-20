@@ -30,7 +30,20 @@ public final class RenderThreads {
      * ({@code SectionOcclusionGraphMixin}).
      */
     public static final boolean KEEP_EDGE = !"false".equals(System.getProperty("generatoraccelerator2.renderThreads.keepEdge"));
-
+    /**
+     * {@code -Dgeneratoraccelerator2.freeSectionBuffers=false} keeps stale section meshes in VRAM as vanilla does ({@code SectionBuffers}).
+     * Here and not there, because the mixin plugin reads it before the client's classes may load.
+     */
+    public static final boolean FREE_SECTION_BUFFERS = !"false".equals(System.getProperty("generatoraccelerator2.freeSectionBuffers"));
+    /**
+     * {@code -Dgeneratoraccelerator2.evictHiddenSections=N}: a section out of view for N seconds gives its meshes' VRAM back, and is
+     * rebuilt once it is in view again ({@code SectionBuffers#evictHidden}). 0 keeps every mesh as vanilla does. While the player
+     * travels, a section behind them is reused for a place ahead within a few seconds. So the default is short. With 10 s, flight
+     * at 80 blocks/s evicted nothing.
+     */
+    public static final long EVICT_HIDDEN_SECONDS = Long.getLong("generatoraccelerator2.evictHiddenSections", 3L);
+    /** {@code -Dgeneratoraccelerator2.evictHiddenSections.minChunks=N}: sections closer than N chunks to the camera keep their meshes. */
+    public static final int EVICT_MIN_CHUNKS = Integer.getInteger("generatoraccelerator2.evictHiddenSections.minChunks", 8);
     private static volatile ExecutorService mesh;
     private static volatile ExecutorService graph;
 

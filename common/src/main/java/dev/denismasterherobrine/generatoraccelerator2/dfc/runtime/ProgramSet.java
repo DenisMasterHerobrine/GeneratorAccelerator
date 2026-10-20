@@ -35,7 +35,9 @@ public record ProgramSet(
     @Nullable BorderColumnCache borderCache,
     CoverageReport report,
     int internedNodes,
-    long compileNanos
+    long compileNanos,
+    /** Other mods' samplers the programs call by index. {@link ExternSamplers} holds them weakly, so this set keeps them. */
+    List<ExternSamplers.Sampler> externSamplers
 ) {
     public Node root(String name) {
         Node n = routerRoots.get(name);

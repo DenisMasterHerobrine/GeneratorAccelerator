@@ -125,6 +125,11 @@ public final class ChunkLoadStats {
         }
     }
 
+    /** The server stopped. Its levels are the map's keys, and a key keeps its whole world in memory. */
+    public static synchronized void serverStopped() {
+        UNLOADED.clear();
+    }
+
     /** On the server thread, when a saved chunk is read back. */
     public static synchronized void loadedFromDisk(Object level, ChunkPos pos) {
         Long2LongLinkedOpenHashMap map = UNLOADED.get(level);
