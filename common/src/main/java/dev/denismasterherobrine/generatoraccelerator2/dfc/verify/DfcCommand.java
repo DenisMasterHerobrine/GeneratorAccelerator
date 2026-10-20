@@ -24,6 +24,7 @@ public final class DfcCommand {
             .then(dev.denismasterherobrine.generatoraccelerator2.scheduling.StepsCommand.build())
             .then(dev.denismasterherobrine.generatoraccelerator2.scheduling.PregenBench.build())
             .then(dev.denismasterherobrine.generatoraccelerator2.compat.CompatCommand.build())
+            .then(dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadCommand.build())
             .then(Commands.literal("light").executes(ctx -> light(ctx.getSource()))));
     }
 

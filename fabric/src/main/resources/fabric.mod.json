@@ -36,6 +36,7 @@
     "generatoraccelerator2.compat.quark.mixins.json",
     "generatoraccelerator2.compat.spelunkery.mixins.json",
     "generatoraccelerator2.parallellight.mixins.json",
+    "generatoraccelerator2.view.mixins.json",
     "generatoraccelerator2.fabric.mixins.json"
   ],
   "depends": {

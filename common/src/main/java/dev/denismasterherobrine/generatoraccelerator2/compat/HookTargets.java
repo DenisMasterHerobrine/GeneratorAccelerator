@@ -157,6 +157,16 @@ public final class HookTargets {
     public static final String PALETTE = "state.palette";
     /** {@code FluidState.isEmpty} remembered per state. */
     public static final String FLUID_EMPTY = "state.fluidEmpty";
+    /**
+     * The fluid tick call in {@code LevelChunk.postProcessGeneration}, and the water's tick behind it ({@code FlowingFluid},
+     * {@code WaterFluid}). The tick of water that cannot flow is left out ({@code fluid.StillWater}). Any change keeps every tick.
+     */
+    public static final String FLUID_POST_PROCESS = "fluids.postProcess";
+    /**
+     * {@code LiquidBlockRenderer.tesselate} and its face checks. Water with water on all six sides returns at the head
+     * ({@code fluid.StillWater}). Any change keeps vanilla's whole method.
+     */
+    public static final String FLUID_HIDDEN_WATER = "fluids.hiddenWater";
     /** {@code ChunkAccess.getMinBuildHeight} and {@code getHeight} read from the height accessor once per chunk. */
     public static final String CHUNK_HEIGHTS = "state.chunkHeights";
     /** {@code Block.isShapeFullBlock} remembered on the shape. */
@@ -200,6 +210,12 @@ public final class HookTargets {
     public static final String STORAGE_LOAD_PREP_UNCHANGED = "storage.loadPrepUnchanged";
     /** {@code Heightmap.primeHeightmaps}, skipped by {@code read} when there is nothing to prime. */
     public static final String STORAGE_PRIME_HEIGHTMAPS = "storage.primeHeightmaps";
+    /** {@code SectionStorage.tryRead}: a POI column's read taken from the read made ahead with its chunk ({@code chunkload.PoiPrefetch}). */
+    public static final String CHUNK_POI_PREFETCH = "chunkLoad.poiPrefetch";
+    /** The chunk packet's block data ({@code ClientboundLevelChunkPacketData}, the section writes): written ahead in parallel ({@code chunkload.ChunkPackets}). */
+    public static final String CHUNK_PACKET_PREP = "chunkLoad.packetPrep";
+    /** {@code PersistentEntitySectionManager.processPendingLoads}: loaded chunks' entities added within a budget per tick. */
+    public static final String CHUNK_ENTITY_BUDGET = "chunkLoad.entityBudget";
     public static final String LIGHT_ENGINE = "light.engine";
     public static final String LIGHT_SOURCES = "light.sources";
     /** The propagation methods the parallel light propagation runs itself ({@code parallellight}). When changed, every batch runs vanilla's. */

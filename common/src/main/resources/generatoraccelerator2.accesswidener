@@ -137,3 +137,10 @@ accessible field net/minecraft/world/level/levelgen/feature/MonsterRoomFeature M
 accessible class net/minecraft/world/level/biome/Biome$ClimateSettings
 # join.JoinWait looks up the spawn area's chunk holders
 accessible method net/minecraft/server/level/ChunkMap getVisibleChunkIfPresent (J)Lnet/minecraft/server/level/ChunkHolder;
+# view.mixin.SectionOcclusionGraphMixin keeps the sections at the view's edge when a rebuilt graph replaces the one shown
+accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphState
+accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphStorage
+accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphEvents
+accessible class net/minecraft/client/renderer/SectionOcclusionGraph$SectionToNodeMap
+accessible class net/minecraft/client/renderer/SectionOcclusionGraph$Node
+accessible field net/minecraft/client/renderer/SectionOcclusionGraph$Node section Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection;

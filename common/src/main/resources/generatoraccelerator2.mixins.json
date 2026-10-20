@@ -229,9 +229,28 @@
     "surface.LegacyFactoryAccessor",
     "join.MinecraftServerJoinMixin",
     "join.StoringChunkProgressListenerMixin",
-    "join.LoggerChunkProgressListenerMixin"
+    "join.LoggerChunkProgressListenerMixin",
+    "chunkload.DistanceManagerTicketsAccessor",
+    "chunkload.TaskSorterAccessor",
+    "chunkload.TaskQueueAccessor",
+    "chunkload.SectionStorageAccessor",
+    "chunkload.DistanceManagerTicketsMixin",
+    "chunkload.PlayerTicketTrackerMixin",
+    "chunkload.SectionStoragePoiMixin",
+    "chunkload.ChunkSerializerLoadMixin",
+    "chunkload.ServerLevelUnloadMixin",
+    "chunkload.MainThreadTaskTimingMixin",
+    "chunkload.EntityLoadBudgetMixin",
+    "chunkload.PlayerChunkSenderMixin",
+    "chunkload.ChunkPacketDataMixin",
+    "chunkload.SectionVersionMixin",
+    "fluid.PostProcessFluidMixin",
+    "fluid.FluidTickInspectMixin"
   ],
-  "client": [],
+  "client": [
+    "chunkload.ClientChunkPacketTimingMixin",
+    "fluid.LiquidBlockRendererMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },

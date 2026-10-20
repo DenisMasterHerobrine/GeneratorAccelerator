@@ -52,5 +52,9 @@ config = "generatoraccelerator2.compat.spelunkery.mixins.json"
 [[mixins]]
 config = "generatoraccelerator2.parallellight.mixins.json"
 
+# Client render threads
+[[mixins]]
+config = "generatoraccelerator2.view.mixins.json"
+
 [[accessTransformers]]
 file = "META-INF/accesstransformer.cfg"

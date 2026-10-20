@@ -180,6 +180,19 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/server/level/ServerLevel;")))),
         Map.entry("PoiInspectMixin", List.of(
             new FeatureHook(HookTargets.STATE_POI_SKIP, List.of("onBlockStateChange", "forState"), MergedMethods.Mode.BYPASS))),
+        // the still water skip (fluid.StillWater). GA2 wraps the fluid tick call in postProcessGeneration. The tick it leaves out
+        // counts wherever changed.
+        Map.entry("PostProcessFluidMixin", List.of(
+            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("postProcessGeneration()V"),
+                List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/world/level/material/FluidState;")))),
+        Map.entry("FluidTickInspectMixin", List.of(
+            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("tick", "spread", "spreadToSides", "getSpread", "getNewLiquid", "canSpreadTo",
+                "canPassThrough", "canPassThroughWall", "canHoldFluid", "isSourceBlockOfThisType", "canBeReplacedWith", "sourceNeighborCount",
+                "getDropOff", "isSame"), MergedMethods.Mode.BYPASS))),
+        // the hidden water skip returns before the method's work. Any change to the method or its face checks counts.
+        Map.entry("LiquidBlockRendererMixin", List.of(
+            new FeatureHook(HookTargets.FLUID_HIDDEN_WATER, List.of("tesselate", "shouldRenderFace", "isNeighborSameFluid", "isNeighborStateHidingOverlay"),
+                MergedMethods.Mode.BYPASS))),
         Map.entry("CarvingContextAccessor", List.of(
             new FeatureHook(HookTargets.CARVER_TOP_MATERIAL, List.of(
                 "topMaterial(Ljava/util/function/Function;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/core/BlockPos;Z)Ljava/util/Optional;")))),
@@ -375,7 +388,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 "pack(Lnet/minecraft/core/IdMap;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;)Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;",
                 "swapPalette([ILjava/util/function/IntUnaryOperator;)V"),
                 // the fast path takes the container's lock itself (FerriteCore and Lithium replace the threading detector)
-                List.of("acquire()V", "release()V")))),
+                List.of("acquire()V", "release()V")),
+            // chunk packets' block data is written on GA2's packet threads. Another mod's change to the writes may expect the server thread.
+            new FeatureHook(HookTargets.CHUNK_PACKET_PREP, List.of("write(Lnet/minecraft/network/FriendlyByteBuf;)V", "getSerializedSize()I"),
+                MergedMethods.Mode.BYPASS))),
         Map.entry("DataLayerStorageMapMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("getLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "clearCache()V", "setLayer(JLnet/minecraft/world/level/chunk/DataLayer;)V",
                 "copyDataLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "removeLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;")))),
@@ -430,6 +446,21 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("ChunkMapLoadMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_LOAD_PREP_UNCHANGED, List.of("scheduleChunkLoad(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"),
                 MergedMethods.Mode.BYPASS))),
+        // a POI column's read is taken from the read made ahead. tryRead's error handling still applies to it.
+        Map.entry("SectionStoragePoiMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_POI_PREFETCH, List.of("tryRead(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;",
+                "readColumn(Lnet/minecraft/world/level/ChunkPos;)V"), MergedMethods.Mode.BYPASS))),
+        // the packet's block data is taken in place of the two calls. The rest of the constructor runs as vanilla's.
+        Map.entry("ChunkPacketDataMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_PACKET_PREP, List.of("<init>(Lnet/minecraft/world/level/chunk/LevelChunk;)V"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("ClientboundLevelChunkPacketData")),
+            new FeatureHook(HookTargets.CHUNK_PACKET_PREP, List.of("calculateChunkSize(Lnet/minecraft/world/level/chunk/LevelChunk;)I",
+                "extractChunkData(Lnet/minecraft/network/FriendlyByteBuf;Lnet/minecraft/world/level/chunk/LevelChunk;)V"), MergedMethods.Mode.BYPASS))),
+        Map.entry("SectionVersionMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_PACKET_PREP, List.of("write(Lnet/minecraft/network/FriendlyByteBuf;)V", "getSerializedSize()I"),
+                MergedMethods.Mode.BYPASS))),
+        Map.entry("EntityLoadBudgetMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_ENTITY_BUDGET, List.of("processPendingLoads()V"), MergedMethods.Mode.BYPASS))),
         Map.entry("HeightmapPrimeInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_PRIME_HEIGHTMAPS, List.of("primeHeightmaps(Lnet/minecraft/world/level/chunk/ChunkAccess;Ljava/util/Set;)V"),
                 MergedMethods.Mode.BYPASS))),
@@ -497,6 +528,11 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             || mixinClassName.endsWith(".ChunkMapUnloadMixin"))
             && (Compat.isLoaded("c2me") || Compat.isLoaded("moonrise"))) {
             // their chunk systems schedule these mailboxes, their light engines and their unloads themselves
+            return false;
+        }
+        if (mixinClassName.contains(".mixin.chunkload.") && !mixinClassName.endsWith(".ClientChunkPacketTimingMixin")
+            && dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig.otherChunkSystem()) {
+            // their chunk systems load, ticket and send chunks themselves
             return false;
         }
         if (!mixinClassName.contains(".mixin.dfc.") || Takeover.enabled()) {
