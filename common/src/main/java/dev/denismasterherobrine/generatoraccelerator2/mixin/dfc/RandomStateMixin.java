@@ -34,12 +34,15 @@ public abstract class RandomStateMixin implements Ga2RandomState {
 
     @Unique
     private ProgramSet ga2$programs;
+    /** The binding of this state's own sampler. The binding map holds it weakly, so it lives as long as this state does. */
+    @Unique
+    private BoundSampler ga2$sharedSampler;
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$compile(NoiseGeneratorSettings settings, HolderGetter<NormalNoise.NoiseParameters> noises, long seed, CallbackInfo ci) {
         this.ga2$programs = Compiler.compile(this.router, this.sampler);
         if (this.ga2$programs != null && this.ga2$programs.globalSampler() != null) {
-            BoundSampler.bindShared(this.sampler, this.ga2$programs.globalSampler());
+            this.ga2$sharedSampler = BoundSampler.bindShared(this.sampler, this.ga2$programs.globalSampler());
         }
         java.util.Map<String, Node> roots = this.ga2$programs != null ? this.ga2$programs.routerRoots() : null;
         boolean classifySafe = roots != null && StateDependence.orderIndependent(roots, AquiferFastPath.STATUS_FIELDS);

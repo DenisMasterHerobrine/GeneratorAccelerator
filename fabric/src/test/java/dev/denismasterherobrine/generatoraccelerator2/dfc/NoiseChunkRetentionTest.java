@@ -52,17 +52,50 @@ public class NoiseChunkRetentionTest {
         assertEquals(0, alive(make(state, settings, 200, true, true), laterChunks), "NoiseChunks whose sampler sampled still reachable");
     }
 
-    /** Eight NoiseChunks (their climate samplers made and used, if asked), only weakly referenced once this returns. */
+    /**
+     * YUNG's Cave Biomes keeps the chunk's climate sampler on the NoiseChunk and never fills biomes with it. The binding's
+     * entry was keyed by that sampler and held the binding strongly. The binding holds the NoiseChunk's functions, and the
+     * NoiseChunk holds the sampler, so the key never went. Every NoiseChunk stayed in memory (80,000 in one pack's heap dump).
+     */
+    @Test
+    void noiseChunksHoldingTheirSamplerAreNotKeptAlive() throws InterruptedException {
+        HolderLookup.Provider lookup = VanillaRegistries.createLookup();
+        NoiseGeneratorSettings settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD).value();
+        RandomState state = overworld(lookup, settings);
+        Runnable laterChunks = () -> make(state, settings, 1000, true, false);
+        assertEquals(0, alive(make(state, settings, 300, true, true, true), laterChunks), "NoiseChunks that hold their sampler still reachable");
+    }
+
+    /** A fluid picker that keeps an object, so the NoiseChunk (through its aquifer) holds that object, as another mod's field would. */
+    private static final class KeepingPicker implements Aquifer.FluidPicker {
+        Object kept;
+
+        @Override
+        public Aquifer.FluidStatus computeFluid(int x, int y, int z) {
+            return PICKER.computeFluid(x, y, z);
+        }
+    }
+
     private static List<WeakReference<NoiseChunk>> make(RandomState state, NoiseGeneratorSettings settings, int at, boolean sampler, boolean sample) {
+        return make(state, settings, at, sampler, sample, false);
+    }
+
+    /** Eight NoiseChunks (their climate samplers made and used, if asked), only weakly referenced once this returns. */
+    private static List<WeakReference<NoiseChunk>> make(RandomState state, NoiseGeneratorSettings settings, int at, boolean sampler, boolean sample,
+                                                       boolean chunkKeepsSampler) {
         List<WeakReference<NoiseChunk>> chunks = new ArrayList<>();
         for (int i = 0; i < 8; i++) {
+            KeepingPicker picker = new KeepingPicker();
             NoiseChunk chunk = new NoiseChunk(4, state, (at + i) * 16, -(at + i) * 16, settings.noiseSettings(), DensityFunctions.BeardifierMarker.INSTANCE, settings,
-                PICKER, Blender.empty());
+                picker, Blender.empty());
             if (sampler) {
                 Climate.Sampler s = ((NoiseChunkAccessor) chunk).ga2$cachedClimateSampler(state.router(), List.of());
                 assertNotNull(BoundSampler.lookup(s), "the chunk sampler is bound (else this test checks nothing)");
                 if (sample) {
                     s.sample(at + i, 10, -(at + i));
+                }
+                if (chunkKeepsSampler) {
+                    picker.kept = s;
                 }
             }
             chunks.add(new WeakReference<>(chunk));

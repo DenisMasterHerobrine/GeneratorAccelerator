@@ -200,6 +200,13 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     @Unique
     private IdentityHashMap<Object, DensityFunction> ga2$mapMemo;
 
+    /**
+     * The bindings of the climate samplers this chunk made, one per {@code cachedClimateSampler} call. The binding map holds them
+     * weakly, so they live as long as this chunk does.
+     */
+    @Unique
+    private BoundSampler[] ga2$samplers;
+
     @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/NoiseRouter;mapAll(Lnet/minecraft/world/level/levelgen/DensityFunction$Visitor;)Lnet/minecraft/world/level/levelgen/NoiseRouter;"))
     private NoiseRouter ga2$mapRouter(NoiseRouter router, DensityFunction.Visitor visitor, Operation<NoiseRouter> original) {
@@ -397,7 +404,15 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
             return;
         }
         try {
-            BoundSampler.bind(cir.getReturnValue(), set.chunkSampler(), this.ga2$randomState.router());
+            BoundSampler bound = BoundSampler.bind(cir.getReturnValue(), set.chunkSampler(), this.ga2$randomState.router());
+            BoundSampler[] held = this.ga2$samplers;
+            if (held == null) {
+                this.ga2$samplers = new BoundSampler[] { bound };
+            } else {
+                held = java.util.Arrays.copyOf(held, held.length + 1);
+                held[held.length - 1] = bound;
+                this.ga2$samplers = held;
+            }
         } catch (RuntimeException e) {
             if (DfcConfig.failOnCodegenError()) {
                 throw e;

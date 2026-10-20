@@ -16,9 +16,14 @@ import net.minecraft.world.level.levelgen.NoiseRouter;
  * the compiled six-root point program, so one biome sample evaluates every shared subexpression once.
  * A {@code RandomState}'s own sampler is bound too ({@link #bindShared}).
  * Samplers are records and cannot carry fields, so bindings live in a weak identity map.
+ *
+ * <p>The map holds keys and values weakly. A binding is held by its owner: the NoiseChunk that made the sampler, or the
+ * RandomState for a shared binding. A binding holds the chunk's wrapped functions, and so the NoiseChunk. A strong value
+ * kept its key alive whenever the NoiseChunk held its own sampler (YUNG's Cave Biomes does). Then no entry ever went, and
+ * every NoiseChunk stayed in memory.
  */
 public final class BoundSampler {
-    private static final ConcurrentMap<Climate.Sampler, BoundSampler> REGISTRY = new MapMaker().weakKeys().concurrencyLevel(8).makeMap();
+    private static final ConcurrentMap<Climate.Sampler, BoundSampler> REGISTRY = new MapMaker().weakKeys().weakValues().concurrencyLevel(8).makeMap();
 
     private final PointProgram program;
     private final double[] scratch;
@@ -76,9 +81,9 @@ public final class BoundSampler {
 
     /**
      * Drops a chunk sampler's binding once its biome fill is done ({@code mixin.biome.BiomeFillMixin}). The sampler belongs to the
-     * fill ({@code NoiseChunk.cachedClimateSampler} makes one per call). A weak map lets go of a dead key's entry only on a later
-     * write to the key's segment. That kept the last few hundred chunks' NoiseChunks reachable once generation stopped. A shared
-     * binding (a RandomState's own sampler, which other generators fill with) stays.
+     * fill ({@code NoiseChunk.cachedClimateSampler} makes one per call). A weak map lets go of a dead entry only on a later write
+     * to its segment, so the entry goes here at once. A shared binding (a RandomState's own sampler, which other generators fill
+     * with) stays. Samplers made by other callers are never released. Their entries go with the NoiseChunk that owns them.
      */
     public static void release(Climate.Sampler sampler) {
         BoundSampler bound = REGISTRY.get(sampler);
@@ -91,8 +96,8 @@ public final class BoundSampler {
      * Bound samplers by temperature function, with their six functions. Another mod's sampler made of per-point wrappers
      * around the same six functions (Blueprint's) samples the same values and can use the same binding ({@link #alias}).
      * Weak values: a binding holds its temperature function, which is its key. With strong values no entry ever went, and
-     * every chunk's NoiseChunk stayed reachable through its wrapped functions. A binding lives while {@link #REGISTRY} holds
-     * it, that is, while its sampler is in use. That is also when another mod's sampler around its functions is asked.
+     * every chunk's NoiseChunk stayed reachable through its wrapped functions. A binding lives while its owner does, that is,
+     * while its sampler is in use. That is also when another mod's sampler around its functions is asked.
      */
     private static final ConcurrentMap<DensityFunction, BoundSampler> BY_TEMPERATURE = new MapMaker().weakKeys().weakValues().concurrencyLevel(8).makeMap();
     private DensityFunction[] functions;
@@ -109,11 +114,15 @@ public final class BoundSampler {
         return f[1] == humidity && f[2] == continentalness && f[3] == erosion && f[4] == depth && f[5] == weirdness ? b : null;
     }
 
-    /** Serves {@code sampler} with {@code bound} (a sampler that samples the same values; see {@link #forFunctions}). */
+    /**
+     * Serves {@code sampler} with {@code bound} (a sampler that samples the same values; see {@link #forFunctions}). The entry
+     * lives while {@code bound}'s owner does.
+     */
     public static void alias(Climate.Sampler sampler, BoundSampler bound) {
         REGISTRY.put(sampler, bound);
     }
 
+    /** Registers the binding. The caller keeps it for as long as the sampler is used: the map holds it weakly. */
     private static BoundSampler register(Climate.Sampler sampler, BoundSampler bound) {
         bound.functions = new DensityFunction[] { sampler.temperature(), sampler.humidity(), sampler.continentalness(), sampler.erosion(), sampler.depth(),
             sampler.weirdness() };
@@ -122,22 +131,26 @@ public final class BoundSampler {
         return bound;
     }
 
-    /** Binds {@code sampler} (whose fields are the chunk-wrapped router fields) to the template. */
-    public static void bind(Climate.Sampler sampler, PointTemplate template, NoiseRouter baseRouter) {
+    /**
+     * Binds {@code sampler} (whose fields are the chunk-wrapped router fields) to the template. The NoiseChunk that made the
+     * sampler keeps the returned binding.
+     */
+    public static BoundSampler bind(Climate.Sampler sampler, PointTemplate template, NoiseRouter baseRouter) {
         MarkerPairing pairing = MarkerPairing.ofSampler(baseRouter, sampler);
         DensityFunction[] externs = new DensityFunction[template.externTemplates.length];
         for (int i = 0; i < externs.length; i++) {
             externs[i] = pairing.resolve(template.externTemplates[i]);
         }
-        register(sampler, new BoundSampler(template.instantiate(externs), false, externs.length == 0));
+        return register(sampler, new BoundSampler(template.instantiate(externs), false, externs.length == 0));
     }
 
     /**
      * Binds a RandomState's own sampler to the template, for any thread. The sampler's fields are the router's climate fields
      * with every marker unwrapped and every holder resolved. These are the trees the template was compiled from in POINT mode.
+     * The RandomState keeps the returned binding.
      */
-    public static void bindShared(Climate.Sampler sampler, PointTemplate template) {
-        register(sampler, new BoundSampler(template.instantiate(template.externTemplates), true, template.externTemplates.length == 0));
+    public static BoundSampler bindShared(Climate.Sampler sampler, PointTemplate template) {
+        return register(sampler, new BoundSampler(template.instantiate(template.externTemplates), true, template.externTemplates.length == 0));
     }
 
     /** Same contract as {@code Climate.Sampler.sample}: quart coordinates in, target point out. */
