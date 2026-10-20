@@ -21,12 +21,11 @@ public abstract class DebugVramMixin {
     private void ga2$vram(CallbackInfoReturnable<List<String>> cir) {
         List<String> out = new ArrayList<>(cir.getReturnValue());
         out.add("");
-        out.add(String.format(Locale.ROOT, "GA2 VRAM: chunk meshes %,d MB (stale freed %,d MB, hidden evicted %,d MB)", VramStats.HELD.sum() >> 20,
-            VramStats.FREED.get() >> 20, VramStats.EVICTED.get() >> 20));
+        // Short lines. The system side is right-aligned, and a long line runs into the left side's text.
         long regions = GpuWorldgen.REGION_BYTES.sum();
-        if (regions > 0) {
-            out.add(String.format(Locale.ROOT, "GA2 VRAM: GPU generation regions %,d MB", regions >> 20));
-        }
+        out.add(String.format(Locale.ROOT, "GA2 VRAM: meshes %,d MB", VramStats.HELD.sum() >> 20)
+            + (regions > 0 ? String.format(Locale.ROOT, ", GPU gen %,d MB", regions >> 20) : ""));
+        out.add(String.format(Locale.ROOT, "GA2 freed: stale %,d MB, hidden %,d MB", VramStats.FREED.get() >> 20, VramStats.EVICTED.get() >> 20));
         cir.setReturnValue(out);
     }
 }
