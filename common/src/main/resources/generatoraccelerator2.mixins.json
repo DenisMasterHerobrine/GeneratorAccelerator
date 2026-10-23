@@ -179,6 +179,9 @@
     "storage.LevelChunkSectionAccessor",
     "storage.ChunkMapLoadMixin",
     "storage.HeightmapPrimeInspectMixin",
+    "storage.PalettedContainerUnpackInvoker",
+    "storage.PaletteCodecInspectMixin",
+    "storage.ChunkSerializerCodecInspectMixin",
     "light.DataLayerStorageMapMixin",
     "light.LightEngineMixin",
     "light.LayerLightSectionStorageMixin",
@@ -253,7 +256,8 @@
   ],
   "client": [
     "chunkload.ClientChunkPacketTimingMixin",
-    "fluid.LiquidBlockRendererMixin"
+    "fluid.LiquidBlockRendererMixin",
+    "fluid.LiquidRenderCallMixin"
   ],
   "injectors": {
     "defaultRequire": 1

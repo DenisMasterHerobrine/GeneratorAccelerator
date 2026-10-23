@@ -29,7 +29,7 @@ import net.minecraft.world.level.material.Fluids;
  *
  * <p>Client: {@code LiquidBlockRenderer.tesselate} computes the blended water colour before it checks which faces show. The colour
  * costs a biome lookup per block of the blend square (25 at the default blend). Each Y layer is cached separately. A water block with water blocks on all six
- * sides shows no face, and the method returns without drawing. Such a block is skipped at the head ({@link #hidden}). Off when
+ * sides shows no face, and the method returns without drawing. Such a block is not passed to the renderer ({@link #hidden}). Off when
  * another mod changes the renderer's face checks (hook {@code fluids.hiddenWater}), or with
  * {@code -Dgeneratoraccelerator2.fluids.hiddenWaterSkip=false}.
  */

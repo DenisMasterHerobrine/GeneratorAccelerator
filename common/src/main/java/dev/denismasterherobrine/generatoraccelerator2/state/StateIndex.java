@@ -23,9 +23,14 @@ public final class StateIndex {
 
     /**
      * Ints per state id, in pages of 256 made on first use. A table touches a few states out of a registry that can hold hundreds
-     * of thousands with mods. Reads take no lock. A page is published whole.
+     * of thousands with mods. Reads take no lock. A new page is filled before it is published. A value goes into its page in
+     * place. A reader then sees the value or {@code missing}, and a value is the same whoever computes it.
+     *
+     * <p>Copying the page directory on every put cost 4 bytes per page of the registry. With 3.4 million states in a large pack
+     * that was 52 KB per new state, about 250 KB of garbage per chunk.
      */
     public static final class Table {
+        private static final java.lang.invoke.VarHandle PAGE = java.lang.invoke.MethodHandles.arrayElementVarHandle(int[][].class);
         private final int missing;
         private volatile int[][] pages = new int[0][];
 
@@ -38,7 +43,7 @@ public final class StateIndex {
             int[][] p = this.pages;
             int page = id >>> 8;
             if (page < p.length) {
-                int[] q = p[page];
+                int[] q = (int[]) PAGE.getAcquire(p, page);
                 if (q != null) {
                     return q[id & 255];
                 }
@@ -50,18 +55,19 @@ public final class StateIndex {
             int page = id >>> 8;
             int[][] p = this.pages;
             if (page >= p.length) {
+                // Only the directory grows. The pages stay the same arrays.
                 p = java.util.Arrays.copyOf(p, Math.max(page + 1, p.length * 2));
-            } else {
-                p = p.clone();
+                this.pages = p;
             }
             int[] q = p[page];
-            q = q == null ? new int[256] : q.clone();
-            if (p[page] == null) {
+            if (q == null) {
+                q = new int[256];
                 java.util.Arrays.fill(q, missing);
+                q[id & 255] = value;
+                PAGE.setRelease(p, page, q);
+            } else {
+                q[id & 255] = value;
             }
-            q[id & 255] = value;
-            p[page] = q;
-            this.pages = p;
         }
     }
 }

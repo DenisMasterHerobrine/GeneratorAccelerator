@@ -16,6 +16,13 @@ public abstract class ClimateSamplerMixin {
         if (!DfcHooks.enabled()) {
             return;
         }
+        // Lithostitched's injector source samples this point just before its base source samples it again
+        Climate.TargetPoint reused = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.reused((Climate.Sampler) (Object) this,
+            quartX, quartY, quartZ);
+        if (reused != null) {
+            cir.setReturnValue(reused);
+            return;
+        }
         BoundSampler bound = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SamplerWrappers.resolve((Climate.Sampler) (Object) this);
         if (bound != null) {
             cir.setReturnValue(bound.sample(quartX, quartY, quartZ));

@@ -7,7 +7,8 @@
   "mixins": [
     "BiomeRegionsMixin",
     "InjectorBiomeSourceMixin",
-    "InjectorBiomeSourceGpuMixin"
+    "InjectorBiomeSourceGpuMixin",
+    "InjectorBiomeSourceVerifyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

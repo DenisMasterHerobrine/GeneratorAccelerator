@@ -11,7 +11,7 @@ import net.minecraft.world.level.levelgen.DensityFunction;
  * instead of computing them. A carver's queries get the same answers as from the NoiseChunk's aquifer, including the fluid
  * update flag. The statuses match what that aquifer computes, and the search, similarity and pressure are vanilla's.
  */
-final class GpuAquifer implements Aquifer {
+public final class GpuAquifer implements Aquifer {
     private static final double FLOWING_UPDATE_SIMILARITY = similarity(10 * 10, 12 * 12);
     private static final BlockState LAVA = Blocks.LAVA.defaultBlockState();
 
@@ -45,9 +45,15 @@ final class GpuAquifer implements Aquifer {
 
     @Override
     public BlockState computeSubstance(DensityFunction.FunctionContext context, double substance) {
-        int i = context.blockX();
-        int j = context.blockY();
-        int k = context.blockZ();
+        return substanceAt(context.blockX(), context.blockY(), context.blockZ(), context, substance);
+    }
+
+    /**
+     * {@link #computeSubstance} at block {@code i, j, k}. {@code context} is that block's, or null. The context is read only to
+     * sample the barrier noise, which few blocks need. Without one, a context for the block is made then, as the carver would
+     * have made it for the call.
+     */
+    public BlockState substanceAt(int i, int j, int k, @javax.annotation.Nullable DensityFunction.FunctionContext context, double substance) {
         if (substance > 0.0) {
             this.shouldScheduleFluidUpdate = false;
             return null;
@@ -104,15 +110,19 @@ final class GpuAquifer implements Aquifer {
             this.shouldScheduleFluidUpdate = true;
             return state;
         }
-        double[] barrier = { Double.NaN };
-        double d2 = d1 * pressure(context, barrier, c1, c2);
+        this.barrier = Double.NaN;
+        this.barrierContext = context;
+        this.bx = i;
+        this.by = j;
+        this.bz = k;
+        double d2 = d1 * pressure(c1, c2);
         if (substance + d2 > 0.0) {
             this.shouldScheduleFluidUpdate = false;
             return null;
         }
         double d0 = similarity(k1, i2);
         if (d0 > 0.0) {
-            double d3 = d1 * d0 * pressure(context, barrier, c1, c3);
+            double d3 = d1 * d0 * pressure(c1, c3);
             if (substance + d3 > 0.0) {
                 this.shouldScheduleFluidUpdate = false;
                 return null;
@@ -120,7 +130,7 @@ final class GpuAquifer implements Aquifer {
         }
         double d4 = similarity(l1, i2);
         if (d4 > 0.0) {
-            double d5 = d1 * d4 * pressure(context, barrier, c2, c3);
+            double d5 = d1 * d4 * pressure(c2, c3);
             if (substance + d5 > 0.0) {
                 this.shouldScheduleFluidUpdate = false;
                 return null;
@@ -139,9 +149,15 @@ final class GpuAquifer implements Aquifer {
         return 1.0 - (double) Math.abs(b - a) / 25.0;
     }
 
-    /** {@code NoiseBasedAquifer.calculatePressure} for cells {@code a} and {@code b}. {@code barrier[0]} holds the barrier noise once sampled. */
-    private double pressure(DensityFunction.FunctionContext context, double[] barrier, int a, int b) {
-        int i = context.blockY();
+    /** The block {@link #pressure} computes at, its context if the caller had one, and the barrier noise there once sampled (NaN before). */
+    private int bx, by, bz;
+    @javax.annotation.Nullable
+    private DensityFunction.FunctionContext barrierContext;
+    private double barrier;
+
+    /** {@code NoiseBasedAquifer.calculatePressure} for cells {@code a} and {@code b} at the current block. */
+    private double pressure(int a, int b) {
+        int i = this.by;
         BlockState sa = status(a).at(i);
         BlockState sb = status(b).at(i);
         if ((!sa.is(Blocks.LAVA) || !sb.is(Blocks.WATER)) && (!sa.is(Blocks.WATER) || !sb.is(Blocks.LAVA))) {
@@ -164,10 +180,11 @@ final class GpuAquifer implements Aquifer {
             }
             double d12;
             if (!(d10 < -2.0) && !(d10 > 2.0)) {
-                double d13 = barrier[0];
+                double d13 = this.barrier;
                 if (Double.isNaN(d13)) {
-                    double d14 = t.spec.barrier.compute(context);
-                    barrier[0] = d14;
+                    DensityFunction.FunctionContext context = this.barrierContext;
+                    double d14 = t.spec.barrier.compute(context != null ? context : new DensityFunction.SinglePointContext(this.bx, this.by, this.bz));
+                    this.barrier = d14;
                     d12 = d14;
                 } else {
                     d12 = d13;

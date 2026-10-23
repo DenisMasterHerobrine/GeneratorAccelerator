@@ -2,7 +2,6 @@ package dev.denismasterherobrine.generatoraccelerator2.noise;
 
 import java.util.Random;
 import java.util.stream.IntStream;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;

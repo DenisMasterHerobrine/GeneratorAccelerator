@@ -20,25 +20,22 @@ import org.slf4j.Logger;
 public final class SpelunkeryCells {
     private static final Logger LOGGER = Ga2Log.get("Compat");
 
-    /** Every thread's {@link Last}, for the counts. */
-    private static final java.util.Queue<Last> ALL = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    /** The counts of threads that ended. */
+    private static final java.util.concurrent.atomic.LongAdder RETIRED_SEARCHED = new java.util.concurrent.atomic.LongAdder(),
+        RETIRED_SHARED = new java.util.concurrent.atomic.LongAdder();
 
     /** Calls answered by a search made here. Counted per thread, since a shared counter costs more than a call saves. */
     public static long searched() {
-        long n = 0;
-        for (Last l : ALL) {
-            n += l.searched;
-        }
-        return n;
+        long[] n = { RETIRED_SEARCHED.sum() };
+        LAST.forEach(l -> n[0] += l.searched);
+        return n[0];
     }
 
     /** Calls answered from the other call's search. */
     public static long shared() {
-        long n = 0;
-        for (Last l : ALL) {
-            n += l.shared;
-        }
-        return n;
+        long[] n = { RETIRED_SHARED.sum() };
+        LAST.forEach(l -> n[0] += l.shared);
+        return n[0];
     }
     /** {@code -Dgeneratoraccelerator2.verify.spelunkery=N}: every N-th answer is compared with FastNoiseLite's own. */
     private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter VERIFY =
@@ -139,11 +136,11 @@ public final class SpelunkeryCells {
         long searched, shared;
     }
 
-    private static final ThreadLocal<Last> LAST = ThreadLocal.withInitial(() -> {
-        Last l = new Last();
-        ALL.add(l);
-        return l;
-    });
+    private static final dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<Last> LAST =
+        new dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<>(Last::new, l -> {
+            RETIRED_SEARCHED.add(l.searched);
+            RETIRED_SHARED.add(l.shared);
+        });
 
     private SpelunkeryCells() {}
 

@@ -201,6 +201,34 @@ public final class PlacementPipeline {
         private boolean memoResult0;
         private boolean memoResult1;
 
+        /** The walk from modifier {@code index} on, for a stream of positions. Stateless, so one per index stays with the run. */
+        private final class Next implements java.util.function.Consumer<BlockPos> {
+            final int index;
+
+            Next(int index) {
+                this.index = index;
+            }
+
+            @Override
+            public void accept(BlockPos pos) {
+                walk(this.index, pos);
+            }
+        }
+
+        private Next[] nexts = new Next[8];
+
+        /** This run's walk from modifier {@code i} on. A lambda here was one object per generic modifier call. */
+        private Next next(int i) {
+            if (i >= nexts.length) {
+                nexts = java.util.Arrays.copyOf(nexts, Math.max(i + 1, nexts.length * 2));
+            }
+            Next n = nexts[i];
+            if (n == null) {
+                nexts[i] = n = new Next(i);
+            }
+            return n;
+        }
+
         /** As a new run of this placement. */
         void start(PlacedFeature placed, List<PlacementModifier> modifiers, ConfiguredFeature<?, ?> feature, PlacementContext ctx, RandomSource random, PositionWrap wrap) {
             this.placedFeature = placed;
@@ -390,7 +418,7 @@ public final class PlacementPipeline {
                 FeatureStats.genericModifier(cls);
                 try (Stream<BlockPos> positions = m.getPositions(ctx, random, pos)) {
                     if (positions != null) {
-                        positions.sequential().forEach(p -> walk(i + 1, p));
+                        positions.sequential().forEach(next(i + 1));
                     }
                 }
             }

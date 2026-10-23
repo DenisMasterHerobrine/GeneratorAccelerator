@@ -163,6 +163,7 @@ public final class LoadPrep {
         Codec<PalettedContainer<BlockState>> statesCodec = ChunkSerializerAccessor.ga2$blockStateCodec();
         Codec<PalettedContainerRO<Holder<Biome>>> biomesCodec = ChunkSerializerAccessor.ga2$makeBiomeCodec(registry);
         int count = level.getSectionsCount();
+        boolean fast = FastPalettes.enabled();
         for (int i = 0; i < list.size(); i++) {
             CompoundTag section = list.getCompound(i);
             int index = level.getSectionIndexFromSectionY(section.getByte("Y"));
@@ -171,7 +172,10 @@ public final class LoadPrep {
             }
             if (section.contains("block_states", Tag.TAG_COMPOUND)) {
                 CompoundTag tag = section.getCompound("block_states");
-                PalettedContainer<BlockState> states = decoded(statesCodec.parse(NbtOps.INSTANCE, tag));
+                PalettedContainer<BlockState> states = fast ? FastPalettes.states(tag) : null;
+                if (states == null) {
+                    states = decoded(statesCodec.parse(NbtOps.INSTANCE, tag));
+                }
                 if (states != null) {
                     b.stateTags[i] = tag;
                     b.states[i] = states;
@@ -182,7 +186,10 @@ public final class LoadPrep {
             }
             if (section.contains("biomes", Tag.TAG_COMPOUND)) {
                 CompoundTag tag = section.getCompound("biomes");
-                PalettedContainerRO<Holder<Biome>> biomes = decoded(biomesCodec.parse(NbtOps.INSTANCE, tag));
+                PalettedContainerRO<Holder<Biome>> biomes = fast ? FastPalettes.biomes(registry, tag) : null;
+                if (biomes == null) {
+                    biomes = decoded(biomesCodec.parse(NbtOps.INSTANCE, tag));
+                }
                 if (biomes != null) {
                     b.biomeTags[i] = tag;
                     b.biomes[i] = biomes;
@@ -236,7 +243,7 @@ public final class LoadPrep {
 
     /** At the end of {@code read}. */
     public static void end() {
-        CURRENT.remove();
+        CURRENT.set(null);
     }
 
     /** For tests: the bundle prepared for {@code chunk}, made current. */

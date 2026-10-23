@@ -36,19 +36,15 @@ public final class LithostitchedInjectors {
 
     /** Walks handed a subset, and the replacements left out. Counted per thread, since a shared counter costs more per biome lookup. */
     public static long filtered() {
-        long n = 0;
-        for (Noted t : ALL) {
-            n += t.filtered;
-        }
-        return n;
+        long[] n = { RETIRED_FILTERED.sum() };
+        CURRENT.forEach(t -> n[0] += t.filtered);
+        return n[0];
     }
 
     public static long skipped() {
-        long n = 0;
-        for (Noted t : ALL) {
-            n += t.skipped;
-        }
-        return n;
+        long[] n = { RETIRED_SKIPPED.sum() };
+        CURRENT.forEach(t -> n[0] += t.skipped);
+        return n[0];
     }
 
     private record Shape(Object codec, Class<?> type, MethodHandle targets) {}
@@ -100,7 +96,8 @@ public final class LithostitchedInjectors {
         long filtered, skipped;
     }
 
-    private static final java.util.Queue<Noted> ALL = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    /** The counts of threads that ended. */
+    private static final LongAdder RETIRED_FILTERED = new LongAdder(), RETIRED_SKIPPED = new LongAdder();
 
     /**
      * Called when a server stops. The indexes of the server's injector lists lead to the server's registries, and so do the biomes
@@ -110,15 +107,13 @@ public final class LithostitchedInjectors {
         synchronized (LithostitchedInjectors.class) {
             indexes = new IdentityHashMap<>();
         }
-        for (Noted n : ALL) {
-            n.biome = null;
-        }
+        CURRENT.forEach(n -> n.biome = null);
     }
-    private static final ThreadLocal<Noted> CURRENT = ThreadLocal.withInitial(() -> {
-        Noted n = new Noted();
-        ALL.add(n);
-        return n;
-    });
+    private static final dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<Noted> CURRENT =
+        new dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<>(Noted::new, n -> {
+            RETIRED_FILTERED.add(n.filtered);
+            RETIRED_SKIPPED.add(n.skipped);
+        });
 
     /** {@code -Dgeneratoraccelerator2.verify.injectors=true}: every partial replacement asked checks that it is asked about the noted biome. */
     public static final boolean VERIFY = Boolean.getBoolean("generatoraccelerator2.verify.injectors");

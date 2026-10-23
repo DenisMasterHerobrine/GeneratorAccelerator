@@ -12,7 +12,6 @@ import java.util.HexFormat;
 import java.util.List;
 
 import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;
-import org.slf4j.Logger;
 
 /**
  * Notices shown to the player once, through the loader's own screen. NeoForge shows them on its loading warnings screen. On
@@ -21,7 +20,6 @@ import org.slf4j.Logger;
 public final class Notices {
     private Notices() {}
 
-    private static final Logger LOGGER = Ga2Log.get("Notices");
     private static final String FILE = "seen-notices.txt";
     private static final List<String> PENDING = new ArrayList<>();
 

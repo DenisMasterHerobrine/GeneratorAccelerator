@@ -1,5 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -18,7 +20,7 @@ import java.util.concurrent.atomic.LongAdder;
  * The table is sized from a byte budget once the first column shows how large a column is. Routers
  * with many interpolated roots, or tall worlds, get fewer slots. The table never holds more than that.
  */
-public final class BorderColumnCache {
+public final class BorderColumnCache implements IdleTrims.Trimmable {
     /** Bytes of column values one cache may hold. */
     static final long BUDGET = 16L << 20;
     private static final int MIN_SLOTS = 256;
@@ -29,10 +31,13 @@ public final class BorderColumnCache {
     private volatile AtomicReferenceArray<double[]> table;
     public final LongAdder hits = new LongAdder();
     public final LongAdder misses = new LongAdder();
+    /** {@link System#nanoTime} of the last put. A cache that went without puts for {@link IdleTrims#IDLE_NANOS} drops its table. */
+    private volatile long lastPut;
 
     /** @param maxSlots upper bound on the slots (rounded down to a power of two) */
     public BorderColumnCache(int maxSlots) {
         this.maxSlots = Integer.highestOneBit(Math.max(MIN_SLOTS, maxSlots));
+        IdleTrims.register(this);
     }
 
     /** Whether the column at block {@code x, z} (a cell corner) lies on a chunk border, where neighbouring chunks share it. */
@@ -62,6 +67,9 @@ public final class BorderColumnCache {
 
     /** Publishes {@code snapshot} under {@code key}. It holds the columns' values, then {@link #KEY} values this writes. */
     public void put(long key, double[] snapshot) {
+        if (MemoryPressure.high()) {
+            return;
+        }
         int n = snapshot.length;
         snapshot[n - 2] = (int) (key >>> 32);
         snapshot[n - 1] = (int) key;
@@ -69,6 +77,7 @@ public final class BorderColumnCache {
         if (t == null) {
             t = create(snapshot);
         }
+        this.lastPut = System.nanoTime();
         // release: a reader that acquires the array sees every value written above
         t.setRelease(slot(key, t.length()), snapshot);
     }
@@ -87,6 +96,17 @@ public final class BorderColumnCache {
             this.table = t;
         }
         return t;
+    }
+
+    /**
+     * Drops the table of a dimension that stopped generating. A reader that still holds the old table reads it as before. The
+     * next put makes a new table. Under memory pressure the table goes at once, and puts make none until the pressure is over.
+     */
+    @Override
+    public void trimIdle(long nowNanos, boolean pressure) {
+        if (this.table != null && (pressure || nowNanos - this.lastPut > IdleTrims.IDLE_NANOS)) {
+            this.table = null;
+        }
     }
 
     private static int slot(long key, int length) {

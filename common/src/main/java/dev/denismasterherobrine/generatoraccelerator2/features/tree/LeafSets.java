@@ -35,12 +35,10 @@ final class LeafSets {
     // the box: positions are kept by their index in it
     private int minX, minY, minZ, sizeX, sizeZ;
     /** Bit k: the position is in (emulated) set k. */
-    private byte[] member = new byte[4096];
+    private byte[] member;
 
     // chain nodes, shared by the sets. Never reused within one run.
-    private int[] next = new int[1024];
-    private int[] hash = new int[1024];
-    private int[] cell = new int[1024];
+    private int[] next, hash, cell;
     private int nodes;
 
     private final int[] cap = new int[LEVELS];
@@ -61,16 +59,28 @@ final class LeafSets {
     int x, y, z;
 
     private LeafSets() {
+        trim();
+    }
+
+    static LeafSets get() {
+        return LOCAL.get();
+    }
+
+    /** Above this box size the buffers go back to their first sizes before a much smaller tree. */
+    private static final int TRIM_BYTES = 1 << 20;
+
+    /** The buffers at their first sizes. Called only between trees. */
+    private void trim() {
+        member = new byte[4096];
+        next = new int[1024];
+        hash = new int[1024];
+        cell = new int[1024];
         for (int i = 0; i < LEVELS; i++) {
             head[i] = new int[16];
             tail[i] = new int[16];
             used[i] = new long[1];
             history[i] = new int[256];
         }
-    }
-
-    static LeafSets get() {
-        return LOCAL.get();
     }
 
     /**
@@ -87,6 +97,10 @@ final class LeafSets {
         long volume = (long) sizeX * box.getYSpan() * sizeZ;
         if (volume > 1 << 26) {
             return false;
+        }
+        if (member.length > TRIM_BYTES && volume * 4 < member.length) {
+            // One huge tree grew the buffers. The thread does not keep that size for every tree after it.
+            trim();
         }
         if (member.length < volume) {
             member = new byte[(int) Math.max(volume, member.length * 2L)];

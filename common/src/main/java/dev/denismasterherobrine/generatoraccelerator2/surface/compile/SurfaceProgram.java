@@ -163,9 +163,22 @@ public final class SurfaceProgram {
 
     /** The deep-band plan for blocks in {@code [minY, maxY)} with the gradients and anchors resolved for the chunk. */
     public DeepPlan deepPlan(int minY, int maxY, int[] gradLo, int[] gradHi, int[] anchorY) {
+        // A dimension's chunks nearly all resolve to the same plan. The last one is compared first, without building the key.
+        LastPlan last = this.lastPlan;
+        if (last != null && last.minY == minY && last.maxY == maxY && java.util.Arrays.equals(last.gradLo, gradLo) && java.util.Arrays.equals(last.gradHi, gradHi)
+            && java.util.Arrays.equals(last.anchorY, anchorY)) {
+            return last.plan;
+        }
         String key = minY + "," + maxY + java.util.Arrays.toString(gradLo) + java.util.Arrays.toString(gradHi) + java.util.Arrays.toString(anchorY);
-        return deepPlans.computeIfAbsent(key, k -> DeepPlan.build(this, minY, maxY, gradLo, gradHi, anchorY));
+        DeepPlan plan = deepPlans.computeIfAbsent(key, k -> DeepPlan.build(this, minY, maxY, gradLo, gradHi, anchorY));
+        this.lastPlan = new LastPlan(minY, maxY, gradLo.clone(), gradHi.clone(), anchorY.clone(), plan);
+        return plan;
     }
+
+    /** The plan {@link #deepPlan} returned last, with copies of its inputs. Replaced whole, so a reader sees one consistent plan. */
+    private record LastPlan(int minY, int maxY, int[] gradLo, int[] gradHi, int[] anchorY, DeepPlan plan) {}
+
+    private volatile LastPlan lastPlan;
 
     private static final class Lowering implements SurfaceExtern.Context {
         final List<Object> opaques = new ArrayList<>();

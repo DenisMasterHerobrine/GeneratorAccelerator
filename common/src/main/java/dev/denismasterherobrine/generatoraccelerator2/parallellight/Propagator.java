@@ -163,7 +163,7 @@ final class Propagator {
         this.fromState = null;
         this.fromKey = Long.MAX_VALUE;
         for (LongRing q : this.queues) {
-            q.trim(1 << 20);
+            q.trim(PropagationJob.TRIM_LONGS);
         }
         if (this.copied.size() > 1 << 14) {
             this.copied.clear();

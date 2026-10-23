@@ -320,18 +320,24 @@ public final class FlatClimateTree {
      * parameters a sampler computes per column. The biome fill asks its 16 columns in turn, section after section. A node's
      * other terms are therefore computed once per column. A slot is keyed by its five non-depth values and the tree. A fresh
      * stamp makes the cached part of every node stale.
+     *
+     * <p>Each slot holds 12 bytes per node of the largest tree it served, so all 16 cost about 1.7 MB per thread with a
+     * vanilla-sized tree and more in modded packs. Searches outside a biome fill come at scattered points (structures,
+     * carvers, region lookups). They rarely ask a column again, so they take over only the first {@link #OUTSIDE_SLOTS}
+     * slots. A thread that never fills biomes, as with biomes on the GPU, then keeps two slots' arrays.
      */
     private static final class ColumnParts {
-        static final int SLOTS = 16;
+        static final int SLOTS = 16, OUTSIDE_SLOTS = 2;
         final long[] keys = new long[SLOTS * 5];
         final FlatClimateTree[] trees = new FlatClimateTree[SLOTS];
         final int[] slotStamp = new int[SLOTS];
         long[][] parts = new long[SLOTS][];
         int[][] stamps = new int[SLOTS][];
-        int victim;
+        int victim, outsideVictim;
         int stampCounter;
 
-        int slot(FlatClimateTree tree, long q0, long q1, long q2, long q3, long q5) {
+        /** The slot of this column. A miss replaces a slot of the first {@code SLOTS} in a fill, else of the first {@code OUTSIDE_SLOTS}. */
+        int slot(FlatClimateTree tree, long q0, long q1, long q2, long q3, long q5, boolean inFill) {
             for (int s = 0; s < SLOTS; s++) {
                 int k = s * 5;
                 if (this.trees[s] == tree && this.keys[k] == q0 && this.keys[k + 1] == q1 && this.keys[k + 2] == q2 && this.keys[k + 3] == q3
@@ -339,8 +345,14 @@ public final class FlatClimateTree {
                     return s;
                 }
             }
-            int s = this.victim;
-            this.victim = (s + 1) & (SLOTS - 1);
+            int s;
+            if (inFill) {
+                s = this.victim;
+                this.victim = (s + 1) & (SLOTS - 1);
+            } else {
+                s = this.outsideVictim;
+                this.outsideVictim = (s + 1) % OUTSIDE_SLOTS;
+            }
             int k = s * 5;
             this.keys[k] = q0;
             this.keys[k + 1] = q1;
@@ -1097,7 +1109,7 @@ public final class FlatClimateTree {
         long bestDistance = last < 0 ? Long.MAX_VALUE : nodeDistance(last, q0, q1, q2, q3, q4, q5);
         int[] stack = c.walkStack(2 * (this.depth + 1));
         ColumnParts cache = c.parts;
-        int slot = cache.slot(this, q0, q1, q2, q3, q5);
+        int slot = cache.slot(this, q0, q1, q2, q3, q5, c.inFill > 0);
         long[] parts = cache.parts[slot];
         int[] stamps = cache.stamps[slot];
         int stamp = cache.slotStamp[slot];
@@ -1190,7 +1202,7 @@ public final class FlatClimateTree {
         }
         int[] stack = c.walkStack(2 * (this.depth + 1));
         ColumnParts cache = c.parts;
-        int slot = cache.slot(this, q0, q1, q2, q3, q5);
+        int slot = cache.slot(this, q0, q1, q2, q3, q5, c.inFill > 0);
         long[] parts = cache.parts[slot];
         int[] stamps = cache.stamps[slot];
         int stamp = cache.slotStamp[slot];

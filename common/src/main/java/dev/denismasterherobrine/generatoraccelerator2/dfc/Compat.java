@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;

@@ -44,6 +44,12 @@ public final class RenderThreads {
     public static final long EVICT_HIDDEN_SECONDS = Long.getLong("generatoraccelerator2.evictHiddenSections", 3L);
     /** {@code -Dgeneratoraccelerator2.evictHiddenSections.minChunks=N}: sections closer than N chunks to the camera keep their meshes. */
     public static final int EVICT_MIN_CHUNKS = Integer.getInteger("generatoraccelerator2.evictHiddenSections.minChunks", 8);
+    /**
+     * {@code -Dgeneratoraccelerator2.evictHiddenSections.travelChunks=N}: a section keeps its meshes until the camera is N chunks away
+     * from where it last saw the section. A player who stands and looks around evicts nothing, so turning back rebuilds nothing.
+     * Flight at 80 blocks/s covers 4 chunks in under a second, well inside the hidden time.
+     */
+    public static final int EVICT_TRAVEL_CHUNKS = Integer.getInteger("generatoraccelerator2.evictHiddenSections.travelChunks", 4);
     private static volatile ExecutorService mesh;
     private static volatile ExecutorService graph;
 

@@ -21,6 +21,7 @@ public final class LithostitchedMixins {
 
     /** GA2's mixin handing the partial replacement walk its per-biome subset ({@code LithostitchedInjectors}). */
     public static final String INJECTOR_LIST_MIXIN = "dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.mixin.InjectorBiomeSourceMixin";
+    public static final String INJECTOR_VERIFY_MIXIN = "dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.mixin.InjectorBiomeSourceVerifyMixin";
     private static final String INJECTOR_SOURCE = "dev.worldgen.lithostitched.impl.worldgen.biomeinjector.internal.InjectorBiomeSource";
     private static final String NOISE_BIOME = "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
 

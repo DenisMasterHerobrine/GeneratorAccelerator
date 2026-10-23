@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.StructureManagerLevelAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
@@ -203,7 +204,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
                 // The step already waited its full time for the answer (whenReady).
                 throw new java.util.concurrent.TimeoutException();
             }
-            r = job.future.get(WAIT_MS, TimeUnit.MILLISECONDS);
+            r = QuietWait.get(job.future, WAIT_MS);
         } catch (java.util.concurrent.TimeoutException e) {
             LATE.increment();
             // A late surface means the GPU is busy elsewhere. The governor counts it with the late blocks and biomes.

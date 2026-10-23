@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * A rebuilt section's layers without blocks give their VRAM back ({@link SectionBuffers}). A layer with blocks gets the new mesh
  * anyway. So after each rebuild a buffer holds the section's current mesh or nothing. A section moved by the view area is
  * rebuilt at its new place. It is not emptied at the move. Emptying every moved section costs GL calls on each chunk border the
- * camera crosses. The section also keeps when it was last in view ({@link SectionBuffers#evictHidden}).
+ * camera crosses. The section also keeps when it was last in view, and the camera's column then ({@link SectionBuffers#evictHidden}).
  */
 @Mixin(SectionRenderDispatcher.RenderSection.class)
 public abstract class RenderSectionBuffersMixin implements SectionBuffers.Section {
@@ -25,6 +25,10 @@ public abstract class RenderSectionBuffersMixin implements SectionBuffers.Sectio
 
     @Unique
     private long ga2$seen;
+    @Unique
+    private int ga2$seenX;
+    @Unique
+    private int ga2$seenZ;
     @Unique
     private boolean ga2$evicted;
 
@@ -43,8 +47,20 @@ public abstract class RenderSectionBuffersMixin implements SectionBuffers.Sectio
     }
 
     @Override
-    public void ga2$seen(long nanos) {
+    public int ga2$seenX() {
+        return this.ga2$seenX;
+    }
+
+    @Override
+    public int ga2$seenZ() {
+        return this.ga2$seenZ;
+    }
+
+    @Override
+    public void ga2$seen(long nanos, int cameraX, int cameraZ) {
         this.ga2$seen = nanos;
+        this.ga2$seenX = cameraX;
+        this.ga2$seenZ = cameraZ;
     }
 
     @Override

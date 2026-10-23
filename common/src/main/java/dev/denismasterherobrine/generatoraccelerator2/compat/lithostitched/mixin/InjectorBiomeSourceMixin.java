@@ -5,16 +5,12 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedInjectors;
-import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.biome.Climate;
-import net.minecraft.world.level.levelgen.DensityFunction;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Coerce;
 
 /**
  * Lithostitched's injector source looks up each kind of injector before walking it. For partial replacements, the walk is
@@ -63,17 +59,5 @@ public abstract class InjectorBiomeSourceMixin {
         require = 0)
     private Object ga2$injectorsFor(Map<?, ?> map, Object type, Object fallback, Operation<Object> original) {
         return LithostitchedInjectors.candidates(type, original.call(map, type, fallback));
-    }
-
-    /** {@code -Dgeneratoraccelerator2.verify.injectors=true}: the biome each partial replacement is asked about is the noted one. */
-    @WrapOperation(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
-        target = "Ldev/worldgen/lithostitched/impl/worldgen/biomeinjector/ReplacePartially;matches(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;Lnet/minecraft/world/level/biome/Climate$TargetPoint;Ljava/util/HashMap;Lnet/minecraft/core/Holder;Lnet/minecraft/resources/ResourceKey;)Z"),
-        require = 0)
-    private boolean ga2$checkNotedBiome(@Coerce Object injector, DensityFunction.FunctionContext context, Climate.TargetPoint target, HashMap<?, ?> densities,
-                                        Holder<?> biome, ResourceKey<?> region, Operation<Boolean> original) {
-        if (LithostitchedInjectors.VERIFY) {
-            LithostitchedInjectors.checkNoted(biome);
-        }
-        return original.call(injector, context, target, densities, biome, region);
     }
 }

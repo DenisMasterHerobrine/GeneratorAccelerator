@@ -202,7 +202,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
 
     /**
      * The bindings of the climate samplers this chunk made, one per {@code cachedClimateSampler} call. The binding map holds them
-     * weakly, so they live as long as this chunk does.
+     * weakly, so they live until the fill is released ({@link #ga2$releaseFill}) or the chunk goes.
      */
     @Unique
     private BoundSampler[] ga2$samplers;
@@ -322,6 +322,9 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     public void ga2$releaseFill() {
         this.ga2$binding = null;
         this.ga2$mapMemo = null;
+        // The chunk's climate samplers serve only the biome step, which comes before the noise fill. Without its binding a
+        // sampler would sample through vanilla's functions, with the same values.
+        this.ga2$samplers = null;
         for (NoiseChunk.NoiseInterpolator interpolator : this.ga2$interpolators()) {
             NoiseInterpolatorAccessor slices = (NoiseInterpolatorAccessor) interpolator;
             double[][] slice0 = slices.ga2$slice0();

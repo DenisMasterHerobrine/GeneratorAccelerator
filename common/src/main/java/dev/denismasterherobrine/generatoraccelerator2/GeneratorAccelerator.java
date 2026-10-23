@@ -69,6 +69,7 @@ public final class GeneratorAccelerator {
 
     public static void init() {
         ConfigFiles.migrate(Ga2Log.get("Config"));
+        dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.install();
         // The light switches follow the light config. They are read again whenever a config file changes.
         ConfigManager.onLoad(FastLight::refresh);
         ConfigManager.onReload(FastLight::refresh);
@@ -152,6 +153,7 @@ public final class GeneratorAccelerator {
         dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast.forgetSeeds();
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
+        dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.forgetWorlds();
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
             LithostitchedInjectors.forgetWorlds();
             LithostitchedRegions.forgetWorlds();
@@ -163,6 +165,7 @@ public final class GeneratorAccelerator {
 
     public static void onServerTickPost(MinecraftServer ticking) {
         RepeatedWarnings.tick();
+        dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims.tick();
         for (Consumer<MinecraftServer> listener : TICK_LISTENERS) {
             listener.accept(ticking);
         }

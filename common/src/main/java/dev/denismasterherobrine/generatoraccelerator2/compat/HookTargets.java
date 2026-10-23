@@ -163,8 +163,8 @@ public final class HookTargets {
      */
     public static final String FLUID_POST_PROCESS = "fluids.postProcess";
     /**
-     * {@code LiquidBlockRenderer.tesselate} and its face checks. Water with water on all six sides returns at the head
-     * ({@code fluid.StillWater}). Any change keeps vanilla's whole method.
+     * {@code LiquidBlockRenderer.tesselate} and its face checks, and its call in {@code BlockRenderDispatcher.renderLiquid}. Water
+     * with water on all six sides is not passed to the renderer ({@code fluid.StillWater}). Any change keeps vanilla's whole method.
      */
     public static final String FLUID_HIDDEN_WATER = "fluids.hiddenWater";
     /** {@code ChunkAccess.getMinBuildHeight} and {@code getHeight} read from the height accessor once per chunk. */
@@ -208,6 +208,11 @@ public final class HookTargets {
     public static final String STORAGE_LOAD_PREP = "storage.loadPrep";
     /** {@code ChunkSerializer.read} and {@code ChunkMap.scheduleChunkLoad} changed by no other mod at all. Nothing can then edit a loaded chunk's tag between preparation and {@code read}. */
     public static final String STORAGE_LOAD_PREP_UNCHANGED = "storage.loadPrepUnchanged";
+    /**
+     * {@code PalettedContainer}'s codec builders and {@code unpack}, and the section codecs of {@code ChunkSerializer}: a loaded section's
+     * palettes decoded without the codecs' records and lists, each entry by the element codec ({@code storage.FastPalettes}).
+     */
+    public static final String STORAGE_FAST_PALETTES = "storage.fastPalettes";
     /** {@code Heightmap.primeHeightmaps}, skipped by {@code read} when there is nothing to prime. */
     public static final String STORAGE_PRIME_HEIGHTMAPS = "storage.primeHeightmaps";
     /** {@code SectionStorage.tryRead}: a POI column's read taken from the read made ahead with its chunk ({@code chunkload.PoiPrefetch}). */

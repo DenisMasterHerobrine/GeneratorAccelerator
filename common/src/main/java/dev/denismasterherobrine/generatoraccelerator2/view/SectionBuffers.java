@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 
@@ -35,11 +36,18 @@ public final class SectionBuffers {
         long ga2$free();
     }
 
-    /** A render section with the time it was last in view, and whether its meshes were evicted ({@link #evictHidden}). */
+    /**
+     * A render section with the time it was last in view, the camera's block column at that time, and whether its meshes were
+     * evicted ({@link #evictHidden}).
+     */
     public interface Section {
         long ga2$seen();
 
-        void ga2$seen(long nanos);
+        int ga2$seenX();
+
+        int ga2$seenZ();
+
+        void ga2$seen(long nanos, int cameraX, int cameraZ);
 
         boolean ga2$evicted();
 
@@ -47,17 +55,20 @@ public final class SectionBuffers {
     }
 
     /**
-     * Render thread, before the frame's sections are compiled. The sections in view are stamped. An evicted one is marked dirty,
-     * so it is rebuilt this frame. About once a second, the sections out of view for {@link RenderThreads#EVICT_HIDDEN_SECONDS} and
-     * farther than {@link RenderThreads#EVICT_MIN_CHUNKS} give their meshes back. Their compiled state stays. The occlusion graph
-     * still passes through them, and their empty buffers draw nothing.
+     * Render thread, before the frame's sections are compiled. The sections in view are stamped with the time and the camera's
+     * column. An evicted one is marked dirty, so it is rebuilt this frame. About once a second, a section gives its meshes back when
+     * it has been out of view for {@link RenderThreads#EVICT_HIDDEN_SECONDS}, is farther than {@link RenderThreads#EVICT_MIN_CHUNKS}
+     * from the camera, and the camera has moved {@link RenderThreads#EVICT_TRAVEL_CHUNKS} from where it last saw the section. Only
+     * the sections a moving camera left behind are evicted. A section just out of view while the player turns keeps its meshes.
+     * The compiled state stays. The occlusion graph still passes through the section, and its empty buffers draw nothing.
      */
     public static void evictHidden(Iterable<SectionRenderDispatcher.RenderSection> visible, @Nullable SectionRenderDispatcher.RenderSection[] all,
                                    Vec3 camera) {
         long now = System.nanoTime();
+        int cx = Mth.floor(camera.x), cz = Mth.floor(camera.z);
         for (SectionRenderDispatcher.RenderSection s : visible) {
             Section g = (Section) s;
-            g.ga2$seen(now);
+            g.ga2$seen(now, cx, cz);
             if (g.ga2$evicted()) {
                 g.ga2$evicted(false);
                 s.setDirty(false);
@@ -69,10 +80,15 @@ public final class SectionBuffers {
         lastSweep = now;
         long hidden = RenderThreads.EVICT_HIDDEN_SECONDS * 1_000_000_000L;
         double min = RenderThreads.EVICT_MIN_CHUNKS * 16.0;
+        long travel = RenderThreads.EVICT_TRAVEL_CHUNKS * 16L;
         long freed = 0;
         for (SectionRenderDispatcher.RenderSection s : all) {
             Section g = (Section) s;
             if (g.ga2$evicted() || now - g.ga2$seen() < hidden || s.getCompiled() == SectionRenderDispatcher.CompiledSection.UNCOMPILED) {
+                continue;
+            }
+            long tx = cx - g.ga2$seenX(), tz = cz - g.ga2$seenZ();
+            if (tx * tx + tz * tz < travel * travel) {
                 continue;
             }
             BlockPos o = s.getOrigin();
@@ -93,8 +109,8 @@ public final class SectionBuffers {
             VramStats.EVICTED.addAndGet(freed);
             if (!evictLogged) {
                 evictLogged = true;
-                LOGGER.info("meshes of sections out of view for {} s -> freed, rebuilt in view (-Dgeneratoraccelerator2.evictHiddenSections=0 keeps them)",
-                    RenderThreads.EVICT_HIDDEN_SECONDS);
+                LOGGER.info("meshes of sections out of view for {} s, the camera {} chunks past them -> freed, rebuilt in view "
+                    + "(-Dgeneratoraccelerator2.evictHiddenSections=0 keeps them)", RenderThreads.EVICT_HIDDEN_SECONDS, RenderThreads.EVICT_TRAVEL_CHUNKS);
             }
         }
     }

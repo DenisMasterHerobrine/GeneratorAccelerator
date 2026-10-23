@@ -16,9 +16,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(BlendedNoise.class)
 public abstract class BlendedNoiseMixin {
-    @Shadow @Final private PerlinNoise minLimitNoise;
-    @Shadow @Final private PerlinNoise maxLimitNoise;
-    @Shadow @Final private PerlinNoise mainNoise;
     @Shadow @Final private double xzMultiplier;
     @Shadow @Final private double yMultiplier;
     @Shadow @Final private double xzFactor;

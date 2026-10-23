@@ -1,7 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.storage;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;

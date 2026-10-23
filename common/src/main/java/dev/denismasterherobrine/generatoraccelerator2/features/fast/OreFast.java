@@ -468,7 +468,10 @@ public final class OreFast {
                     }
                 }
             } else {
-                for (OreConfiguration.TargetBlockState target : config.targetStates) {
+                // By index, in the list's order. An iterator here was one object per block the ore visits.
+                java.util.List<OreConfiguration.TargetBlockState> targetStates = config.targetStates;
+                for (int i = 0, n = targetStates.size(); i < n; i++) {
+                    OreConfiguration.TargetBlockState target = targetStates.get(i);
                     if (target.target.test(state, random) && (shouldSkipAirCheck(random, discard) || !adjacentToAir(sections, bx, by, bz))) {
                         section.setBlockState(lx, ly, lz, target.state, false);
                         placed++;

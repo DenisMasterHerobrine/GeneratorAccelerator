@@ -66,6 +66,21 @@ public final class BiolithSearch {
     };
 
 
+    /** This thread's last answer and what it was made from ({@link #search}). */
+    private static final class LastAnswer {
+        Object ultimate, penultimate, shape, answer;
+        long du, dp;
+        int generation;
+    }
+
+    private static final ThreadLocal<LastAnswer> LAST = ThreadLocal.withInitial(LastAnswer::new);
+    /** Bumped when a server stops. A thread's last answer holds that server's biomes, so it is not used or kept after that. */
+    private static volatile int generation;
+
+    public static void forgetWorlds() {
+        generation++;
+    }
+
     /** Biolith's answer for {@code target}, or null to run Biolith's own search. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static Object search(Climate.RTree<?> tree, Climate.TargetPoint target, Climate.DistanceMetric<?> metric) {
@@ -122,8 +137,27 @@ public final class BiolithSearch {
             penultimateLast.set(penultimate);
         }
         FLAT.increment();
+        // Biolith's answer is an immutable record. The previous one on this thread is returned again when it holds the same leaves
+        // at the same distances. That is common along a column, where the depth term often stays the same.
+        LastAnswer last = LAST.get();
+        long du = distance[0], dp = penultimate == null ? 0 : distance[1];
+        int g = generation;
+        if (last.generation != g) {
+            last.answer = last.ultimate = last.penultimate = null;
+            last.generation = g;
+        }
+        if (last.answer != null && last.ultimate == ultimate && last.penultimate == penultimate && last.du == du && last.dp == dp && last.shape == s) {
+            return last.answer;
+        }
         try {
-            return penultimate == null ? s.single.invoke(ultimate, distance[0]) : s.pair.invoke(ultimate, distance[0], penultimate, distance[1]);
+            Object answer = penultimate == null ? s.single.invoke(ultimate, du) : s.pair.invoke(ultimate, du, penultimate, dp);
+            last.ultimate = ultimate;
+            last.penultimate = penultimate;
+            last.du = du;
+            last.dp = dp;
+            last.shape = s;
+            last.answer = answer;
+            return answer;
         } catch (RuntimeException | Error e) {
             throw e;
         } catch (Throwable t) {

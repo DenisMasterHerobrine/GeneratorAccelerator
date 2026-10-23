@@ -50,7 +50,7 @@ public final class ChunkPackets {
 
     /** Writes the sections of {@code chunks} ahead. Batches of one chunk are left to vanilla. */
     public static void prepare(List<LevelChunk> chunks) {
-        BATCH.remove();
+        BATCH.set(null);
         int n = chunks.size();
         if (n < 2 || !enabled()) {
             return;
@@ -104,7 +104,7 @@ public final class ChunkPackets {
 
     /** After the batch was sent. */
     public static void clear() {
-        BATCH.remove();
+        BATCH.set(null);
     }
 
     /**

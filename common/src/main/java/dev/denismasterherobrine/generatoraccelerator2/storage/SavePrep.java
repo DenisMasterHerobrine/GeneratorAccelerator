@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.storage;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,13 +25,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.BitStorage;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.GlobalPalette;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.Palette;
 import net.minecraft.world.level.chunk.PalettedContainer;
-import net.minecraft.world.level.chunk.PalettedContainerRO;
 import org.slf4j.Logger;
 
 /**
@@ -83,6 +82,8 @@ public final class SavePrep {
      * {@code -Dgeneratoraccelerator2.savePrep.maxQueued=N} sets it.
      */
     static final int MAX_QUEUED = Math.max(1, Integer.getInteger("generatoraccelerator2.savePrep.maxQueued", 512));
+    /** {@link #MAX_QUEUED} while the heap is nearly full ({@link MemoryPressure}). */
+    static final int MAX_QUEUED_PRESSURE = Math.min(MAX_QUEUED, 32);
     private static final AtomicInteger QUEUED = new AtomicInteger();
     /**
      * Dedicated threads: a quarter of the processor threads, 1 to 4. On the worker pool, the encodings waited behind the
@@ -232,7 +233,7 @@ public final class SavePrep {
         if (chunk == null || !chunk.isUnsaved() || !holder.isReadyForSaving()) {
             return null;
         }
-        if (QUEUED.incrementAndGet() > MAX_QUEUED) {
+        if (QUEUED.incrementAndGet() > (MemoryPressure.high() ? MAX_QUEUED_PRESSURE : MAX_QUEUED)) {
             QUEUED.decrementAndGet();
             BUSY.increment();
             return null;

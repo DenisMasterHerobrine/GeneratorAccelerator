@@ -17,7 +17,12 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 public final class MapAllMemo {
     private MapAllMemo() {}
 
-    private static final ThreadLocal<IdentityHashMap<Object, DensityFunction>> CURRENT = new ThreadLocal<>();
+    /** This thread's memo while a NoiseChunk maps its router. The holder stays, so a lookup outside a mapping finds it without allocating. */
+    private static final class Current {
+        IdentityHashMap<Object, DensityFunction> memo;
+    }
+
+    private static final ThreadLocal<Current> CURRENT = ThreadLocal.withInitial(Current::new);
     private static volatile boolean enabled = !Boolean.getBoolean("generatoraccelerator2.mapAllMemo.off");
 
     /** For the exactness test: maps every piece again, as vanilla does. */
@@ -27,29 +32,26 @@ public final class MapAllMemo {
 
     /** The memo of the NoiseChunk mapping on this thread, or {@code null}. */
     public static IdentityHashMap<Object, DensityFunction> current() {
-        return CURRENT.get();
+        return CURRENT.get().memo;
     }
 
     public static <T> T with(IdentityHashMap<Object, DensityFunction> memo, Supplier<T> body) {
         if (!enabled) {
             return body.get();
         }
-        IdentityHashMap<Object, DensityFunction> previous = CURRENT.get();
-        CURRENT.set(memo);
+        Current current = CURRENT.get();
+        IdentityHashMap<Object, DensityFunction> previous = current.memo;
+        current.memo = memo;
         try {
             return body.get();
         } finally {
-            if (previous == null) {
-                CURRENT.remove();
-            } else {
-                CURRENT.set(previous);
-            }
+            current.memo = previous;
         }
     }
 
     /** {@code mapped(source)} through the current memo, keyed by {@code key}'s identity. */
     public static DensityFunction lookup(Object key, Supplier<DensityFunction> mapped) {
-        IdentityHashMap<Object, DensityFunction> memo = CURRENT.get();
+        IdentityHashMap<Object, DensityFunction> memo = CURRENT.get().memo;
         if (memo == null) {
             return mapped.get();
         }

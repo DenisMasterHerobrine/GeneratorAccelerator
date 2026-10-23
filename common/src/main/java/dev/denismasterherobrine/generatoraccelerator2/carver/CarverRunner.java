@@ -132,6 +132,8 @@ public final class CarverRunner {
             surfaceRule(generator));
         CarvingMask mask = ((ProtoChunk) chunk).getOrCreateCarvingMask(step);
         Carving carving = new Carving(context, chunk, blocks, biomes::getBiome, aquifer, mask);
+        // the start check's random, reseeded for every source chunk and carver
+        FastLegacyRandom start = new FastLegacyRandom(0L);
         blocks.lock();
         try {
             for (int j = -8; j <= 8; j++) {
@@ -155,7 +157,7 @@ public final class CarverRunner {
                         Integer known = KINDS.get(carver);
                         int kind = known != null ? known : KINDS.computeIfAbsent(carver, CarverPaths::kind);
                         if (kind != CarverPaths.UNSUPPORTED) {
-                            CarverPath path = CarverPaths.path(seed, sx, sz, l, carver, kind, context);
+                            CarverPath path = CarverPaths.path(seed, sx, sz, l, carver, kind, context, start);
                             if (!path.misses(carving.midX(), carving.midZ())) {
                                 carving.carver((CarverConfiguration) carver.config(), kind == CarverPaths.NETHER);
                                 carving.replay(path);

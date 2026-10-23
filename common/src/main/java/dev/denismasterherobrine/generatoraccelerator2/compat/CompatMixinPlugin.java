@@ -44,6 +44,11 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
                 "Lithostitched injector source: unknown shape -> partial replacements walked as-is");
             return false;
         }
+        if (active && mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.INJECTOR_VERIFY_MIXIN)) {
+            // the check of the noted biome, only for a verification run
+            return Boolean.getBoolean("generatoraccelerator2.verify.injectors")
+                && dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.injectorListShapeOk();
+        }
         if (active && mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins.STRIPES_MIXIN)) {
             // the fused noise relies on the FastNoiseLite code it was written against
             return dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins.codeKnown();

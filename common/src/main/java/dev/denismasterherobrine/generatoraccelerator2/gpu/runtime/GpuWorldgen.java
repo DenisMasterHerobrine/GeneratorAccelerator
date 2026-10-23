@@ -260,6 +260,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Chunks per region side. */
     public final int side = Integer.getInteger("generatoraccelerator2.gpu.region", 16);
     private int maxRegions = 16;
+    /** The region cache's most device memory on a GPU that shares the host's memory. */
+    private static final long UNIFIED_BUDGET = 512L << 20;
 
     // ---- GPU thread state ----
     private final ConcurrentLinkedQueue<Object> incoming = new ConcurrentLinkedQueue<>();
@@ -547,6 +549,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 programs[kernelPart.get("k_sbuild")], surfaceSpec, height, perm, od, oi, of, device::wake);
         }
         long budget = (long) (device.info.globalMemory() * GpuConfig.vramShare());
+        if (device.info.hostUnifiedMemory()) {
+            // An integrated GPU's memory is the system's RAM. Its share would come out of the memory the game and the other
+            // programs need.
+            budget = Math.min(budget, UNIFIED_BUDGET);
+        }
         // each cached region also keeps its biome answers on the heap (finishRegion). They may use at most 1/128 of the heap, so a
         // large GPU does not take its share of a tight heap. A region is about 0.8 MB at 384 blocks high. Without GPU biomes a
         // region keeps no answers on the heap, and the climate tree is not laid out.
@@ -1723,9 +1730,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * neighbouring regions. Their work is then done by the time the chunks there ask. 0 turns prefetching off.
      */
     private static final int PREFETCH = Integer.getInteger("generatoraccelerator2.gpu.prefetch", 4);
+    /** Regions cached at most while the heap is nearly full. Prefetching is off then too. */
+    private static final int PRESSURE_REGIONS = 4;
 
     private void prefetch(ChunkPos pos) {
-        if (PREFETCH <= 0) {
+        if (PREFETCH <= 0 || dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high()) {
             return;
         }
         int lx = Math.floorMod(pos.x, side), lz = Math.floorMod(pos.z, side);
@@ -2222,16 +2231,20 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      */
     public Climate.TargetPoint target(BiomeResult r, int i) {
         int[] t = r.targets();
-        long[] p = new long[6];
-        int column = i & 15, j = 0;
-        for (int k = 0; k < 6; k++) {
-            int v = targetColumns[k] ? t[column * 6 + k] : t[16 * 6 + i * targetQuartParams + j++];
-            if (v == Integer.MIN_VALUE) {
-                return null;
-            }
-            p[k] = v;
+        int column = i & 15;
+        // The quart's own values follow each other. Per parameter, j counts those of the parameters before it.
+        int at = 16 * 6 + i * targetQuartParams, j = 0;
+        int v0 = targetColumns[0] ? t[column * 6] : t[at + j++];
+        int v1 = targetColumns[1] ? t[column * 6 + 1] : t[at + j++];
+        int v2 = targetColumns[2] ? t[column * 6 + 2] : t[at + j++];
+        int v3 = targetColumns[3] ? t[column * 6 + 3] : t[at + j++];
+        int v4 = targetColumns[4] ? t[column * 6 + 4] : t[at + j++];
+        int v5 = targetColumns[5] ? t[column * 6 + 5] : t[at + j];
+        if (v0 == Integer.MIN_VALUE || v1 == Integer.MIN_VALUE || v2 == Integer.MIN_VALUE || v3 == Integer.MIN_VALUE || v4 == Integer.MIN_VALUE
+            || v5 == Integer.MIN_VALUE) {
+            return null;
         }
-        return new Climate.TargetPoint(p[0], p[1], p[2], p[3], p[4], p[5]);
+        return new Climate.TargetPoint(v0, v1, v2, v3, v4, v5);
     }
 
     private void launchBatch(Region r, Slot s, List<NoiseReq> reqs) {
@@ -2639,10 +2652,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 REGIONS_IDLE.increment();
             }
         }
-        if (regions.size() <= maxRegions) {
+        // Each cached region also keeps its biome answers on the heap. A nearly full heap keeps only a few regions.
+        int cap = dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high() ? Math.min(maxRegions, PRESSURE_REGIONS) : maxRegions;
+        if (regions.size() <= cap) {
             return;
         }
-        for (Iterator<Region> it = regions.values().iterator(); it.hasNext() && regions.size() > maxRegions; ) {
+        for (Iterator<Region> it = regions.values().iterator(); it.hasNext() && regions.size() > cap; ) {
             Region r = it.next();
             if (r.users > 0 || r.readEvent != 0 || !r.waiting.isEmpty() || pendingFor(r)) {
                 continue;

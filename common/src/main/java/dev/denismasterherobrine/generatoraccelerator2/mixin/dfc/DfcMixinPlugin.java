@@ -189,10 +189,14 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("tick", "spread", "spreadToSides", "getSpread", "getNewLiquid", "canSpreadTo",
                 "canPassThrough", "canPassThroughWall", "canHoldFluid", "isSourceBlockOfThisType", "canBeReplacedWith", "sourceNeighborCount",
                 "getDropOff", "isSame"), MergedMethods.Mode.BYPASS))),
-        // the hidden water skip returns before the method's work. Any change to the method or its face checks counts.
+        // the hidden water skip leaves out the renderer's whole method. Any change to the method or its face checks counts, and so
+        // does another mod's redirect or wrapper of the call in renderLiquid.
         Map.entry("LiquidBlockRendererMixin", List.of(
             new FeatureHook(HookTargets.FLUID_HIDDEN_WATER, List.of("tesselate", "shouldRenderFace", "isNeighborSameFluid", "isNeighborStateHidingOverlay"),
                 MergedMethods.Mode.BYPASS))),
+        Map.entry("LiquidRenderCallMixin", List.of(
+            new FeatureHook(HookTargets.FLUID_HIDDEN_WATER, List.of("renderLiquid"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/client/renderer/block/LiquidBlockRenderer;")))),
         Map.entry("CarvingContextAccessor", List.of(
             new FeatureHook(HookTargets.CARVER_TOP_MATERIAL, List.of(
                 "topMaterial(Ljava/util/function/Function;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/core/BlockPos;Z)Ljava/util/Optional;")))),
@@ -461,6 +465,18 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 MergedMethods.Mode.BYPASS))),
         Map.entry("EntityLoadBudgetMixin", List.of(
             new FeatureHook(HookTargets.CHUNK_ENTITY_BUDGET, List.of("processPendingLoads()V"), MergedMethods.Mode.BYPASS))),
+        // a loaded section's palettes are decoded entry by entry, then built by unpack, as the codecs would
+        Map.entry("PaletteCodecInspectMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(
+                "codecRW(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
+                "codecRO(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
+                "codec(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;"
+                    + "Lnet/minecraft/world/level/chunk/PalettedContainerRO$Unpacker;)Lcom/mojang/serialization/Codec;",
+                "unpack(Lnet/minecraft/core/IdMap;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;)"
+                    + "Lcom/mojang/serialization/DataResult;"), MergedMethods.Mode.BYPASS))),
+        Map.entry("ChunkSerializerCodecInspectMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of("<clinit>()V", "makeBiomeCodec(Lnet/minecraft/core/Registry;)Lcom/mojang/serialization/Codec;"),
+                MergedMethods.Mode.BYPASS))),
         Map.entry("HeightmapPrimeInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_PRIME_HEIGHTMAPS, List.of("primeHeightmaps(Lnet/minecraft/world/level/chunk/ChunkAccess;Ljava/util/Set;)V"),
                 MergedMethods.Mode.BYPASS))),
@@ -570,10 +586,6 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         "computeRandomizedFluidSurfaceLevel(IIII)I",
         "computeFluidType(III" + FLUID_STATUS + "I)Lnet/minecraft/world/level/block/state/BlockState;",
         "similarity(II)D", "gridX(I)I", "gridY(I)I", "gridZ(I)I", "getIndex(III)I");
-    /** Beardifier methods the piece index takes over. */
-    private static final List<String> BEARDIFIER_METHODS = List.of(
-        "compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D",
-        "getBuryContribution(DDD)D", "getBeardContribution(IIII)D", "computeBeardContribution(III)D", "isInKernelRange(I)Z");
     private static final String BEARDIFIER_COMPUTE = "compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D";
     /** The formulas the piece index and the culling bounds take from vanilla (compute itself is read by BeardifierChain). */
     private static final List<String> BEARDIFIER_STATICS = List.of(

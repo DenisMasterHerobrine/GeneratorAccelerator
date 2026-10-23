@@ -1,7 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
-import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.CellProgram;

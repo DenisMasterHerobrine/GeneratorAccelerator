@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu.decor;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
@@ -573,7 +574,7 @@ public final class GpuDecor {
     public static void afterFeatures(WorldGenLevel level, ChunkAccess center) {
         flushAround(level, center);
         DecorJob taken = TAKEN.get();
-        TAKEN.remove();
+        TAKEN.set(null);
         finished(center, taken);
     }
 
@@ -878,7 +879,7 @@ public final class GpuDecor {
         wake.run();
         short[] gpu;
         try {
-            gpu = f.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            gpu = QuietWait.get(f, 2000);
         } catch (Exception e) {
             LOGGER.warn("chunk {} copy: readback failed", chunk.getPos(), e);
             return;

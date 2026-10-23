@@ -31,7 +31,18 @@ public final class LithostitchedGpuBiomes {
         Climate.TargetPoint point;
         Holder<Biome> base;
         boolean pointTaken, baseTaken;
+        /** The point the injector source sampled last, and where. Its base lookup samples the same point again ({@link #reused}). */
+        Climate.Sampler sampled;
+        int sx, sy, sz;
+        Climate.TargetPoint sampledPoint;
+        /** Inside the base lookup that follows the sample. */
+        boolean inBase;
     }
+
+    /** Set once an injector source sampled through {@link #point}. Before that no thread has anything to reuse. */
+    private static volatile boolean sampling;
+    /** Climate samples the base lookup took from the injector source's own sample. */
+    public static final java.util.concurrent.atomic.LongAdder REUSED_POINTS = new java.util.concurrent.atomic.LongAdder();
 
     private static final ThreadLocal<Pending> PENDING = ThreadLocal.withInitial(Pending::new);
 
@@ -96,7 +107,16 @@ public final class LithostitchedGpuBiomes {
             HANDED_POINTS.increment();
             return p.point;
         }
-        return original.call(sampler, x, y, z);
+        Climate.TargetPoint sampled = original.call(sampler, x, y, z);
+        p.sampled = sampler;
+        p.sx = x;
+        p.sy = y;
+        p.sz = z;
+        p.sampledPoint = sampled;
+        if (!sampling) {
+            sampling = true;
+        }
+        return sampled;
     }
 
     /** The injector source's {@code baseResolver.getNoiseBiome(x, y, z, sampler)}: the handed base biome, or the resolver's. */
@@ -106,6 +126,35 @@ public final class LithostitchedGpuBiomes {
             p.baseTaken = true;
             return p.base;
         }
-        return original.call(resolver, x, y, z, sampler);
+        // The base source samples the point the injector source just sampled, at the same quart with the same sampler.
+        boolean outer = !p.inBase;
+        p.inBase = true;
+        try {
+            return original.call(resolver, x, y, z, sampler);
+        } finally {
+            if (outer) {
+                p.inBase = false;
+                p.sampled = null;
+                p.sampledPoint = null;
+            }
+        }
+    }
+
+    /**
+     * The point {@code sampler} gives at quart {@code x, y, z} when the injector source sampled exactly that point just before its
+     * base lookup, or null. Sampling is a function of the sampler and the quart, so the base source gets the same values without
+     * computing all six climate parameters again.
+     */
+    @Nullable
+    public static Climate.TargetPoint reused(Climate.Sampler sampler, int x, int y, int z) {
+        if (!sampling) {
+            return null;
+        }
+        Pending p = PENDING.get();
+        if (p.inBase && p.sampled == sampler && p.sx == x && p.sy == y && p.sz == z) {
+            REUSED_POINTS.increment();
+            return p.sampledPoint;
+        }
+        return null;
     }
 }

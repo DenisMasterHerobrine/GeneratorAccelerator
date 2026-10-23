@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.ChunkGeneratorFe
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.WorldgenRandomAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.Xoroshiro128Accessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.XoroshiroSourceAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import java.util.Arrays;
@@ -13,7 +14,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
@@ -666,7 +666,7 @@ public final class DecorJob {
             return result;
         }
         try {
-            result = future.get(WAIT_MS, TimeUnit.MILLISECONDS);
+            result = QuietWait.get(future, WAIT_MS);
         } catch (java.util.concurrent.TimeoutException e) {
             LATE.increment();
             failed = true;

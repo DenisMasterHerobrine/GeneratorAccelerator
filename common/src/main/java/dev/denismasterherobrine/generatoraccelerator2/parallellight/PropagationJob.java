@@ -73,8 +73,24 @@ final class PropagationJob {
         Pool() {
             this.assigned.defaultReturnValue(-1);
         }
+
+        /** The buffers of a huge batch go. A light thread would otherwise keep that batch's size until it times out. */
+        void trim() {
+            if (this.decreases.length > TRIM_LONGS) {
+                this.decreases = new long[0];
+            }
+            if (this.increases.length > TRIM_LONGS) {
+                this.increases = new long[0];
+            }
+            if (this.sections.length > TRIM_LONGS) {
+                this.sections = new long[0];
+                this.order = new long[0];
+            }
+        }
     }
 
+    /** Larger buffers than this, 512 KB, are not kept for the next batch. */
+    static final int TRIM_LONGS = 1 << 16;
     private static final ThreadLocal<Pool> POOLS = ThreadLocal.withInitial(Pool::new);
 
     private final Pool pool;
@@ -155,6 +171,7 @@ final class PropagationJob {
             job.assigned.clear();
             job.assigned.trim(1 << 12);
         }
+        pool.trim();
         ParallelLightStats.balance(most, processed, job.count);
         if (ParallelLightStats.TRACK != null) {
             StringBuilder sb = new StringBuilder("workers:");

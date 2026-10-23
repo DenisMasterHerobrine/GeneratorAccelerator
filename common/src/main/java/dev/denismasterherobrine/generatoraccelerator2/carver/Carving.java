@@ -46,7 +46,6 @@ final class Carving {
     private final int minGenY;
     private final int topClamp;
     private final BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
-    private final BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
     /**
      * {@code SurfaceSystem.topMaterial}'s rule context and the surface rules built against it, made on the first top material of this
      * chunk ({@link #topMaterial}). Null until then.
@@ -281,7 +280,12 @@ final class Carving {
             return LAVA;
         }
         Ga2Aquifer coords = coordAquifer;
-        return coords != null ? coords.ga2$substanceAt(x, y, z, 0.0) : aquifer.computeSubstance(new DensityFunction.SinglePointContext(x, y, z), 0.0);
+        if (coords != null) {
+            return coords.ga2$substanceAt(x, y, z, 0.0);
+        }
+        // the GPU's aquifer makes the block's context only for the few blocks whose barrier noise it samples
+        return aquifer instanceof dev.denismasterherobrine.generatoraccelerator2.gpu.GpuAquifer gpu ? gpu.substanceAt(x, y, z, null, 0.0)
+            : aquifer.computeSubstance(new DensityFunction.SinglePointContext(x, y, z), 0.0);
     }
 
     /** {@code NetherWorldCarver.carveBlock}. */

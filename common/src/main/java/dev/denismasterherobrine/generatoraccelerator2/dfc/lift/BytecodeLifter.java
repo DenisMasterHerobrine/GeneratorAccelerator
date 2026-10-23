@@ -8,7 +8,6 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
@@ -49,9 +48,6 @@ import org.objectweb.asm.tree.VarInsnNode;
 public final class BytecodeLifter {
     private static final String CTX = "net/minecraft/world/level/levelgen/DensityFunction$FunctionContext";
     private static final String DF = "net/minecraft/world/level/levelgen/DensityFunction";
-    private static final String NOISE_HOLDER = "net/minecraft/world/level/levelgen/DensityFunction$NoiseHolder";
-    private static final String NORMAL_NOISE = "net/minecraft/world/level/levelgen/synth/NormalNoise";
-    private static final String HOLDER = "net/minecraft/core/Holder";
     /** {@code DensityFunction.compute}, as the running game names it ({@link Names}). Looked up in the classes' bytes. */
     private static final String COMPUTE_DESC = "(L" + CTX + ";)D";
     private static final String RUNTIME_COMPUTE = Names.runtimeMethod(DF, "compute", COMPUTE_DESC);

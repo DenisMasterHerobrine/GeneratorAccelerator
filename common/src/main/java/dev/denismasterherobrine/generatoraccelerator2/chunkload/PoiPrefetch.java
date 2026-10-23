@@ -57,7 +57,7 @@ public final class PoiPrefetch {
 
     /** At the end of {@code ChunkSerializer.read}. */
     public static void exit() {
-        CURRENT.remove();
+        CURRENT.set(null);
     }
 
     /** The read ahead of {@code pos} in {@code storage}, once, or null. */
@@ -66,7 +66,7 @@ public final class PoiPrefetch {
         if (p == null || p.storage() != storage || !p.pos().equals(pos)) {
             return null;
         }
-        CURRENT.remove();
+        CURRENT.set(null);
         ChunkLoadStats.POI_PREFETCH_USED.increment();
         return p.read();
     }

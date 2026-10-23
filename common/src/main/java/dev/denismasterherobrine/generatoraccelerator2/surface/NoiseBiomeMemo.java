@@ -56,7 +56,7 @@ public final class NoiseBiomeMemo implements AutoCloseable {
 
     @Override
     public void close() {
-        OPEN.remove();
+        OPEN.set(null);
         source = null;
         Arrays.fill(biomes, 0, biomes.length, null);
         size = 0;

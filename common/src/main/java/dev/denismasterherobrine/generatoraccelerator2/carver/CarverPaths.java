@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.carver;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -22,7 +24,6 @@ import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import net.minecraft.world.level.levelgen.carver.NetherWorldCarver;
 import net.minecraft.world.level.levelgen.heightproviders.BiasedToBottomHeight;
 import net.minecraft.world.level.levelgen.heightproviders.ConstantHeight;
-import net.minecraft.world.level.levelgen.heightproviders.HeightProvider;
 import net.minecraft.world.level.levelgen.heightproviders.TrapezoidHeight;
 import net.minecraft.world.level.levelgen.heightproviders.UniformHeight;
 import net.minecraft.world.level.levelgen.heightproviders.VeryBiasedToBottomHeight;
@@ -133,10 +134,9 @@ public final class CarverPaths {
      * The path of carver {@code index} of source chunk {@code (sx, sz)}: {@link CarverPath#NONE} when the
      * start check fails, otherwise everything the start carves.
      */
-    static CarverPath path(long seed, int sx, int sz, int index, ConfiguredWorldCarver<?> carver, int kind, WorldGenerationContext context) {
+    static CarverPath path(long seed, int sx, int sz, int index, ConfiguredWorldCarver<?> carver, int kind, WorldGenerationContext context, FastLegacyRandom start) {
         // most sources start nothing. Their check is a few random draws, cheaper than a lookup,
-        // and is kept out of the cache.
-        FastLegacyRandom start = new FastLegacyRandom(0L);
+        // and is kept out of the cache. {@code start} is the caller's, reseeded here in full.
         start.setLargeFeatureSeed(seed + (long) index, sx, sz);
         if (!carver.isStartChunk(start)) {
             HITS.increment();
@@ -156,7 +156,9 @@ public final class CarverPaths {
         } else {
             HITS.increment();
         }
-        if (cur.put(key, path) == null && (cur.size() > capacity() || weight.addAndGet(weight(path)) > MAX_STEPS)) {
+        // A nearly full heap keeps an eighth of the usual generation.
+        int shift = MemoryPressure.high() ? 3 : 0;
+        if (cur.put(key, path) == null && (cur.size() > capacity() >> shift || weight.addAndGet(weight(path)) > MAX_STEPS >> shift)) {
             synchronized (CarverPaths.class) {
                 if (current == cur) {
                     previous = cur;
@@ -174,6 +176,17 @@ public final class CarverPaths {
             previous = new ConcurrentHashMap<>();
             weight.set(0);
         }
+    }
+
+    /** When the heap fills, the old generation goes. The current one shrinks as it is used. */
+    private static final IdleTrims.Trimmable TRIM = (now, pressure) -> {
+        if (pressure) {
+            previous = new ConcurrentHashMap<>();
+        }
+    };
+
+    static {
+        IdleTrims.register(TRIM);
     }
 
     /**

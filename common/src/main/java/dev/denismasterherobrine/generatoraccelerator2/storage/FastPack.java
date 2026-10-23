@@ -7,7 +7,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.stream.LongStream;
 import javax.annotation.Nullable;
 import net.minecraft.core.IdMap;
 import net.minecraft.util.BitStorage;
