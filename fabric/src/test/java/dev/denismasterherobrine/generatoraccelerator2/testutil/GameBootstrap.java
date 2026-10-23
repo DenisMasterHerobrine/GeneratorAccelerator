@@ -23,6 +23,9 @@ public final class GameBootstrap implements BeforeAllCallback {
                 ClassLoader game = context.getRequiredTestClass().getClassLoader();
                 Class.forName("net.minecraft.SharedConstants", true, game).getMethod("tryDetectVersion").invoke(null);
                 Class.forName("net.minecraft.server.Bootstrap", true, game).getMethod("bootStrap").invoke(null);
+                // the compat adapters the game registers at mod construction, before any hook is asked (Fabric API's air check in
+                // section writes is the one the test runtime loads). A hook asked earlier would cache its answer without them.
+                Class.forName("dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules", true, game).getMethod("init").invoke(null);
                 done = true;
             }
         }

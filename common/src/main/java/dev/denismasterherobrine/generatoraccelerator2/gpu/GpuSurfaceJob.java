@@ -45,6 +45,23 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         });
     }
 
+    /** Conditions under which every chunk builds its surface on the CPU for now (another mod's code would act in it). */
+    private static final java.util.List<java.util.function.BooleanSupplier> CPU_CONDITIONS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Adds a condition under which every chunk builds its surface on the CPU ({@code compat/<modid>}). */
+    public static void addCpuCondition(java.util.function.BooleanSupplier condition) {
+        CPU_CONDITIONS.add(condition);
+    }
+
+    private static boolean cpuNow() {
+        for (java.util.function.BooleanSupplier c : CPU_CONDITIONS) {
+            if (c.getAsBoolean()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static final LongAdder ASKED = new LongAdder();
     public static final LongAdder APPLIED = new LongAdder();
     public static final LongAdder CPU = new LongAdder();
@@ -97,7 +114,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     static boolean ask(GpuWorldgen wg, ChunkAccess chunk, StructureManager structures, GpuTerrain terrain, GpuWorldgen.NoiseResult res) {
         SurfaceBatches batches = wg.surfaces;
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
-        if (batches == null || terrain == null || gc == null || !allowed() || structures == null) {
+        if (batches == null || terrain == null || gc == null || !allowed() || structures == null || cpuNow()) {
             return false;
         }
         LevelAccessor level = ((StructureManagerLevelAccessor) structures).ga2$level();
@@ -191,7 +208,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
      * The SURFACE step. Writes the GPU's surface into the chunk. Returns false when the CPU must build it: no answer, a late answer, or a
      * chunk the GPU left to the CPU.
      */
-    public static boolean apply(ChunkAccess chunk, java.util.function.Consumer<ChunkAccess> cpuSurface) {
+    public static boolean apply(ChunkAccess chunk, java.util.function.Consumer<ChunkAccess> cpuSurface, Runnable records) {
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
         GpuSurfaceJob job = gc == null ? null : gc.ga2$gpuSurface();
         if (job == null) {
@@ -228,6 +245,8 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
             return false;
         }
         Runnable compare = GpuVerify.surfaceBefore(chunk, cpuSurface);
+        // other mods' code that records the columns (Ecliptic Seasons' biome map), on the chunk as the noise step left it
+        records.run();
         if (!Apply.surface(job.wg, chunk, r)) {
             CPU.increment();
             if (job.wg.decor != null) {

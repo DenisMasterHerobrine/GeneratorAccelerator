@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.Mixin;
 public abstract class BiomeFillMixin {
     @WrapMethod(method = "fillBiomesFromNoise(Lnet/minecraft/world/level/biome/BiomeResolver;Lnet/minecraft/world/level/biome/Climate$Sampler;)V")
     private void ga2$markBiomeFill(BiomeResolver resolver, Climate.Sampler sampler, Operation<Void> original) {
+        dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.bind((ChunkAccess) (Object) this, sampler);
         FlatClimateTree.enterFill();
         try {
             original.call(resolver, sampler);

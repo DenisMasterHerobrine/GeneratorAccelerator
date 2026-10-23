@@ -67,4 +67,15 @@ public final class NeoForgePlatformHooks implements PlatformHooks.Service {
     public Biome.ClimateSettings climateSettings(Biome biome) {
         return biome.modifiableBiomeInfo().get().climateSettings();
     }
+
+    /** NeoForge's {@code processBlockInfos} calls {@code process}, which hands the template on and by default calls {@code processBlock}. */
+    @Override
+    public net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
+            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template) {
+        return processor.process(level, offset, pivot, raw, placed, settings, template);
+    }
 }

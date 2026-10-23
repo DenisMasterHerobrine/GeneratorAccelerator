@@ -39,6 +39,29 @@ public final class ParallelLight {
 
     private static volatile BooleanSupplier compatGate = () -> true;
 
+    /**
+     * Another way to run a batch's increase propagation, set by the installer (Generator Accelerator 2 runs it on the GPU). When it
+     * wants a batch, the decreases run here first, then the offload runs the increases. It returns -1 with the queue as it was,
+     * and the increases then run here.
+     */
+    public interface IncreaseOffload {
+        /** Whether to offer this batch: {@code increases} and {@code decreases} queued entries after the node checks. */
+        boolean wants(LightEngine<?, ?> engine, boolean sky, int increases, int decreases);
+
+        /** Runs the engine's queued increases. Returns the entries processed, or -1 with the queue untouched. */
+        int propagateIncreases(LightEngine<?, ?> engine, boolean sky);
+
+        /** The light thread's time for {@code increases} queued entries the increase propagation here ran. */
+        void cpuIncreases(boolean sky, int increases, long nanos);
+    }
+
+    private static volatile IncreaseOffload offload;
+
+    /** Sets the increase offload ({@link IncreaseOffload}), or null for none. */
+    public static void setIncreaseOffload(IncreaseOffload o) {
+        offload = o;
+    }
+
     /** Whether other mods' changes to the light engine leave it on (checked per batch). */
     public static void setCompatGate(BooleanSupplier gate) {
         compatGate = gate;
@@ -73,6 +96,22 @@ public final class ParallelLight {
         nodes.trim(512);
         int queued = (e.ga2pl$decreaseQueue().size() + e.ga2pl$increaseQueue().size()) / 2;
         int processed = -1;
+        IncreaseOffload off = offload;
+        int increasesQueued = e.ga2pl$increaseQueue().size() / 2;
+        if (off != null && increasesQueued > 0 && off.wants(engine, sky, increasesQueued, e.ga2pl$decreaseQueue().size() / 2)) {
+            // decreases first, as vanilla runs them, then the offload's increases
+            processed = e.ga2pl$propagateDecreases();
+            int increases = off.propagateIncreases(engine, sky);
+            if (increases < 0) {
+                increases = timedIncreases(e, off, sky);
+            }
+            processed += increases;
+            e.ga2pl$clearChunkCache();
+            LayerLightSectionStorageAccessor storage = (LayerLightSectionStorageAccessor) e.ga2pl$storage();
+            storage.ga2pl$markNewInconsistencies(engine);
+            storage.ga2pl$swapSectionMap();
+            return processed;
+        }
         int min = minEntriesOverride >= 0 ? minEntriesOverride : ParallelLightConfig.minEntries();
         // A block light entry is mostly a light source flooding up to 15 blocks around. A sky light entry is a short step.
         long work = sky ? queued : queued * 16L;
@@ -96,7 +135,7 @@ public final class ParallelLight {
                 ParallelLightStats.SERIAL_QUEUED.add(queued);
             }
             processed = e.ga2pl$propagateDecreases();
-            processed += e.ga2pl$propagateIncreases();
+            processed += off != null ? timedIncreases(e, off, sky) : e.ga2pl$propagateIncreases();
             ParallelLightStats.SERIAL_PROCESSED.add(processed);
         }
         e.ga2pl$clearChunkCache();
@@ -104,6 +143,17 @@ public final class ParallelLight {
         storage.ga2pl$markNewInconsistencies(engine);
         storage.ga2pl$swapSectionMap();
         return processed;
+    }
+
+    /** The engine's own increase propagation, timed for the offload's choice between it and the offload. */
+    private static int timedIncreases(LightEngineAccessor e, IncreaseOffload off, boolean sky) {
+        int entries = e.ga2pl$increaseQueue().size() / 2;
+        long t0 = System.nanoTime();
+        int n = e.ga2pl$propagateIncreases();
+        if (entries > 0) {
+            off.cpuIncreases(sky, entries, System.nanoTime() - t0);
+        }
+        return n;
     }
 
     /** The busy share of the light thread that runs this engine, or 1 when the share is unknown. */

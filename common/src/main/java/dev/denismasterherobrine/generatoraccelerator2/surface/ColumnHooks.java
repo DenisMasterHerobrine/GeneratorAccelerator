@@ -35,17 +35,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>The places, in vanilla's column loop:
  * <ul>
+ *     <li>{@link Place#START}: once, at the head of {@code buildSurface}, before the loop.</li>
  *     <li>{@link Place#TOP}: after the column's biome lookup, at the eroded badlands test ({@code holder.is(ERODED_BADLANDS)}).
  *     Code injected before the test runs first, then at most one wrapper of the test itself.</li>
  *     <li>{@link Place#BEFORE_RULES}: after the eroded badlands extension, before the heightmap read that starts the rule walk.</li>
  *     <li>{@link Place#FROZEN}: after the walk, at the frozen ocean test ({@code holder.is(FROZEN_OCEAN)}). Code before the
  *     test runs first, then at most one wrapper of the test.</li>
+ *     <li>{@link Place#END}: once, at the return of {@code buildSurface}, after the loop.</li>
  * </ul>
+ * Handlers that share values through MixinExtras' {@code @Share} get references that live for one build ({@link Frame#shared}).
  */
 public final class ColumnHooks {
     private ColumnHooks() {}
 
-    public enum Place { TOP, BEFORE_RULES, FROZEN }
+    public enum Place { START, TOP, BEFORE_RULES, FROZEN, END }
 
     /** What vanilla's column loop holds where the hooks run: the method's arguments and the column's locals. One per build. */
     public static final class Frame {
@@ -71,6 +74,40 @@ public final class ColumnHooks {
         public int top;
         /** Vanilla's rule context with this column's position ({@code updateXZ}). Set when a hook asks for it. */
         public SurfaceRules.Context ruleContext;
+        /** The position of the column's biome lookup, vanilla's second mutable position ({@code (x, legacy ? 0 : top, z)}). */
+        public net.minecraft.core.BlockPos.MutableBlockPos biomePos;
+        /** Values a mixin's handlers share for one build ({@code @Share}), by a key of the hook's own. */
+        public final Map<Object, Object> shared = new java.util.IdentityHashMap<>();
+    }
+
+    /** A {@code @Share}d reference for one build. */
+    public static final class Ref<T> implements com.llamalad7.mixinextras.sugar.ref.LocalRef<T> {
+        private T value;
+
+        @Override
+        public T get() {
+            return value;
+        }
+
+        @Override
+        public void set(T value) {
+            this.value = value;
+        }
+    }
+
+    /** A {@code @Share}d int for one build. */
+    public static final class IntRef implements com.llamalad7.mixinextras.sugar.ref.LocalIntRef {
+        private int value;
+
+        @Override
+        public int get() {
+            return value;
+        }
+
+        @Override
+        public void set(int value) {
+            this.value = value;
+        }
     }
 
     /** The biome test a wrapper wraps ({@code Holder.is(ResourceKey)}). */
@@ -117,6 +154,62 @@ public final class ColumnHooks {
          */
         default boolean readsNoiseChunk() {
             return true;
+        }
+
+        /**
+         * True for code that only records what it is handed (at {@link Place#START}, {@link Place#TOP} or {@link Place#END}) and changes
+         * no block. Where the GPU builds the surface, it runs on the CPU before the GPU's blocks are written ({@link #records}),
+         * with the column's biome looked up as vanilla's loop looks it up.
+         */
+        default boolean record() {
+            return false;
+        }
+    }
+
+    /** Whether {@code mixin}'s code is set up (its handlers found). */
+    public static boolean ready(String mixin) {
+        return create(mixin) != null;
+    }
+
+    /**
+     * Runs the record hooks ({@link Hook#record}) for a chunk whose surface another builder makes (the GPU's), before that builder
+     * writes: the start hooks, then per column the top hooks with the column's biome at one above its top
+     * ({@code biomeManager.getBiome}, vanilla's lookup), then the end hooks. Does nothing without record hooks.
+     */
+    public static void records(SurfaceSystem system, RandomState randomState, BiomeManager biomeManager, Registry<Biome> biomes, boolean legacy,
+                               WorldGenerationContext context, ChunkAccess chunk, SurfaceRules.RuleSource rule) {
+        Resolved r = resolved();
+        if (r == null || !r.valid() || !r.hasRecords()) {
+            return;
+        }
+        Frame f = new Frame();
+        f.system = system;
+        f.randomState = randomState;
+        f.biomeManager = biomeManager;
+        f.biomes = biomes;
+        f.legacy = legacy;
+        f.context = context;
+        f.chunk = chunk;
+        f.rule = rule;
+        f.biomePos = new net.minecraft.core.BlockPos.MutableBlockPos();
+        net.minecraft.world.level.levelgen.Heightmap surface = chunk.getOrCreateHeightmapUnprimed(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG);
+        int minX = chunk.getPos().getMinBlockX(), minZ = chunk.getPos().getMinBlockZ();
+        try {
+            Resolved.runRecords(r.start, f);
+            for (int k = 0; k < 16; k++) {
+                for (int l = 0; l < 16; l++) {
+                    f.localX = k;
+                    f.localZ = l;
+                    f.x = minX + k;
+                    f.z = minZ + l;
+                    f.top = surface.getFirstAvailable(k, l);
+                    f.biome = biomeManager.getBiome(f.biomePos.set(f.x, legacy ? 0 : f.top, f.z));
+                    Resolved.runRecords(r.top, f);
+                }
+            }
+            Resolved.runRecords(r.end, f);
+        } catch (Throwable t) {
+            throw Resolved.rethrow(t);
         }
     }
 
@@ -186,6 +279,8 @@ public final class ColumnHooks {
         if (handled.isEmpty()) {
             return Resolved.NONE;
         }
+        List<Hook> start = new ArrayList<>();
+        List<Hook> end = new ArrayList<>();
         List<Hook> top = new ArrayList<>();
         List<Hook> rules = new ArrayList<>();
         List<Hook> frozen = new ArrayList<>();
@@ -226,6 +321,12 @@ public final class ColumnHooks {
             local &= h.columnLocal();
             context |= h.needsRuleContext();
             switch (h.place()) {
+                case START, END -> {
+                    if (h.wrapper()) {
+                        throw new IllegalStateException("a wrapper at the head or return of the build");
+                    }
+                    (h.place() == Place.START ? start : end).add(h);
+                }
                 case TOP -> {
                     if (h.wrapper()) {
                         if (topWrapper != null) {
@@ -254,7 +355,8 @@ public final class ColumnHooks {
                 }
             }
         }
-        return new Resolved(top.toArray(new Hook[0]), topWrapper, rules.toArray(new Hook[0]), frozen.toArray(new Hook[0]), frozenWrapper, local, context, true);
+        return new Resolved(start.toArray(new Hook[0]), top.toArray(new Hook[0]), topWrapper, rules.toArray(new Hook[0]), frozen.toArray(new Hook[0]), frozenWrapper,
+            end.toArray(new Hook[0]), local, context, true);
     }
 
     private static String handlerName(String nameAndDesc) {
@@ -263,16 +365,36 @@ public final class ColumnHooks {
     }
 
     /** Every hook by place, in execution order. */
-    public record Resolved(Hook[] top, Hook topWrapper, Hook[] rules, Hook[] frozen, Hook frozenWrapper, boolean columnLocal, boolean needsRuleContext,
-                           boolean valid) {
-        static final Resolved NONE = new Resolved(new Hook[0], null, new Hook[0], new Hook[0], null, true, false, true);
-        static final Resolved INVALID = new Resolved(new Hook[0], null, new Hook[0], new Hook[0], null, true, false, false);
+    public record Resolved(Hook[] start, Hook[] top, Hook topWrapper, Hook[] rules, Hook[] frozen, Hook frozenWrapper, Hook[] end, boolean columnLocal,
+                           boolean needsRuleContext, boolean valid) {
+        static final Resolved NONE = new Resolved(new Hook[0], new Hook[0], null, new Hook[0], new Hook[0], null, new Hook[0], true, false, true);
+        static final Resolved INVALID = new Resolved(new Hook[0], new Hook[0], null, new Hook[0], new Hook[0], null, new Hook[0], true, false, false);
 
         private static final Test PLAIN = Holder::is;
 
+        /** Whether some hook only records ({@link Hook#record}). */
+        boolean hasRecords() {
+            for (Hook[] hooks : new Hook[][] { start, top, end }) {
+                for (Hook h : hooks) {
+                    if (h.record()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static void runRecords(Hook[] hooks, Frame f) throws Throwable {
+            for (Hook h : hooks) {
+                if (h.record()) {
+                    h.run(f);
+                }
+            }
+        }
+
         /** Whether some hook may read the NoiseChunk ({@link Hook#readsNoiseChunk}). */
         boolean readsNoiseChunk() {
-            for (Hook[] hooks : new Hook[][] { top, rules, frozen, { topWrapper, frozenWrapper } }) {
+            for (Hook[] hooks : new Hook[][] { start, top, rules, frozen, end, { topWrapper, frozenWrapper } }) {
                 for (Hook h : hooks) {
                     if (h != null && h.readsNoiseChunk()) {
                         return true;
@@ -289,6 +411,26 @@ public final class ColumnHooks {
                     h.run(f);
                 }
                 return topWrapper != null ? topWrapper.wrap(f, erodedBadlands, PLAIN) : f.biome.is(erodedBadlands);
+            } catch (Throwable t) {
+                throw rethrow(t);
+            }
+        }
+
+        /** The hooks at the head of the build, before the column loop. */
+        public void start(Frame f) {
+            run(start, f);
+        }
+
+        /** The hooks at the return of the build, after the column loop. */
+        public void end(Frame f) {
+            run(end, f);
+        }
+
+        private static void run(Hook[] hooks, Frame f) {
+            try {
+                for (Hook h : hooks) {
+                    h.run(f);
+                }
             } catch (Throwable t) {
                 throw rethrow(t);
             }
@@ -316,7 +458,7 @@ public final class ColumnHooks {
             }
         }
 
-        private static RuntimeException rethrow(Throwable t) {
+        static RuntimeException rethrow(Throwable t) {
             if (t instanceof RuntimeException r) {
                 throw r;
             }

@@ -71,6 +71,7 @@ public class PredicateProgramsTest {
             positions[i] = new BlockPos(x, surface - 4 + random.nextInt(9), z);
         }
         Object[] programs = new Object[predicates.size()];
+        PredicatePrograms.COMPILE_AFTER = 0; // the programs at once, not after a thousand calls
         for (int i = 0; i < programs.length; i++) {
             programs[i] = PredicatePrograms.programFor(predicates.get(i));
         }
@@ -141,6 +142,8 @@ public class PredicateProgramsTest {
 
         long compiledBefore = PredicatePrograms.COMPILED.sum();
         int asked = 0;
+        int saved = PredicatePrograms.COMPILE_AFTER;
+        PredicatePrograms.COMPILE_AFTER = 0; // the programs at once, not after a thousand calls
         int x0 = FeatureRun.CENTER_X * 16;
         int z0 = FeatureRun.CENTER_Z * 16;
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -165,6 +168,20 @@ public class PredicateProgramsTest {
         assertTrue(PredicatePrograms.COMPILED.sum() - compiledBefore > predicates.size() / 2,
             "programs compiled: " + (PredicatePrograms.COMPILED.sum() - compiledBefore) + " of " + predicates.size());
         assertTrue(asked > 100000, "asked " + asked);
+        // a program made only once its predicate was asked often enough, answering as the predicate meanwhile
+        PredicatePrograms.COMPILE_AFTER = 4;
+        BlockPredicate predicate = predicates.get(0);
+        Object lazy = PredicatePrograms.programFor(predicate);
+        for (int k = 0; k < 3; k++) {
+            BlockPos pos = new BlockPos(x0 + k, 64, z0 + k);
+            assertTrue(predicate.test(level, pos) == PredicatePrograms.test(lazy, predicate, level, pos), "before the program, call " + k);
+        }
+        // the lazy program's own state, not the global count: other tests' worker threads may still be making programs
+        assertTrue(!PredicatePrograms.made(lazy), "no program after three calls");
+        BlockPos pos = new BlockPos(x0 + 5, 64, z0 + 5);
+        assertTrue(predicate.test(level, pos) == PredicatePrograms.test(lazy, predicate, level, pos), "the call that makes the program");
+        assertTrue(PredicatePrograms.made(lazy), "the program after the fourth call");
+        PredicatePrograms.COMPILE_AFTER = saved;
     }
 
     /** The predicates of every vanilla placed feature's block predicate filters and environment scans. */

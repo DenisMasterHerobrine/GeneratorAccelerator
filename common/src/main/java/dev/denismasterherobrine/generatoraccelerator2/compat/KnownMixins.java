@@ -40,6 +40,7 @@ public final class KnownMixins {
     static {
         List<Entry> all = new ArrayList<>();
         all.addAll(NaturesSpiritMixins.ENTRIES);
+        all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins.ENTRIES);
         all.addAll(BiomesWeveGoneMixins.ENTRIES);
         all.addAll(BiolithMixins.ENTRIES);
         all.addAll(RegionsUnexploredMixins.ENTRIES);
@@ -54,6 +55,7 @@ public final class KnownMixins {
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins.ENTRIES);
+        all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins.ENTRIES);

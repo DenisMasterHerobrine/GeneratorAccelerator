@@ -122,6 +122,9 @@ public final class AquiferFastPath {
         if (aquifer.getClass() != Aquifer.NoiseBasedAquifer.class || !DfcHooks.enabled()) {
             return OFF;
         }
+        if (MixinTargets.aquiferLiquidRegions() && !LiquidRegions.usable()) {
+            return OFF; // Better Caves' liquid regions cannot be read, so the step they add cannot be applied here
+        }
         Boolean forced = override;
         if (forced != null ? !forced : !DfcConfig.aquiferFastPath()) {
             return OFF;

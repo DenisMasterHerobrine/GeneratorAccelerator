@@ -361,6 +361,11 @@ public final class Gpu {
         out.add(String.format(java.util.Locale.ROOT, "  chunks: noise %,d on GPU, %,d on CPU; biomes %,d on GPU, %,d on CPU; %,d GPU errors; %,d batches, %,d regions (%,d let go once every chunk was answered); idle dimensions' memory given back %,d times, unused pooled region buffers %,d",
             GpuSteps.NOISE_GPU.sum(), GpuSteps.NOISE_CPU.sum(), GpuSteps.BIOMES_GPU.sum(), GpuSteps.BIOMES_CPU.sum(), GpuSteps.GPU_ERRORS.sum(),
             GpuWorldgen.BATCHES.sum(), GpuWorldgen.REGIONS.sum(), GpuWorldgen.REGIONS_DONE.sum(), GpuWorldgen.TRIMS.sum(), GpuWorldgen.POOL_RELEASED.sum()));
+        if (GpuSteps.BIOMES_HANDED.sum() > 0) {
+            out.add(String.format(java.util.Locale.ROOT, "  biomes on the CPU with the GPU's answers: %,d chunks; %,d climate points, %,d vanilla searches, %,d Biolith searches from the GPU",
+                GpuSteps.BIOMES_HANDED.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.POINTS.sum(),
+                dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.NEAREST.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.FITTEST.sum()));
+        }
         out.add(String.format(java.util.Locale.ROOT, "  region buffers: %,d MB on the GPU now; %,d regions let go after going unused",
             GpuWorldgen.REGION_BYTES.sum() >> 20, GpuWorldgen.REGIONS_IDLE.sum()));
         long handed = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.HANDED_POINTS.sum();
@@ -370,6 +375,9 @@ public final class Gpu {
         if (GpuWorldgen.C2D_CPU.sum() > 0) {
             out.add(String.format(java.util.Locale.ROOT, "  given back to the CPU: %,d chunks whose aquifer cells' order decides a cache_2d value",
                 GpuWorldgen.C2D_CPU.sum()));
+        }
+        if (GpuSteps.ENHANCED_CHUNKS.sum() > 0) {
+            out.add(String.format(java.util.Locale.ROOT, "  other mods' structure pieces (YUNG's API, Integrated API) filled on the GPU: %,d chunks", GpuSteps.ENHANCED_CHUNKS.sum()));
         }
         out.add(String.format(java.util.Locale.ROOT, "  without a NoiseChunk: %,d chunks (%s; levels asked beyond a chunk %,d); blocks asked for at the biome step %,d",
             GpuTerrain.CHUNKS.sum(), GpuTerrain.enabled() ? "on" : "off", GpuTerrain.LEVEL_FALLBACKS.sum(), GpuSteps.NOISE_EARLY.sum()));

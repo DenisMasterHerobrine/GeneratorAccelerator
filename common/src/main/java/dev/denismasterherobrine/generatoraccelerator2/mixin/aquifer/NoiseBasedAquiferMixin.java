@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer;
 
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
 import net.minecraft.core.BlockPos;
@@ -74,6 +75,41 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Shadow @Final protected int gridSizeZ;
     @Shadow @Final private NoiseChunk noiseChunk;
     @Shadow @Final private static int[][] SURFACE_SAMPLING_OFFSETS_IN_CHUNKS;
+
+    // Better Caves' liquid regions this aquifer was made with, and the table of the chunk last asked (aquifer.LiquidRegions)
+    @Unique private boolean ga2$lqResolved;
+    @Unique private Object ga2$lqRegions;
+    @Unique private LiquidRegions.Table ga2$lqTable;
+    @Unique private int ga2$lqChunkX = Integer.MIN_VALUE;
+    @Unique private int ga2$lqChunkZ = Integer.MIN_VALUE;
+
+    /** The chunk's liquid-region table, or null when the mod's step changes nothing for this aquifer. */
+    @Unique
+    private LiquidRegions.Table ga2$lqTable(int chunkX, int chunkZ) {
+        if (!this.ga2$lqResolved) {
+            this.ga2$lqRegions = LiquidRegions.regionsOf((Aquifer) (Object) this);
+            this.ga2$lqResolved = true;
+        }
+        if (this.ga2$lqRegions == null) {
+            return null;
+        }
+        if (chunkX != this.ga2$lqChunkX || chunkZ != this.ga2$lqChunkZ) {
+            this.ga2$lqTable = LiquidRegions.table(this.ga2$lqRegions, chunkX, chunkZ);
+            this.ga2$lqChunkX = chunkX;
+            this.ga2$lqChunkZ = chunkZ;
+        }
+        return this.ga2$lqTable;
+    }
+
+    /** The fast path's answer after Better Caves' step, as the mod's handler changes vanilla's answer at the method's return. */
+    @Unique
+    private BlockState ga2$liquids(int x, int y, int z, BlockState state) {
+        if (state == null) {
+            return null;
+        }
+        LiquidRegions.Table table = ga2$lqTable(x >> 4, z >> 4);
+        return table == null ? state : LiquidRegions.apply(table, x, y, z, state);
+    }
 
     @Shadow
     protected static double similarity(int a, int b) {
@@ -204,9 +240,11 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Inject(method = "computeSubstance", at = @At("HEAD"), cancellable = true)
     private void ga2$computeSubstance(DensityFunction.FunctionContext context, double density, CallbackInfoReturnable<BlockState> cir) {
         if (this.ga2$mode != AquiferFastPath.OFF) {
-            Object result = this.ga2$compute(context, density, context.blockX(), context.blockY(), context.blockZ());
+            int x = context.blockX(), y = context.blockY(), z = context.blockZ();
+            Object result = this.ga2$compute(context, density, x, y, z);
             if (result != AquiferFastPath.FALLBACK) {
-                cir.setReturnValue((BlockState) result);
+                // this return is GA2's own, so Better Caves' handler at the method's returns does not run for it
+                cir.setReturnValue(LiquidRegions.active() ? ga2$liquids(x, y, z, (BlockState) result) : (BlockState) result);
             }
         }
     }
@@ -221,9 +259,10 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Override
     public BlockState ga2$substance(DensityFunction.FunctionContext context, double density) {
         if (this.ga2$mode != AquiferFastPath.OFF) {
-            Object result = this.ga2$compute(context, density, context.blockX(), context.blockY(), context.blockZ());
+            int x = context.blockX(), y = context.blockY(), z = context.blockZ();
+            Object result = this.ga2$compute(context, density, x, y, z);
             if (result != AquiferFastPath.FALLBACK) {
-                return (BlockState) result;
+                return LiquidRegions.active() ? ga2$liquids(x, y, z, (BlockState) result) : (BlockState) result;
             }
         }
         // Off, or outside the chunk's cells. The computeSubstance hook falls back the same way and lets vanilla's body run.
@@ -251,7 +290,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         if (this.ga2$mode != AquiferFastPath.OFF) {
             Object result = this.ga2$compute(null, density, x, y, z);
             if (result != AquiferFastPath.FALLBACK) {
-                return (BlockState) result;
+                return LiquidRegions.active() ? ga2$liquids(x, y, z, (BlockState) result) : (BlockState) result;
             }
         }
         return ((Aquifer) (Object) this).computeSubstance(new DensityFunction.SinglePointContext(x, y, z), density);
@@ -359,6 +398,13 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     public boolean ga2$cellAir(int x0, int y0, int z0, int w, int h) {
         if (this.ga2$mode == AquiferFastPath.OFF || !CellAir.noLava(this.globalFluidPicker, x0, y0, z0, w, h)) {
             return false;
+        }
+        if (LiquidRegions.active()) {
+            // below the liquid altitude the mod turns air into the column's liquid or into stone. Those cells go block by block
+            LiquidRegions.Table table = ga2$lqTable(x0 >> 4, z0 >> 4);
+            if (table != null && y0 <= table.altitude()) {
+                return false;
+            }
         }
         int gx0 = (x0 - 5) >> 4;
         int gx1 = (x0 + w - 6) >> 4;

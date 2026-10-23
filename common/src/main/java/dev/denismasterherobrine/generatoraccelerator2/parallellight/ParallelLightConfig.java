@@ -22,7 +22,7 @@ public final class ParallelLightConfig {
             "still runs every light task in vanilla's order; only the flood fill of a large batch (new chunks' light, big block",
             "changes) is split, by section, between it and the helper threads. Light comes out identical to vanilla's.").define("enabled", true);
         THREADS = b.comment("Helper threads shared by all dimensions (the light thread itself always takes part). 0 = automatic: a quarter",
-            "of the processor threads, at most 4.").defineInRange("threads", 0, 0, 64);
+            "of the processor threads, at most 4, and none on a machine with four processor threads or fewer.").defineInRange("threads", 0, 0, 64);
         MIN_ENTRIES = b.comment("Smallest batch, in queued light changes, worth splitting; smaller batches run on the light thread alone.")
             .defineInRange("minEntries", 512, 1, Integer.MAX_VALUE);
         MIN_BUSY = b.comment("Split batches only while the dimension's light thread is busy at least this share of the time (measured over",
@@ -47,7 +47,13 @@ public final class ParallelLightConfig {
         } catch (RuntimeException e) {
             configured = 0;
         }
-        return configured > 0 ? configured : Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 4));
+        if (configured > 0) {
+            return configured;
+        }
+        int processors = Runtime.getRuntime().availableProcessors();
+        // On four hardware threads the automatic count is one helper. A split batch waits for its slowest thread, so one
+        // helper gains little, and it takes a processor from the three workers, the server thread and (on a client) rendering.
+        return processors <= 4 ? 0 : Math.max(1, Math.min(4, processors / 4));
     }
 
     public static double minBusy() {

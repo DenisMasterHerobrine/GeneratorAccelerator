@@ -16,6 +16,7 @@ public final class StorageConfig {
     public static final ConfigSpec.BooleanValue PRECOMPRESS;
     public static final ConfigSpec.BooleanValue SECTION_CODEC;
     public static final ConfigSpec.BooleanValue SAVE_PREP;
+    public static final ConfigSpec.IntValue SYNC_DELAY_MS;
     public static final ConfigSpec.BooleanValue PARALLEL_READ;
     public static final ConfigSpec.BooleanValue LOAD_PREP;
 
@@ -35,6 +36,11 @@ public final class StorageConfig {
         SAVE_PREP = b.comment("Encode an unloading chunk's sections on the worker pool before the server thread saves it; the save takes each tag",
             "when its section is unchanged since (same tags), so the server thread mostly assembles the chunk's tag. An unload waits",
             "at most ten ticks for its sections. Needs fastPack and sectionCodec.").define("savePrep", true);
+        SYNC_DELAY_MS = b.comment("Region files that vanilla would sync on every chunk write (singleplayer, and servers with sync-chunk-writes=true) are",
+            "synced once per batch of writes instead, at most this many milliseconds after the batch's first write. The bytes on disk are the",
+            "same. A crash loses at most the last batch, as vanilla's sync-chunk-writes=false loses its last writes. On a hard disk a synced",
+            "write is a head move and a flush, twice per chunk, which held saving to about 50 chunks a second. 0 = vanilla's write-through.")
+            .defineInRange("syncDelayMs", 200, 0, 60000);
         b.pop();
         b.push("loading");
         PARALLEL_READ = b.comment("Loading saved chunks: the region file's IO thread only reads a chunk's bytes, and the chunk is decompressed and",
@@ -44,6 +50,14 @@ public final class StorageConfig {
             "(the same objects it would build) when the tags are unchanged.").define("loadPrep", true);
         b.pop();
         SPEC = b.build();
+    }
+
+    public static int syncDelayMs() {
+        try {
+            return !SPEC.isLoaded() ? 200 : SYNC_DELAY_MS.get();
+        } catch (RuntimeException e) {
+            return 200;
+        }
     }
 
     public static boolean fastRegionWrite() {

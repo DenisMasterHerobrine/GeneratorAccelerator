@@ -61,7 +61,7 @@ public final class BeardExtras {
         }
     }
 
-    private record Callback(MethodHandle handle, @Nullable Lists known) {}
+    private record Callback(MethodHandle handle, String owner, @Nullable Lists known) {}
 
     /** The chain, resolved once. */
     private static final class Chain {
@@ -131,7 +131,7 @@ public final class BeardExtras {
                 } else {
                     Method m = Beardifier.class.getDeclaredMethod(s.name(), DensityFunction.FunctionContext.class, CallbackInfoReturnable.class);
                     m.setAccessible(true);
-                    callbacks.add(new Callback(lookup.unreflect(m), lists(s.owner())));
+                    callbacks.add(new Callback(lookup.unreflect(m), s.owner(), lists(s.owner())));
                 }
             }
             Lists[] outer = new Lists[r.outer().size()];
@@ -303,6 +303,56 @@ public final class BeardExtras {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        }
+    }
+
+    /**
+     * The enhanced pieces of the one known provider whose callback decides this beardifier's extra density, for the GPU
+     * ({@link EnhancedBeard}): the first callback in the chain with pieces, since each known provider's callback cancels the method
+     * and a provider without pieces ends the chain with the value. Empty when no provider has pieces. Null when the GPU cannot take
+     * the chunk: another mod's change to the beardifier, an unknown chain, Twilight Forest densities, an outer wrapper with
+     * pieces, a provider GA2 cannot read (Moog's Structures), or overrides the mask could not hold. The test hook's chunk when set.
+     */
+    @Nullable
+    public static EnhancedBeard.Chunk enhancedFor(Beardifier beardifier, net.minecraft.world.level.ChunkPos pos) {
+        java.util.function.Function<net.minecraft.world.level.ChunkPos, EnhancedBeard.Chunk> test = EnhancedBeard.testChunks;
+        if (test != null) {
+            return test.apply(pos);
+        }
+        if (!dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.beardCullingAllowed()) {
+            return null;
+        }
+        Chain c = chain();
+        if (c == null || c.outer == null) {
+            return null;
+        }
+        try {
+            if (c.tfDensity != null && !empty(c.tfField.invoke(beardifier))) {
+                return null;
+            }
+            for (Lists l : c.outer) {
+                if (!l.none(beardifier)) {
+                    return null;
+                }
+            }
+            for (Callback cb : c.callbacks) {
+                Lists known = cb.known();
+                if (known == null) {
+                    return null;
+                }
+                if (known.none(beardifier)) {
+                    return new EnhancedBeard.Chunk(EnhancedBeard.Kind.YUNG, List.of(), List.of(), null);
+                }
+                EnhancedBeard.Kind kind = cb.owner().equals(PROVIDERS.get(0).mixin()) ? EnhancedBeard.Kind.YUNG
+                    : cb.owner().equals(PROVIDERS.get(1).mixin()) ? EnhancedBeard.Kind.INTEGRATED : null;
+                if (kind == null || known.junctions == null) {
+                    return null;
+                }
+                return EnhancedBeard.of(kind, known.pieces.invoke(beardifier), known.junctions.invoke(beardifier));
+            }
+            return new EnhancedBeard.Chunk(EnhancedBeard.Kind.YUNG, List.of(), List.of(), null);
+        } catch (Throwable t) {
+            return null;
         }
     }
 

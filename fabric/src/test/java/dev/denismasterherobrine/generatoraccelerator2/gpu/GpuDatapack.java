@@ -32,7 +32,7 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
  * vanilla's data and the datapack's data together. The overworld's noise settings and biome parameter list are taken from the
  * result. {@code -Dga2.gpu.datapack=<folder holding data/>} switches the GPU tests to the datapack.
  */
-final class GpuDatapack {
+public final class GpuDatapack {
     private GpuDatapack() {}
 
     /** The vanilla overworld, or the datapack's when {@code ga2.gpu.datapack} names one. */
@@ -44,7 +44,7 @@ final class GpuDatapack {
         return new GpuProbe.Setup(world(Path.of(dir), seed));
     }
 
-    static TerrainHarness.World world(Path dataRoot, long seed) throws Exception {
+    public static TerrainHarness.World world(Path dataRoot, long seed) throws Exception {
         URL u = NoiseGeneratorSettings.class.getResource("/data/minecraft/worldgen/noise_settings/overworld.json");
         if (u == null) {
             throw new IllegalStateException("vanilla worldgen data not on the classpath");

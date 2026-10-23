@@ -13,6 +13,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class ClimateSamplerMixin {
     @Inject(method = "sample", at = @At("HEAD"), cancellable = true)
     private void ga2$sample(int quartX, int quartY, int quartZ, CallbackInfoReturnable<Climate.TargetPoint> cir) {
+        // the GPU's point, at a quart of a chunk whose biome step it handed its points to
+        Climate.TargetPoint handed = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.point((Climate.Sampler) (Object) this, quartX, quartY, quartZ);
+        if (handed != null) {
+            cir.setReturnValue(handed);
+            return;
+        }
         if (!DfcHooks.enabled()) {
             return;
         }

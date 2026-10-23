@@ -36,6 +36,9 @@ public final class DfcCommand {
         for (String line : dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight.statusLines()) {
             source.sendSuccess(() -> Component.literal(line), false);
         }
+        for (String line : dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.statusLines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
         return 1;
     }
 
@@ -67,6 +70,18 @@ public final class DfcCommand {
             + dev.denismasterherobrine.generatoraccelerator2.structure.FossilProbe.PROBES.sum() + "; ring placement checks answered before the positions were known "
             + dev.denismasterherobrine.generatoraccelerator2.structure.RingBounds.ANSWERED_EARLY.sum() + " (" + fill.getSimpleName() + ")";
         source.sendSuccess(() -> Component.literal(whole), false);
+        String tight = "noise leaves bounded over the cell: " + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.TIGHT_TRIED.sum()
+            + " mixed cells tried, " + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.TIGHT_WON.sum() + " decided whole, "
+            + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.TIGHT_PAUSED.sum() + " skipped while paused; octaves bounded "
+            + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.NoiseBounds.OCTAVES.sum() + ", too fine for the cell "
+            + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.NoiseBounds.OCTAVES_WIDE.sum()
+            + (dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.TIGHT ? "" : " (off: -Dgeneratoraccelerator2.dfc.noiseBounds=false)");
+        source.sendSuccess(() -> Component.literal(tight), false);
+        java.lang.management.CompilationMXBean jit = java.lang.management.ManagementFactory.getCompilationMXBean();
+        String classes = "generated classes defined: " + dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.HiddenClassLoader.DEFINED.sum()
+            + " (surface rules per biome shared " + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PROGRAMS_SHARED.sum()
+            + " times); JIT compilation so far " + (jit != null && jit.isCompilationTimeMonitoringSupported() ? jit.getTotalCompilationTime() / 1000 + " s" : "unknown");
+        source.sendSuccess(() -> Component.literal(classes), false);
         return n;
     }
 

@@ -108,6 +108,8 @@ public final class StepsCommand {
             + ", waited for " + dev.denismasterherobrine.generatoraccelerator2.storage.Precompress.WAITED.sum() + ")"
             + ", region old-chunk scans " + dev.denismasterherobrine.generatoraccelerator2.storage.RegionScan.SCANS.sum());
         send(source, dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep.stats());
+        send(source, dev.denismasterherobrine.generatoraccelerator2.storage.RegionSync.stats());
+        send(source, dev.denismasterherobrine.generatoraccelerator2.structure.TemplatePlacement.stats());
         send(source, dev.denismasterherobrine.generatoraccelerator2.storage.LoadPrep.stats());
         long aliased = dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate.ALIASED.sum();
         if (aliased > 0) {
@@ -132,7 +134,8 @@ public final class StepsCommand {
         }
         long biomePrograms = dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PROGRAMS.sum();
         if (biomePrograms > 0) {
-            send(source, "surface rules compiled per biome: " + biomePrograms + " programs, picked "
+            send(source, "surface rules compiled per biome: " + biomePrograms + " programs (shared by biomes with the same folded rules "
+                + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PROGRAMS_SHARED.sum() + " times), picked "
                 + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PICKS.sum() + " times");
         }
         long columnAnswers = dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree.GROUP_ANSWERED.sum();

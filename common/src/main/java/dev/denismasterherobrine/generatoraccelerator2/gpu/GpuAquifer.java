@@ -54,6 +54,12 @@ public final class GpuAquifer implements Aquifer {
      * have made it for the call.
      */
     public BlockState substanceAt(int i, int j, int k, @javax.annotation.Nullable DensityFunction.FunctionContext context, double substance) {
+        BlockState state = substance0(i, j, k, context, substance);
+        // Better Caves' step at computeSubstance's return, as the chunk's NoiseChunk aquifer would run it
+        return t.liquids != null ? dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.apply(t.liquids, i, j, k, state) : state;
+    }
+
+    private BlockState substance0(int i, int j, int k, @javax.annotation.Nullable DensityFunction.FunctionContext context, double substance) {
         if (substance > 0.0) {
             this.shouldScheduleFluidUpdate = false;
             return null;

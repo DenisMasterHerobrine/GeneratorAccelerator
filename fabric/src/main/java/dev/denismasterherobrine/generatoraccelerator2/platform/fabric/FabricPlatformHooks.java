@@ -69,4 +69,15 @@ public final class FabricPlatformHooks implements PlatformHooks.Service {
     public Biome.ClimateSettings climateSettings(Biome biome) {
         return ((BiomeClimateAccessor) (Object) biome).ga2$climateSettings();
     }
+
+    /** Vanilla's {@code processBlockInfos} calls {@code processBlock}. */
+    @Override
+    public net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
+            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template) {
+        return processor.processBlock(level, offset, pivot, raw, placed, settings);
+    }
 }

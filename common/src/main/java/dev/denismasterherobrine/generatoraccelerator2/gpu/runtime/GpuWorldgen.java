@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
@@ -54,7 +55,16 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     public enum State { PREPARING, READY, FAILED }
 
     /** The program's view of one chunk's structures: pieces (8 ints each) and junctions (3 ints each), as the GPU's beardifier reads them. */
-    public record Beard(int[] pieces, int[] junctions) {
+    public record Beard(int[] pieces, int[] junctions, @javax.annotation.Nullable int[] liquids,
+                        @javax.annotation.Nullable dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk enhanced, int overrideId) {
+        public Beard(int[] pieces, int[] junctions) {
+            this(pieces, junctions, null, null, -1);
+        }
+
+        public Beard(int[] pieces, int[] junctions, @javax.annotation.Nullable int[] liquids) {
+            this(pieces, junctions, liquids, null, -1);
+        }
+
         public static final Beard NONE = new Beard(new int[0], new int[0]);
     }
 
@@ -69,8 +79,16 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * without regions.
      *
      * <p>Under Lithostitched's injectors, {@code targets} holds every quart's climate point ({@link #target}). Null otherwise.
+     *
+     * <p>When the GPU hands its answers to the CPU's own lookups ({@link #handsBiomes}), {@code targets} holds the climate points and
+     * {@code hand} four ints per quart for {@link BiomeHand}: the nearest leaf of the quart's tree and its nearest leaf of another biome,
+     * then the same for region 0's tree after a placeholder. Null otherwise.
      */
-    public record BiomeResult(int[] quarts, long[] tieTargets, boolean complete, int[] fallbacks, int[] targets) {
+    public record BiomeResult(int[] quarts, long[] tieTargets, boolean complete, int[] fallbacks, int[] targets, int[] hand) {
+        public BiomeResult(int[] quarts, long[] tieTargets, boolean complete, int[] fallbacks, int[] targets) {
+            this(quarts, tieTargets, complete, fallbacks, targets, null);
+        }
+
         /** Whether quart {@code i} is a tie. False past the program's quarts. Those belong to a taller chunk and are decided on the CPU. */
         public boolean tie(int i) {
             return i < quarts.length && quarts[i] < 0;
@@ -118,6 +136,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     final RandomState randomState;
     public ClEmitter gen;
     public BlockState[] states;
+    /** Better Caves' liquid regions change the aquifer's answers: each chunk's table goes to the block kernels with its batch. */
+    public boolean liquidRegions;
     long aqLo, aqHi, oreLo, oreHi;
     /**
      * The climate trees, flat (GA2's FlatClimateTree layout) one after another, when the GPU decides biomes. Each tree's children are
@@ -139,6 +159,16 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * ({@link BiomeResult#targets}), and the CPU runs the injectors on the GPU's answers ({@link Apply#biomes}).
      */
     private BiomeSource biomeInjector;
+    /**
+     * Why the GPU does not hand its climate points and searches to the CPU's own biome lookups, or null when it does ({@link BiomeHand}).
+     * Asked only when the GPU does not decide the biomes itself.
+     */
+    public String handOff = "the GPU decides the biomes";
+    private boolean handsBiomes;
+    /** Whether {@code k_biome} writes the climate points: for Lithostitched's injectors, or for the handed lookups. */
+    private boolean targetsOn;
+    /** Per node, the number of its leaf's biome (equal biome ids, equal numbers), for the handed second answers. */
+    private int[] treeKey;
     /** Which climate parameters are per quart column in {@link BiomeResult#targets} (the others are per quart), and how many are per quart. */
     private boolean[] targetColumns;
     private int targetQuartParams;
@@ -148,6 +178,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         return biomeInjector;
     }
 
+    /** Tests only: the GPU hands its answers to the CPU's lookups instead of deciding the biomes. Read when a dimension is prepared. */
+    public static volatile boolean testHand;
     /** Tests only: the regions of a parameter list, in place of TerraBlender's. Read when a dimension is prepared. */
     public static volatile java.util.function.Function<Climate.ParameterList<Holder<Biome>>, BiomeRegions> testRegions;
     /** TerraBlender's regions of the biome source, or null when the source searches the one tree. */
@@ -255,7 +287,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Chunks the GPU handed back to the CPU because of such a disagreement. */
     public static final LongAdder C2D_CPU = new LongAdder();
     long kCorner32, kCorner32Pc, kBlock32, kZero, kRecheckMark, kRecheckCorners, kRecheckBlocks;
-    long perm, od, oi, of, tb, toff, tfirst, tcount, tleaf, troot, tdefer, bk;
+    long perm, od, oi, of, tb, toff, tfirst, tcount, tleaf, troot, tdefer, tkey, bk;
 
     /** Chunks per region side. */
     public final int side = Integer.getInteger("generatoraccelerator2.gpu.region", 16);
@@ -369,6 +401,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             // the program decides every block's aquifer as vanilla's code does (YUNG's Better Caves changes it)
             throw new ClEmitter.Unsupported("other mods change the aquifer " + dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferChanges());
         }
+        liquidRegions = aquifers && LiquidRegions.active() && LiquidRegions.usable();
         fluidLava = fluid == Blocks.LAVA.defaultBlockState();
         states = new BlockState[] { Blocks.AIR.defaultBlockState(), settings.defaultBlock(), fluid, Blocks.LAVA.defaultBlockState(),
             Blocks.COPPER_ORE.defaultBlockState(), Blocks.RAW_COPPER_BLOCK.defaultBlockState(), Blocks.GRANITE.defaultBlockState(),
@@ -392,16 +425,23 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         // the generator's own picker as intervals of y, or null for vanilla's. A subclass may install one (The Undergarden does).
         pickerIntervals = fluidPicker == null ? null : PickerShape.of(fluidPicker, minY, height, settings.seaLevel(), states, aquifers);
         beardKernel = BeardKernelAccessor.ga2$beardKernel().clone();
-        biomesOff = biomeSetup(source);
+        biomesOff = biomeSetup(source, false);
+        if (biomesOff != null) {
+            // other mods' lookups run on the CPU, with the GPU's climate points and searches
+            handOff = BiomeHand.ENABLED ? biomeSetup(source, true) : "off (-Dgeneratoraccelerator2.gpu.handBiomes=false)";
+            handsBiomes = handOff == null;
+        }
+        targetsOn = biomesOff == null && biomeInjector != null || handsBiomes;
         String noiseOff = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.noiseHooksOff();
-        if (noiseOff != null && biomesOff != null) {
+        if (noiseOff != null && biomesOff != null && !handsBiomes) {
             // the GPU would never be asked for noise or biomes. The surface reads the GPU's terrain, so it would not be asked either.
             // Skip the program, its build on a CPU core and its device memory.
             throw new ClEmitter.Unsupported("nothing for the GPU to do: " + noiseOff + ", and the biomes are decided on the CPU (" + biomesOff + ")");
         }
         if (biomesOff != null && source != null) {
             // the surface reads the biomes the chunks hold, whoever decided them. Every biome the source can return gets an index.
-            Map<Holder<Biome>, Integer> index = new IdentityHashMap<>();
+            // With handed lookups the trees' leaves have theirs already
+            Map<Holder<Biome>, Integer> index = handsBiomes ? biomeIndex : new IdentityHashMap<>();
             for (Holder<Biome> h : source.possibleBiomes()) {
                 if (index.putIfAbsent(h, biomeList.size()) == null) {
                     biomeList.add(h);
@@ -514,8 +554,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             kC2Flags = kernel("k_c2flags");
         }
         // the program has the climate kernels only when it decides biomes
-        kClimate = decidesBiomes() ? kernel("k_climate") : 0;
-        kBiome = decidesBiomes() ? kernel("k_biome") : 0;
+        kClimate = biomeKernels() ? kernel("k_climate") : 0;
+        kBiome = biomeKernels() ? kernel("k_biome") : 0;
         kCornerPc = certified ? 0 : kernel("k_corner_pc");
         kBlock = certified ? 0 : kernel("k_block");
         kPack = kernel("k_pack");
@@ -542,6 +582,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         tleaf = cl.createBuffer(device.context, ro, ints(treeLeaf != null ? treeLeaf : new int[4]));
         troot = cl.createBuffer(device.context, ro, ints(treeRoots != null ? treeRoots : new int[4]));
         tdefer = cl.createBuffer(device.context, ro, ints(treeDefer != null ? treeDefer : new int[4]));
+        tkey = cl.createBuffer(device.context, ro, ints(treeKey != null ? treeKey : new int[4]));
         bk = cl.createBuffer(device.context, ro, floats(beardKernel));
         checkExterns(g);
         if (surfaceSpec != null && surfacePart < 0) {
@@ -558,15 +599,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         // large GPU does not take its share of a tight heap. A region is about 0.8 MB at 384 blocks high. Without GPU biomes a
         // region keeps no answers on the heap, and the climate tree is not laid out.
         long heapRegions = Long.MAX_VALUE;
-        if (decidesBiomes()) {
+        if (biomeKernels()) {
             long heapPerRegion = (long) side * side * 16 * (height / 4) * (leaves.length <= 0x8000 ? Character.BYTES : Integer.BYTES);
             if (tbRegions != null) {
                 // and region 0's answers of the quarts whose region tree gave TerraBlender's placeholder
                 heapPerRegion += (long) side * side * 16 * (height / 4) * Integer.BYTES;
             }
-            if (biomeInjector != null) {
-                // and the climate points for Lithostitched's injectors
+            if (targetsOn) {
+                // and the climate points for Lithostitched's injectors or the handed lookups
                 heapPerRegion += (long) targetInts() * Integer.BYTES;
+            }
+            if (handsBiomes) {
+                heapPerRegion += (long) side * side * 16 * (height / 4) * 4 * Integer.BYTES;
             }
             heapRegions = Math.max(16, Runtime.getRuntime().maxMemory() / 128 / Math.max(1, heapPerRegion));
         }
@@ -757,24 +801,34 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             g.extra = e -> sf.source(e.commonArgs(), "", e.commonInit(), ClEmitter.META);
         }
         g.aquifers = aquifers;
+        g.liquidRegions = liquidRegions;
         g.veins = veins;
         g.pickerIntervals = pickerIntervals;
         g.fluidLava = fluidLava;
         g.canonicalIds = canonicalIds(states);
-        g.biomes = biomesOff == null;
-        g.biomeRegions = biomesOff == null && tbRegions != null;
-        g.biomeTargets = biomesOff == null && biomeInjector != null;
+        g.biomes = biomeKernels();
+        g.biomeRegions = biomeKernels() && tbRegions != null;
+        g.biomeTargets = targetsOn;
+        g.biomeHand = handsBiomes;
         g.motionMask = motion;
         g.nonAirMask = nonAir;
         g.fluidMask = fluids;
         return g;
     }
 
-    /** Why the GPU does not decide this dimension's biomes, or null when it does. In that case the climate tree is laid out flat. */
-    private String biomeSetup(BiomeSource source) {
+    /**
+     * Why the GPU does not decide this dimension's biomes ({@code hand} false), or does not hand its answers to the CPU's lookups
+     * ({@code hand} true), or null when it does. In that case the climate tree is laid out flat. With {@code hand}, the CPU runs the
+     * biome source's own code, other mods' changes included. The GPU then needs only the climate sample and the trees unchanged.
+     */
+    private String biomeSetup(BiomeSource source, boolean hand) {
         if (!GpuConfig.biomes()) {
             return "off in the config";
         }
+        if (!hand && testHand) {
+            return "the test hands the GPU's answers to the CPU's lookups";
+        }
+        BiomeSource outer = source;
         BiomeSource injector = null;
         if (dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.isInjector(source)) {
             // Lithostitched's injectors run on the CPU after the GPU's search, with the GPU's climate points
@@ -782,17 +836,24 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             if (base == null) {
                 return "Lithostitched's biome injectors over a biome source other than vanilla's multi-noise source";
             }
-            Holder<Biome> any = base.possibleBiomes().iterator().next();
-            if (!dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.takesHandedLookups(source, randomState.sampler(), any)) {
-                return "Lithostitched's biome injectors: GA2's hooks into this Lithostitched version did not apply";
+            if (!hand) {
+                Holder<Biome> any = base.possibleBiomes().iterator().next();
+                if (!dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.takesHandedLookups(source, randomState.sampler(), any)) {
+                    return "Lithostitched's biome injectors: GA2's hooks into this Lithostitched version did not apply";
+                }
+                injector = source;
             }
-            injector = source;
             source = base;
         }
         if (source == null || source.getClass() != MultiNoiseBiomeSource.class) {
             return "biome source " + (source == null ? "unknown" : source.getClass().getName());
         }
-        if (!dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_BIOMES)) {
+        if (hand) {
+            if (!dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_CLIMATE_POINTS)) {
+                return "other mods change the climate sample " + dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.foreign(
+                    dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_CLIMATE_POINTS);
+            }
+        } else if (!dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_BIOMES)) {
             return "other mods change the biome step or biome source " + dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.foreign(
                 dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_BIOMES);
         }
@@ -885,6 +946,17 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 }
             }
         }
+        if (hand) {
+            // the handed second answers compare biomes as Biolith does, by id
+            treeKey = new int[n];
+            Map<Object, Integer> numbers = new java.util.HashMap<>();
+            for (int id = 0; id < n; id++) {
+                if (ls[id] != null) {
+                    Object key = ls[id].value.unwrapKey().<Object>map(k -> k.location()).orElse(ls[id].value);
+                    treeKey[id] = numbers.computeIfAbsent(key, k -> numbers.size());
+                }
+            }
+        }
         this.biomeSource = multi;
         this.biomeInjector = injector;
         this.biomeTrees = trees;
@@ -915,15 +987,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         b += gen.blockHoisted.isEmpty() ? 16 : nbx * nbx * gen.blockHoisted.size() * rsize;
         b += (4L * w + 23) * (4L * w + 15) * 4 + (long) w * w * 25 * 4;
         b += (long) w * w * gen.cellsPerChunk * 5 * 4;
-        if (decidesBiomes()) {
+        if (biomeKernels()) {
             // quart biomes, climate columns, the tie list and its count
             b += (long) w * w * 16 * (height / 4) * 4 + (long) w * w * 16 * 6 * rsize + (long) tieCap() * 7 * 8 + 16;
             if (tbRegions != null) {
                 // the region of every quart column, and region 0's answers
                 b += (long) w * w * 16 * 4 + (long) w * w * 16 * (height / 4) * 4;
             }
-            if (biomeInjector != null) {
+            if (targetsOn) {
                 b += (long) targetInts() * 4;
+            }
+            if (handsBiomes) {
+                b += (long) w * w * 16 * (height / 4) * 16;
             }
         }
         b += (long) w * w * 4;
@@ -1026,6 +1101,29 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     public boolean decidesBiomes() {
         return biomesOff == null;
+    }
+
+    /**
+     * Whether the CPU runs the biome source's own code with the GPU's climate points and searches ({@link BiomeHand}). That is the case
+     * when other mods change the biome lookup itself (Biolith, Alex's Caves) but not the climate sample.
+     */
+    public boolean handsBiomes() {
+        return handsBiomes;
+    }
+
+    /** Whether the program has the climate kernels: the GPU decides the biomes, or hands its answers to the CPU's lookups. */
+    public boolean biomeKernels() {
+        return biomesOff == null || handsBiomes;
+    }
+
+    /** How many trees the biome source searches ({@link #biomeTree}). */
+    public int biomeTreeCount() {
+        return biomeTrees.length;
+    }
+
+    /** The tree of index {@code t} ({@link #treeOf}). */
+    public Climate.RTree<Holder<Biome>> biomeTree(int t) {
+        return biomeTrees[t];
     }
 
     private volatile Object terrainSpec;
@@ -1169,8 +1267,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int[] quarts;
         /** With TerraBlender's regions: per quart, region 0's leaf where the region's tree gave the placeholder ({@link BiomeResult#fallbacks}). */
         int[] fallbacks;
-        /** With Lithostitched's injectors: the climate points ({@link #targetInts}, region layout). */
+        /** With Lithostitched's injectors or handed lookups: the climate points ({@link #targetInts}, region layout). */
         int[] targets;
+        /** With handed lookups: four answers per quart, region layout ({@link BiomeResult#hand}). */
+        int[] hand;
         /** Per chunk, its listed ties ({@link BiomeResult#ties}). Then whether the region's list held every tie, and the list's capacity. */
         long[][] ties;
         boolean tiesComplete;
@@ -1238,8 +1338,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         long bytes;
         /** With TerraBlender's regions: the region of every quart column, and region 0's answers. 0 otherwise. */
         long regionMap, fallbacks;
-        /** With Lithostitched's injectors: every quart's climate point ({@link #targetInts}). 0 otherwise. */
+        /** With Lithostitched's injectors or handed lookups: every quart's climate point ({@link #targetInts}). 0 otherwise. */
         long targets;
+        /** With handed lookups: four answers per quart ({@link BiomeResult#hand}). 0 otherwise. */
+        long hand;
         /** Ties {@link #tieList} holds ({@link #tieCap()} when it was made). */
         int tieCap;
         /** For {@link ClEmitter.C2d#FLOODED}. Per aquifer cell, whether the cell's column disagrees. Per chunk, the same, with a host copy. */
@@ -1248,7 +1350,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
         long[] all() {
             return new long[] { flat, hz, corners, corners32, cornersE, bh, surf, surfIn, cells, levels, biomes, climate, tieList, tieCount, c2, c2flags, regionMap,
-                fallbacks, targets };
+                fallbacks, targets, hand };
         }
     }
 
@@ -1258,7 +1360,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private RegionBuffers takeRegionBuffers() {
         RegionBuffers b = freeRegionBuffers.poll();
         if (b != null) {
-            if (decidesBiomes() && b.tieCap < tieCap()) {
+            if (biomeKernels() && b.tieCap < tieCap()) {
                 // the dimension's tie lists grew since these were made
                 cl.releaseMem(b.tieList);
                 long grown = (long) (tieCap() - b.tieCap) * 7 * 8;
@@ -1296,7 +1398,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             b.c2flags = cl.createBuffer(ctx, rw, (long) nchunks * 4);
             b.c2host = direct(nchunks * 4);
         }
-        if (decidesBiomes()) {
+        if (biomeKernels()) {
             int quarts = nchunks * 16 * (height / 4);
             b.biomes = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) quarts * 4);
             b.climate = cl.createBuffer(ctx, rw, (long) nchunks * 16 * 6 * rsize);
@@ -1307,8 +1409,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 b.regionMap = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, (long) nchunks * 16 * 4);
                 b.fallbacks = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) quarts * 4);
             }
-            if (biomeInjector != null) {
+            if (targetsOn) {
                 b.targets = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) targetInts() * 4);
+            }
+            if (handsBiomes) {
+                b.hand = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) quarts * 16);
             }
         }
         allRegionBuffers.add(b);
@@ -1324,6 +1429,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private final class Slot {
         final int cap;
         long lst, bidx, bp, bj, cornersPc, out, storage, meta, marks, tops, terrain;
+        /** The batch's enhanced adaptations ({@code EnhancedBeard.Table}), as ints with the kernels' float bits after them. */
+        long ek;
+        int ekCap;
+        ByteBuffer ekHost;
+        /** Per chunk the liquid-region table ({@link LiquidRegions#GPU_STRIDE} ints), when the program applies them. */
+        long lq;
+        ByteBuffer lqHost;
         /**
          * Certified buffers. Per-chunk float corners and their errors. The flagged cells' marks, list and counts (cells, then corners).
          * The recheck's corner marks, corner list and double corners. The double corners are per chunk, in the corners' layout.
@@ -1342,7 +1454,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             int per = 16 / cellWidth;
             int pc = (per + 1) * (per + 1);
             lst = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, cap * 4L);
-            bidx = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, cap * 16L);
+            bidx = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, cap * 32L);
+            ekCap = 1024;
+            ek = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, ekCap * 4L);
+            if (liquidRegions) {
+                lq = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, cap * (long) LiquidRegions.GPU_STRIDE * 4L);
+            }
             bpCap = 64;
             bjCap = 64;
             bp = cl.createBuffer(ctx, ClApi.MEM_READ_ONLY, bpCap * 32L);
@@ -1371,7 +1488,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             tops = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) cap * 512 * 4);
             terrain = cl.createBuffer(ctx, ClApi.MEM_WRITE_ONLY, (long) cap * gen.terrainInts() * 4);
             lstHost = pin(cap * 4);
-            bidxHost = pin(cap * 16);
+            bidxHost = pin(cap * 32);
+            ekHost = pin(ekCap * 4);
+            lqHost = liquidRegions ? pin(cap * LiquidRegions.GPU_STRIDE * 4) : null;
             bpHost = pin(bpCap * 32);
             bjHost = pin(bjCap * 12);
             storageHost = pin(cap * nsec * 256 * 8);
@@ -1391,7 +1510,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             return b;
         }
 
-        void ensure(int pieces, int junctions) {
+        void ensure(int pieces, int junctions, int tableInts) {
+            if (tableInts > ekCap) {
+                cl.releaseMem(ek);
+                ekCap = Math.max(tableInts, ekCap * 2);
+                ek = cl.createBuffer(device.context, ClApi.MEM_READ_ONLY, ekCap * 4L);
+                ekHost = pin(ekCap * 4);
+            }
             if (pieces > bpCap) {
                 cl.releaseMem(bp);
                 bpCap = Math.max(pieces, bpCap * 2);
@@ -1666,6 +1791,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (h.targets != null) {
             cl.unpin(device.hostQueue, h.targetsMem, h.targets);
         }
+        if (h.hand != null) {
+            cl.unpin(device.hostQueue, h.handMem, h.hand);
+        }
         allRegionHosts.remove(h);
     }
 
@@ -1717,6 +1845,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             s.rcount, s.cmark, s.clist, s.cval }) {
             cl.releaseMem(m);
         }
+        if (s.lq != 0) {
+            cl.releaseMem(s.lq);
+        }
+        cl.releaseMem(s.ek);
         for (Object[] p : s.pins) {
             cl.unpin(device.hostQueue, (Long) p[0], (ByteBuffer) p[1]);
         }
@@ -1830,7 +1962,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         long q = device.regionQueues[Math.floorMod(regionTurn++, device.regionQueues.length)];
         int a = common(kFlat, r, qx0, qz0, nqx, nqz);
         long lastK = kFlat, last = cl.launch(q, kFlat, (long) nqx * nqz, 64);
-        if (decidesBiomes()) {
+        if (biomeKernels()) {
             int quarts = nchunks * 16 * (height / 4);
             r.biomes = rb.biomes;
             r.tieCap = rb.tieCap;
@@ -1879,8 +2011,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 cl.argMem(kBiome, a++, rb.regionMap);
                 cl.argMem(kBiome, a++, rb.fallbacks);
             }
-            if (biomeInjector != null) {
-                cl.argMem(kBiome, a, rb.targets);
+            if (targetsOn) {
+                cl.argMem(kBiome, a++, rb.targets);
+            }
+            if (handsBiomes) {
+                cl.argMem(kBiome, a++, tkey);
+                cl.argMem(kBiome, a, rb.hand);
             }
             prof(kBiome, cl.launch(q, kBiome, quarts, 64));
             r.biomeHost = r.host.biomes;
@@ -1888,8 +2024,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             if (tbRegions != null) {
                 rel(cl.read(q, rb.fallbacks, false, 0, r.host.fallbacks.clear()));
             }
-            if (biomeInjector != null) {
+            if (targetsOn) {
                 rel(cl.read(q, rb.targets, false, 0, r.host.targets.clear()));
+            }
+            if (handsBiomes) {
+                rel(cl.read(q, rb.hand, false, 0, r.host.hand.clear()));
             }
             rel(cl.read(q, rb.tieCount, false, 0, r.host.tieCount.clear().limit(4)));
             r.readEvent = cl.read(q, rb.tieList, false, 0, r.host.ties.clear().limit(rb.tieCap * 7 * 8));
@@ -2006,9 +2145,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         /** With TerraBlender's regions: the region map written to the device, and region 0's answers read back. */
         ByteBuffer regionMap, fallbacks;
         long fallbacksMem;
-        /** With Lithostitched's injectors: the climate points read back. */
+        /** With Lithostitched's injectors or handed lookups: the climate points read back. */
         ByteBuffer targets;
         long targetsMem;
+        /** With handed lookups: their answers read back. */
+        ByteBuffer hand;
+        long handMem;
         /** Ties {@link #ties} holds. */
         int tieCap;
     }
@@ -2049,9 +2191,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 h.fallbacks = cl.pinned(device.context, device.hostQueue, (long) quarts * 4, m);
                 h.fallbacksMem = m[0];
             }
-            if (biomeInjector != null) {
+            if (targetsOn) {
                 h.targets = cl.pinned(device.context, device.hostQueue, (long) targetInts() * 4, m);
                 h.targetsMem = m[0];
+            }
+            if (handsBiomes) {
+                h.hand = cl.pinned(device.context, device.hostQueue, (long) quarts * 16, m);
+                h.handMem = m[0];
             }
             allRegionHosts.add(h);
         }
@@ -2142,10 +2288,15 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             r.host.fallbacks.clear().asIntBuffer().get(f);
             r.fallbacks = f;
         }
-        if (biomeInjector != null) {
+        if (targetsOn) {
             int[] t = new int[targetInts()];
             r.host.targets.clear().asIntBuffer().get(t);
             r.targets = t;
+        }
+        if (handsBiomes) {
+            int[] t = new int[side * side * per * 4];
+            r.host.hand.clear().asIntBuffer().get(t);
+            r.hand = t;
         }
         // the listed ties by chunk, as (quart in the chunk, climate point)
         int listed = r.host.tieCount.clear().getInt(0);
@@ -2189,7 +2340,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     /** Completes a biome request from the region's host copy. */
     private void answer(Region r, BiomeReq b) {
-        if (!decidesBiomes()) {
+        if (!biomeKernels()) {
             b.future.complete(null);
             return;
         }
@@ -2217,7 +2368,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             System.arraycopy(r.targets, c, targets, 0, 16 * 6);
             System.arraycopy(r.targets, q0, targets, 16 * 6, per * targetQuartParams);
         }
-        b.future.complete(new BiomeResult(quarts, r.ties[i * side + j], r.tiesComplete, fallbacks, targets));
+        int[] hand = r.hand != null ? Arrays.copyOfRange(r.hand, base * 4, (base + per) * 4) : null;
+        b.future.complete(new BiomeResult(quarts, r.ties[i * side + j], r.tiesComplete, fallbacks, targets, hand));
     }
 
     /** Ints of a region's climate points: 6 per quart column, then the per-quart parameters of every quart. */
@@ -2257,33 +2409,76 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int pieces = 0, junctions = 0;
         long now = System.nanoTime();
         BATCH_CHUNKS.add(n);
+        // other mods' pieces follow the chunk's vanilla pieces in the piece buffer, 8 ints each, over the batch's adaptation table
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table();
+        int[][] entries = new int[n][];
+        int qi = 0;
         for (NoiseReq q : reqs) {
             QUEUE_LAT.add(now - q.since);
             pieces += q.beard.pieces().length / 8;
             junctions += q.beard.junctions().length / 3;
+            if (q.beard.enhanced() != null) {
+                entries[qi] = dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.entries(q.beard.enhanced(), adaptations);
+                pieces += entries[qi].length / dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.ENTRY_STRIDE;
+            }
+            qi++;
         }
-        s.ensure(Math.max(1, pieces), Math.max(1, junctions));
+        s.ensure(Math.max(1, pieces), Math.max(1, junctions), Math.max(1, adaptations.ints()));
         s.lstHost.clear();
         s.bidxHost.clear();
         s.bpHost.clear();
         s.bjHost.clear();
         int p = 0, jn = 0;
+        qi = 0;
         for (NoiseReq q : reqs) {
             s.lstHost.putInt((q.pos.x - r.cx0) * h + (q.pos.z - r.cz0));
             int np = q.beard.pieces().length / 8, nj = q.beard.junctions().length / 3;
-            s.bidxHost.putInt(p).putInt(np).putInt(jn).putInt(nj);
+            int[] en = entries[qi++];
+            int ne = en == null ? 0 : en.length / dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.ENTRY_STRIDE;
+            s.bidxHost.putInt(p).putInt(np).putInt(jn).putInt(nj).putInt(ne).putInt(q.beard.overrideId()).putInt(0).putInt(0);
             for (int v : q.beard.pieces()) {
                 s.bpHost.putInt(v);
+            }
+            if (en != null) {
+                for (int v : en) {
+                    s.bpHost.putInt(v);
+                }
             }
             for (int v : q.beard.junctions()) {
                 s.bjHost.putInt(v);
             }
-            p += np;
+            p += np + ne;
             jn += nj;
+        }
+        s.ekHost.clear();
+        if (adaptations.ints() == 0) {
+            s.ekHost.putInt(0);
+        } else {
+            for (int v : adaptations.pack(a -> -1)) {
+                s.ekHost.putInt(v);
+            }
         }
         long q = device.queue;
         rel(cl.write(q, s.lst, false, 0, s.lstHost.flip()));
         rel(cl.write(q, s.bidx, false, 0, s.bidxHost.flip()));
+        rel(cl.write(q, s.ek, false, 0, s.ekHost.flip()));
+        if (liquidRegions) {
+            s.lqHost.clear();
+            for (NoiseReq req : reqs) {
+                int[] table = req.beard.liquids();
+                if (table == null) {
+                    s.lqHost.putInt(LiquidRegions.GPU_NONE);
+                    for (int i = 1; i < LiquidRegions.GPU_STRIDE; i++) {
+                        s.lqHost.putInt(0);
+                    }
+                } else {
+                    for (int v : table) {
+                        s.lqHost.putInt(v);
+                    }
+                }
+            }
+            rel(cl.write(q, s.lq, false, 0, s.lqHost.flip()));
+        }
         if (p > 0) {
             rel(cl.write(q, s.bp, false, 0, s.bpHost.flip()));
         }
@@ -2375,7 +2570,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             cl.argMem(kCorner32Pc, a++, s.bp);
             cl.argMem(kCorner32Pc, a++, s.bj);
             cl.argMem(kCorner32Pc, a++, s.bidx);
-            cl.argMem(kCorner32Pc, a, bk);
+            cl.argMem(kCorner32Pc, a++, bk);
+            cl.argMem(kCorner32Pc, a, s.ek);
             prof(kCorner32Pc, cl.launch(q, kCorner32Pc, (long) n * (per + 1) * (per + 1) * ncy, 64, dep));
             dep = 0;
             corners = s.cornersPc32;
@@ -2404,12 +2600,16 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         cl.argMem(kBlock32, a++, s.bj);
         cl.argMem(kBlock32, a++, s.bidx);
         cl.argMem(kBlock32, a++, bk);
+        cl.argMem(kBlock32, a++, s.ek);
         cl.argMem(kBlock32, a++, r.bh);
         cl.argMem(kBlock32, a++, s.cflag);
         cl.argMem(kBlock32, a++, s.rlist);
         cl.argMem(kBlock32, a++, s.rcount);
         cl.argInt(kBlock32, a++, s.rcap);
-        cl.argMem(kBlock32, a, r.levels);
+        cl.argMem(kBlock32, a++, r.levels);
+        if (liquidRegions) {
+            cl.argMem(kBlock32, a, s.lq);
+        }
         prof(kBlock32, cl.launch(q, kBlock32, (long) n * 256 * height, 128, dep));
         cl.argMem(kRecheckMark, 0, s.rlist);
         cl.argMem(kRecheckMark, 1, s.rcount);
@@ -2435,7 +2635,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         cl.argMem(kRecheckCorners, a++, s.bp);
         cl.argMem(kRecheckCorners, a++, s.bj);
         cl.argMem(kRecheckCorners, a++, s.bidx);
-        cl.argMem(kRecheckCorners, a, bk);
+        cl.argMem(kRecheckCorners, a++, bk);
+        cl.argMem(kRecheckCorners, a, s.ek);
         prof(kRecheckCorners, cl.launch(side, kRecheckCorners, (long) s.ccap * gen.roots.size(), 64, marked));
         prof(kRecheckMark, marked);
         a = common(kRecheckBlocks, r, qx0, qz0, nqx, nqz);
@@ -2459,7 +2660,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         cl.argMem(kRecheckBlocks, a++, s.bj);
         cl.argMem(kRecheckBlocks, a++, s.bidx);
         cl.argMem(kRecheckBlocks, a++, bk);
-        cl.argMem(kRecheckBlocks, a, r.bh);
+        cl.argMem(kRecheckBlocks, a++, s.ek);
+        cl.argMem(kRecheckBlocks, a++, r.bh);
+        if (liquidRegions) {
+            cl.argMem(kRecheckBlocks, a, s.lq);
+        }
         prof(kRecheckBlocks, cl.launch(side, kRecheckBlocks, (long) s.rcap * cellWidth * cellWidth * cellHeight, 128));
         return side;
     }
@@ -2488,7 +2693,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             cl.argMem(kCornerPc, a++, s.bp);
             cl.argMem(kCornerPc, a++, s.bj);
             cl.argMem(kCornerPc, a++, s.bidx);
-            cl.argMem(kCornerPc, a, bk);
+            cl.argMem(kCornerPc, a++, bk);
+            cl.argMem(kCornerPc, a, s.ek);
             prof(kCornerPc, cl.launch(q, kCornerPc, (long) n * (per + 1) * (per + 1) * ncy, 64, dep));
             dep = 0;
             corners = s.cornersPc;
@@ -2515,7 +2721,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         cl.argMem(kBlock, a++, s.bj);
         cl.argMem(kBlock, a++, s.bidx);
         cl.argMem(kBlock, a++, bk);
-        cl.argMem(kBlock, a, r.bh);
+        cl.argMem(kBlock, a++, s.ek);
+        cl.argMem(kBlock, a++, r.bh);
+        if (liquidRegions) {
+            cl.argMem(kBlock, a, s.lq);
+        }
         prof(kBlock, cl.launch(q, kBlock, (long) n * 256 * height, 128, dep));
     }
 
@@ -2753,6 +2963,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             if (h.targets != null) {
                 cl.unpin(device.hostQueue, h.targetsMem, h.targets);
             }
+            if (h.hand != null) {
+                cl.unpin(device.hostQueue, h.handMem, h.hand);
+            }
         }
         allRegionHosts.clear();
         regionHosts.clear();
@@ -2764,12 +2977,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
         allRegionBuffers.clear();
         freeRegionBuffers.clear();
-        for (long m : new long[] { perm, od, oi, of, tb, toff, tfirst, tcount, tleaf, troot, tdefer, bk }) {
+        for (long m : new long[] { perm, od, oi, of, tb, toff, tfirst, tcount, tleaf, troot, tdefer, tkey, bk }) {
             if (m != 0) {
                 cl.releaseMem(m);
             }
         }
-        perm = od = oi = of = tb = toff = tfirst = tcount = tleaf = troot = tdefer = bk = 0;
+        perm = od = oi = of = tb = toff = tfirst = tcount = tleaf = troot = tdefer = tkey = bk = 0;
         // release every kernel. Each kernel holds the program, and the program release below frees it only once no kernel is left.
         for (long k : new long[] { kFlat, kHoist, kCorner, kBHoist, kSurface, kSurfaceIn, kStatus, kLevels, kClimate, kBiome, kCornerPc, kBlock, kPack, kHeights, kTerrain,
             kCorner32, kCorner32Pc, kBlock32, kZero, kRecheckMark, kRecheckCorners, kRecheckBlocks, kC2Flags }) {
@@ -2798,7 +3011,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             case PREPARING -> "preparing (" + reason + ")";
             case FAILED -> "off (" + reason + ")";
             case READY -> "on, " + (certified ? "certified fp32 (cells in doubt rechecked in fp64)" : "fp64 (" + certifiedOff + ")") + ", "
-                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : "on CPU (" + biomesOff + ")")
+                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
+                    : "on CPU (" + biomesOff + "; not handed: " + handOff + ")")
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
                 + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
                 + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(java.util.Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")

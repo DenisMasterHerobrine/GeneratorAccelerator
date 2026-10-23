@@ -94,7 +94,7 @@ public class GpuRuntimeTest {
         }
     }
 
-    private static GpuWorldgen.Beard beard(Structures st, int cx, int cz) {
+    private static GpuWorldgen.Beard beard(GpuWorldgen wg, Structures st, int cx, int cz) {
         List<Integer> p = new ArrayList<>();
         for (Beardifier.Rigid r : st.piecesFor(cx, cz)) {
             BoundingBox b = r.box();
@@ -104,7 +104,86 @@ public class GpuRuntimeTest {
         for (JigsawJunction jj : st.junctionsFor(cx, cz)) {
             j.addAll(List.of(jj.getSourceX(), jj.getSourceGroundY(), jj.getSourceZ()));
         }
-        return new GpuWorldgen.Beard(p.stream().mapToInt(Integer::intValue).toArray(), j.stream().mapToInt(Integer::intValue).toArray());
+        // other mods' pieces, as GpuSteps.beard attaches them (tests set EnhancedBeard.testChunks)
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk enhanced = null;
+        if (dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks != null) {
+            enhanced = dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks.apply(new ChunkPos(cx, cz));
+        }
+        // the chunk's liquid-region table, as GpuSteps.beard attaches it (tests set LiquidRegions.testTables)
+        int[] liquids = null;
+        if (wg.liquidRegions) {
+            dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.Table t = dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.table(
+                dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.regionsOf(setup.world.randomState), cx, cz);
+            liquids = t == null ? null : dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.gpu(t, wg.states);
+        }
+        return new GpuWorldgen.Beard(p.stream().mapToInt(Integer::intValue).toArray(), j.stream().mapToInt(Integer::intValue).toArray(), liquids, enhanced, -1);
+    }
+
+    /**
+     * Other mods' terrain adaptation on the GPU ({@code beardifier.EnhancedBeard}): synthetic YUNG's API and Integrated API pieces and
+     * junctions around every test origin, in the block kernels against GA2's CPU path, whose piece index adds the Java form of the
+     * mods' density.
+     */
+    @Test
+    void enhancedBeards() throws Exception {
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk chunk = syntheticEnhanced();
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks = pos -> chunk;
+        try {
+            String precision = System.getProperty("generatoraccelerator2.gpu.precision", "auto");
+            GpuWorldgen wg = open("test-enhanced-" + precision, precision, System.getProperty("ga2.gpu.defines", ""));
+            long chunks = exactness(wg, "enhanced beards, " + precision);
+            if (chunks == 0) {
+                throw new AssertionError("no chunk compared");
+            }
+        } finally {
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks = null;
+        }
+    }
+
+    /** Pieces and junctions of both kinds near every origin {@link #exactness} uses, with kernels like the mods' (a Gaussian over the distance). */
+    private static dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk syntheticEnhanced() {
+        java.util.Random r = new java.util.Random(20261023L);
+        var yung = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation(
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Kind.YUNG, 24, kernel(24, 6.0, r), 1, -1, false, false, false, 0, null);
+        var yungCarve = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation(
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Kind.YUNG, 16, kernel(16, 4.0, r), -1, 0, false, false, false, 0, null);
+        var integrated = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation(
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Kind.INTEGRATED, 20, kernel(20, 5.0, r), 0, 0, true, true, false, 0, null);
+        var integratedUp = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation(
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Kind.INTEGRATED, 12, kernel(12, 3.0, r), 0, 0, true, false, true, 0, null);
+        var kinds = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation[] { yung, yungCarve, integrated, integratedUp, null };
+        java.util.List<dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Piece> pieces = new ArrayList<>();
+        java.util.List<dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Junction> junctions = new ArrayList<>();
+        int[][] origins = { { -2, -2 }, { 5, 6 }, { -1953, 771 }, { 117187, -117187 }, { 1048574, 1048574 } };
+        for (int[] o : origins) {
+            int bx = o[0] * 16, bz = o[1] * 16;
+            for (int i = 0; i < 6; i++) {
+                int x0 = bx - 8 + r.nextInt(72), z0 = bz - 8 + r.nextInt(72), y0 = 40 + r.nextInt(50);
+                pieces.add(new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Piece(x0, y0, z0, x0 + 4 + r.nextInt(12), y0 + 3 + r.nextInt(8),
+                    z0 + 4 + r.nextInt(12), kinds[r.nextInt(kinds.length)]));
+            }
+            for (int i = 0; i < 3; i++) {
+                junctions.add(new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Junction(bx + r.nextInt(64), 50 + r.nextInt(40), bz + r.nextInt(64),
+                    kinds[r.nextInt(kinds.length - 1)]));
+            }
+        }
+        // the same list for every chunk: the CPU's index asks by the block's chunk, the GPU by the request's chunk, and corners sit on both
+        return new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk(dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Kind.YUNG,
+            pieces, junctions, null);
+    }
+
+    private static float[] kernel(int size, double spread, java.util.Random r) {
+        float[] k = new float[size * size * size];
+        int rad = size / 2;
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                for (int z = 0; z < size; z++) {
+                    double d = (x - rad) * (x - rad) + (y - rad) * (y - rad) + (z - rad) * (z - rad);
+                    k[z * size * size + x * size + y] = (float) Math.pow(Math.E, -d / (spread * spread)) * (0.5f + r.nextFloat());
+                }
+            }
+        }
+        return k;
     }
 
     /** The chunk's climate sampler, as the BIOMES step makes it for the quarts the GPU leaves to the CPU (ties). */
@@ -143,7 +222,7 @@ public class GpuRuntimeTest {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(o[0] + i, o[1] + j);
                     bf.add(wg.decidesBiomes() ? wg.biomes(pos) : CompletableFuture.completedFuture(null));
-                    nf.add(wg.noise(pos, beard(st, pos.x, pos.z)));
+                    nf.add(wg.noise(pos, beard(wg, st, pos.x, pos.z)));
                 }
             }
             for (int i = 0; i < 4; i++) {
@@ -162,7 +241,10 @@ public class GpuRuntimeTest {
                         throw new AssertionError("chunk " + cx + "," + cz + " handed to the CPU (recheck list overflow)");
                     }
                     if (!Apply.noise(wg, gpu, n)) {
-                        throw new AssertionError("noise not applicable");
+                        throw new AssertionError("noise not applicable: section writes " + dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter.ENABLED
+                            + "/" + dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.NOISE_SECTION_WRITES)
+                            + ", fill heights " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights.ENABLED + ", fits " + Apply.fits(wg, gpu)
+                            + ", sections " + gpu.getSections().length + ", meta[0] " + n.meta()[0]);
                     }
                     ProtoChunk cpu = GpuProbe.refChunk(s, cx, cz, st);
                     String diff = ChunkCompare.blocks(cpu, gpu);
@@ -172,7 +254,7 @@ public class GpuRuntimeTest {
                     if (diff != null) {
                         // which side gives another answer when asked again (the GPU request alone, the CPU reference again)
                         ProtoChunk gpu2 = s.world.emptyChunk(cx, cz);
-                        GpuWorldgen.NoiseResult n2 = wg.noise(new ChunkPos(cx, cz), beard(st, cx, cz)).get(120, TimeUnit.SECONDS);
+                        GpuWorldgen.NoiseResult n2 = wg.noise(new ChunkPos(cx, cz), beard(wg, st, cx, cz)).get(120, TimeUnit.SECONDS);
                         String g2 = n2 == null || !Apply.noise(wg, gpu2, n2) ? "not applicable" : String.valueOf(ChunkCompare.blocks(gpu, gpu2));
                         String c2 = String.valueOf(ChunkCompare.blocks(cpu, GpuProbe.refChunk(s, cx, cz, st)));
                         GpuProbe.Setup fresh = GpuDatapack.setup(Long.getLong("ga2.gpu.seed", 1234567L));
@@ -251,6 +333,28 @@ public class GpuRuntimeTest {
             } else {
                 log("  GPU thread us/chunk:%s", hs);
             }
+        }
+    }
+
+    /**
+     * Better Caves' liquid regions on the GPU ({@code aquifer.LiquidRegions}): synthetic tables applied in the block kernels, against
+     * GA2's CPU path, whose aquifer fast path applies the same tables.
+     */
+    @Test
+    void liquidRegions() throws Exception {
+        dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.testTables = dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegionsTest::table;
+        try {
+            String precision = System.getProperty("generatoraccelerator2.gpu.precision", "auto");
+            GpuWorldgen wg = open("test-liquids-" + precision, precision, System.getProperty("ga2.gpu.defines", ""));
+            if (!wg.liquidRegions) {
+                throw new AssertionError("the program does not apply liquid regions: " + wg.status());
+            }
+            long chunks = exactness(wg, "liquid regions, " + precision);
+            if (chunks == 0) {
+                throw new AssertionError("no chunk compared");
+            }
+        } finally {
+            dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.testTables = null;
         }
     }
 
@@ -486,6 +590,175 @@ public class GpuRuntimeTest {
     }
 
     /**
+     * The GPU's answers handed to the CPU's own lookups ({@code gpu.runtime.BiomeHand}), as for Biolith or Alex's Caves: the same regions
+     * as {@link #biomeRegions}, the GPU not deciding the biomes. The chunk's fill runs a lookup of its own through GA2's searches, once
+     * with the GPU's points and nearest leaves handed to it and once without, from the same last results. Biomes and last results must
+     * match. Every handed pair of leaves (the nearest and the nearest of another biome) must be what Biolith's walk
+     * ({@code FlatClimateTree.searchFittest}) finds from random last answers of two biomes.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void handedBiomes() throws Exception {
+        GpuProbe.Setup s = setup();
+        var list = ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.GpuBiomeSourceInspectMixin) s.world.biomeSource).ga2$gpuParameters();
+        var values = list.values();
+        var placeholder = net.minecraft.core.Holder.direct(values.get(0).getSecond().value());
+        List<com.mojang.datafixers.util.Pair<net.minecraft.world.level.biome.Climate.ParameterPoint, net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>>> region1 =
+            new ArrayList<>();
+        for (int k = 0; k < values.size(); k++) {
+            var p = values.get(k);
+            region1.add(k % 3 == 0 ? p.mapSecond(b -> placeholder) : k % 3 == 1 ? p.mapSecond(b -> values.get((p.getFirst().hashCode() & 0x7fffffff) % values.size()).getSecond()) : p);
+        }
+        net.minecraft.world.level.biome.Climate.RTree<net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>>[] trees = new net.minecraft.world.level.biome.Climate.RTree[] {
+            net.minecraft.world.level.biome.Climate.RTree.create(values), net.minecraft.world.level.biome.Climate.RTree.create(region1),
+            net.minecraft.world.level.biome.Climate.RTree.create(List.of(values.get(5))) };
+        dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeRegions regions = new dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeRegions() {
+            @Override
+            public net.minecraft.world.level.biome.Climate.RTree<net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>>[] trees() {
+                return trees;
+            }
+
+            @Override
+            public int region(int qx, int qz) {
+                return Math.floorMod(Math.floorDiv(qx, 5) + 3 * Math.floorDiv(qz, 7), 3);
+            }
+
+            @Override
+            public net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> find(net.minecraft.world.level.biome.Climate.TargetPoint target, int x, int y, int z) {
+                var biome = dev.denismasterherobrine.generatoraccelerator2.biome.ClimateSearch.search(trees[region(x, z)], target);
+                return deferred(biome) ? dev.denismasterherobrine.generatoraccelerator2.biome.ClimateSearch.search(trees[0], target) : biome;
+            }
+
+            @Override
+            public boolean deferred(net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome) {
+                return biome == placeholder;
+            }
+        };
+        GpuWorldgen.testRegions = l -> regions;
+        GpuWorldgen.testHand = true;
+        GpuWorldgen wg;
+        try {
+            wg = open("test-hand", "auto", "");
+        } finally {
+            GpuWorldgen.testRegions = null;
+            GpuWorldgen.testHand = false;
+        }
+        if (wg.decidesBiomes() || !wg.handsBiomes()) {
+            throw new AssertionError("answers not handed: " + wg.status());
+        }
+        net.minecraft.world.level.biome.BiomeResolver lookup = (x, y, z, sampler) -> regions.find(sampler.sample(x, y, z), x, y, z);
+        long points0 = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.POINTS.sum();
+        long nearest0 = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.NEAREST.sum();
+        java.util.Random rnd = new java.util.Random(20261023L);
+        int[][] origins = { { -2, -2 }, { 13, 14 }, { -1953, 771 }, { 117187, -117187 } };
+        long chunks = 0, pairs = 0, walks = 0, unknown = 0, second = 0;
+        for (int[] o : origins) {
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    int cx = o[0] + i, cz = o[1] + j;
+                    Beardifier beard = Structures.none(cx, cz, 1, 1).beardifierFor(cx, cz);
+                    GpuWorldgen.BiomeResult b = wg.biomes(new ChunkPos(cx, cz)).get(120, TimeUnit.SECONDS);
+                    if (b == null || b.hand() == null || b.targets() == null) {
+                        throw new AssertionError("chunk " + cx + "," + cz + ": no handed answers");
+                    }
+                    int[] hand = b.hand();
+                    for (int q = 0; q < b.quarts().length; q++) {
+                        net.minecraft.world.level.biome.Climate.TargetPoint t = wg.target(b, q);
+                        for (int k = 0; k < 4; k += 2) {
+                            int u = hand[q * 4 + k], p = hand[q * 4 + k + 1];
+                            if (k == 0 && u == -1) {
+                                unknown++;
+                            }
+                            if (u < 0 || p == -1 || t == null) {
+                                continue;
+                            }
+                            second += k / 2;
+                            pairs++;
+                            walks += checkFittest(wg, u, p, t, rnd);
+                        }
+                    }
+                    Object[] start = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.handState(wg);
+                    ProtoChunk gpu = s.world.emptyChunk(cx, cz);
+                    var gpuSampler = tieSampler(gpu, beard).get();
+                    dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fill(wg, gpu, b, () -> {
+                        gpu.fillBiomesFromNoise(lookup, gpuSampler);
+                        return null;
+                    });
+                    var afterGpu = wg.lastResults();
+                    dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.restoreHandState(wg, start);
+                    ProtoChunk cpu = s.world.emptyChunk(cx, cz);
+                    cpu.fillBiomesFromNoise(lookup, tieSampler(cpu, beard).get());
+                    String diff = ChunkCompare.biomes(cpu, gpu, q -> false);
+                    if (diff == null && !java.util.Arrays.equals(afterGpu, wg.lastResults())) {
+                        diff = "the trees' last results after the fill differ";
+                    }
+                    if (diff != null) {
+                        throw new AssertionError("handed biomes: chunk " + cx + "," + cz + ": " + diff + " (CPU vs handed)");
+                    }
+                    chunks++;
+                }
+            }
+        }
+        long points = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.POINTS.sum() - points0;
+        long nearest = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.NEAREST.sum() - nearest0;
+        if (points == 0 || nearest == 0 || pairs == 0 || second == 0) {
+            throw new AssertionError("nothing handed: " + points + " points, " + nearest + " searches, " + pairs + " pairs (" + second + " in region 0 after a placeholder)");
+        }
+        log("EXACT (handed biomes): %d chunks identical to the CPU's own lookup (biomes and last results); %,d points and %,d searches handed;"
+            + " %,d leaf pairs (%,d after a placeholder) equal to the walk from %,d random last answers; %,d quarts left to the CPU", chunks, points, nearest, pairs,
+            second, walks, unknown);
+    }
+
+    /** Biolith's walk on the tree of GPU node {@code u} at {@code t} from random last answers of two biomes must end on {@code u} and {@code p}. */
+    @SuppressWarnings("unchecked")
+    private static int checkFittest(GpuWorldgen wg, int u, int p, net.minecraft.world.level.biome.Climate.TargetPoint t, java.util.Random rnd) {
+        var tree = wg.biomeTree(wg.treeOf(u));
+        dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree flat = ((dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateTree) (Object) tree).ga2$flat();
+        if (!flat.hasSubtrees()) {
+            return 0; // a tree of one leaf: Biolith's own search answers it (BiolithSearch), so nothing is handed there
+        }
+        int n = flat.nodes();
+        int[] keys = new int[n + 1];
+        java.util.Map<Object, Integer> numbers = new java.util.HashMap<>();
+        numbers.put("none", 0);
+        List<Integer> leafIds = new ArrayList<>();
+        for (int id = 0; id < n; id++) {
+            var leaf = flat.leaf(id);
+            if (leaf != null) {
+                var h = (net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>) leaf.value;
+                keys[id] = numbers.computeIfAbsent(h.unwrapKey().<Object>map(k -> k.location()).orElse(h), k -> numbers.size());
+                leafIds.add(id);
+            }
+        }
+        int fu = ((dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateLeaf) (Object) wg.leaf(u)).ga2$index();
+        int fp = p < 0 ? -1 : ((dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateLeaf) (Object) wg.leaf(p)).ga2$index();
+        int walks = 0;
+        for (int k = 0; k < 4; k++) {
+            int su = -1, sp = -1;
+            if (k > 0) {
+                su = leafIds.get(rnd.nextInt(leafIds.size()));
+                if (k > 1) {
+                    for (int tries = 0; tries < 32; tries++) {
+                        int c = leafIds.get(rnd.nextInt(leafIds.size()));
+                        if (keys[c] != keys[su]) {
+                            sp = c;
+                            break;
+                        }
+                    }
+                }
+            }
+            int[] ids = new int[2];
+            long[] d = new long[2];
+            flat.searchFittest(t.temperature(), t.humidity(), t.continentalness(), t.erosion(), t.depth(), t.weirdness(), keys, su, sp, ids, d);
+            if (ids[0] != fu || ids[1] != fp) {
+                throw new AssertionError("handed leaves " + fu + "," + fp + " but the walk from " + su + "," + sp + " ends on " + ids[0] + "," + ids[1] + " at " + t);
+            }
+            walks++;
+        }
+        return walks;
+    }
+
+    /**
      * Certified fp32's bounds against the exact densities: one batch of chunks through the certified kernels and through the double
      * kernels, each block's float density within its bound of the double one.
      */
@@ -519,7 +792,7 @@ public class GpuRuntimeTest {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(bx + i, bz + j);
-                    fc.add(c.noise(pos, beard(st, pos.x, pos.z)));
+                    fc.add(c.noise(pos, beard(c, st, pos.x, pos.z)));
                 }
             }
             CompletableFuture.allOf(fc.toArray(CompletableFuture[]::new)).get(120, TimeUnit.SECONDS);
@@ -527,7 +800,7 @@ public class GpuRuntimeTest {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(bx + i, bz + j);
-                    fd.add(d.noise(pos, beard(st, pos.x, pos.z)));
+                    fd.add(d.noise(pos, beard(d, st, pos.x, pos.z)));
                 }
             }
             CompletableFuture.allOf(fd.toArray(CompletableFuture[]::new)).get(120, TimeUnit.SECONDS);

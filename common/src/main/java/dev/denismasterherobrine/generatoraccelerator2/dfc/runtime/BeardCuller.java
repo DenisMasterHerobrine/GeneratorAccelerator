@@ -21,7 +21,8 @@ public final class BeardCuller {
      * When they do, it also requires that this chunk has none of their pieces.
      */
     public static boolean mayCull(Beardifier beardifier) {
-        return MixinTargets.beardCullingAllowed() && (!BeardExtras.present() || BeardExtras.cullable(beardifier));
+        return dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks == null
+            && MixinTargets.beardCullingAllowed() && (!BeardExtras.present() || BeardExtras.cullable(beardifier));
     }
 
     private final int[] ranges;

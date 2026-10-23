@@ -182,6 +182,10 @@ public final class SurfaceBuilder {
         ProgramPick pick = SurfaceConfig.compile() && SurfaceConfig.biomePrograms() && SurfaceHooks.zoomAllowed() ? new ProgramPick(program) : null;
         Deferred deferred = deepOk && blocks.locked() && SurfaceConfig.sectionBulk() ? new Deferred(deep, blocks, defaultBlock) : null;
         int deepColumns = 0;
+        if (hooks != null) {
+            frame.biomePos = biomePos;
+            hooks.start(frame);
+        }
         for (int k = 0; k < 16; k++) {
             for (int l = 0; l < 16; l++) {
                 int x = minX + k;
@@ -282,6 +286,9 @@ public final class SurfaceBuilder {
         }
         if (deferred != null) {
             deferred.finish(column, minX, minZ);
+        }
+        if (hooks != null) {
+            hooks.end(frame);
         }
         SurfaceHooks.COLUMNS_DEEP.add(deepColumns);
     }

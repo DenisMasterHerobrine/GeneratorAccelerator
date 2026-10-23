@@ -26,6 +26,8 @@ public final class BiolithMixins {
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.SURFACE_BUILD, SURFACE, Set.of("injectSurfaceBuilders", "injectLateSurfaceBuilders"),
             "Biolith's custom surfaces still generate. GA2 runs them inside its own faster surface step."),
+        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, SURFACE, Set.of("injectSurfaceBuilders", "injectLateSurfaceBuilders"),
+            "Biolith's custom surfaces still generate. Chunks build their surface on the CPU while a mod has registered such a surface."),
         new KnownMixins.Entry(MOD_ID, HookTargets.BIOME_PARAMETERS, PARAMETERS, Set.of("injectEntries"),
             "Biolith's added biomes still appear. Once the biome list is built, GA2 reuses it without waiting on a lock."));
 }

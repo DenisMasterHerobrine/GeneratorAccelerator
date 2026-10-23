@@ -90,6 +90,9 @@ public final class GeneratorAccelerator {
         ConfigManager.register(dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig.SPEC, ConfigFiles.name("chunk-loading"));
         // The parallel light package knows nothing of GA2's compat inspection. It asks through this gate.
         ParallelLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
+        // large light batches propagate their increases on the GPU, under the same gate (the same methods, run elsewhere)
+        dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
+        ParallelLight.setIncreaseOffload(dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.INSTANCE);
         StructureLocks.prewarm();
         CompatModules.init();
         if (Boolean.getBoolean("generatoraccelerator2.selfcheck")) {

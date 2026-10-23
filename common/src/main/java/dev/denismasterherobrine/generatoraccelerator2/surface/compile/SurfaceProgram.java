@@ -94,6 +94,13 @@ public final class SurfaceProgram {
     /** Per biome met, the compiled rules with the biome conditions answered for that biome. Rebuilt when tags are bound again. */
     private volatile Map<Holder<Biome>, Evaluator> byBiome = new java.util.IdentityHashMap<>();
     private final Map<java.util.BitSet, Evaluator> byAnswers = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * By the folded rules themselves. Two sets of biome answers often fold to the same rules (biomes that no rule of the pack
+     * singles out), so they share one generated class instead of compiling it, and having the JIT compile it, twice.
+     */
+    private final Map<Ir.Rule, Evaluator> byFolded = new java.util.HashMap<>();
+    /** Programs answered from {@link #byFolded} instead of being generated again. */
+    public static final java.util.concurrent.atomic.LongAdder BIOME_PROGRAMS_SHARED = new java.util.concurrent.atomic.LongAdder();
     private volatile int byBiomeEpoch = dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch.current();
     public static final java.util.concurrent.atomic.LongAdder BIOME_PROGRAMS = new java.util.concurrent.atomic.LongAdder();
     /** Picks of a biome's program by the surface builder (counted when the block's biome changes). */
@@ -115,6 +122,7 @@ public final class SurfaceProgram {
                 // tag-based biome conditions may answer differently now
                 byBiome = new java.util.IdentityHashMap<>();
                 byAnswers.clear();
+                byFolded.clear();
                 byBiomeEpoch = epoch;
             }
             e = byBiome.get(biome);
@@ -129,9 +137,16 @@ public final class SurfaceProgram {
             }
             e = byAnswers.get(answers);
             if (e == null) {
-                e = SurfaceCompiler.compile(new SurfaceProgram(this, BiomeFold.fold(this.root, answers)));
+                Ir.Rule folded = BiomeFold.fold(this.root, answers);
+                e = byFolded.get(folded);
+                if (e == null) {
+                    e = SurfaceCompiler.compile(new SurfaceProgram(this, folded));
+                    byFolded.put(folded, e);
+                    BIOME_PROGRAMS.increment();
+                } else {
+                    BIOME_PROGRAMS_SHARED.increment();
+                }
                 byAnswers.put(answers, e);
-                BIOME_PROGRAMS.increment();
             }
             Map<Holder<Biome>, Evaluator> next = new java.util.IdentityHashMap<>(byBiome);
             next.put(biome, e);

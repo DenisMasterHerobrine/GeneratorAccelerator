@@ -118,8 +118,24 @@ public final class GpuDevice {
      * Releases the queues and the context, then ends the GPU thread. Runs after the tasks submitted before. Worlds closed before
      * release their objects first. A world released later still can. The driver frees the context once its last object is released.
      */
+    /** Code that releases objects of this device's context made elsewhere (the GPU light's), run first when the device closes. */
+    private final java.util.List<Runnable> closers = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Adds {@code closer} to the code run first when the device closes ({@link #close}). */
+    public void onClose(Runnable closer) {
+        closers.add(closer);
+    }
+
     public void close() {
         submit(() -> {
+            for (Runnable c : closers) {
+                try {
+                    c.run();
+                } catch (RuntimeException e) {
+                    LOGGER.warn("release on close failed", e);
+                }
+            }
+            closers.clear();
             java.util.Set<Long> all = new java.util.LinkedHashSet<>();
             all.add(queue);
             all.add(sideQueue);

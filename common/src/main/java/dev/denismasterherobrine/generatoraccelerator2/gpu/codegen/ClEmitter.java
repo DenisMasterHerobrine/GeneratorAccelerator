@@ -92,6 +92,8 @@ public final class ClEmitter {
     public boolean noinline = true;
     /** The settings' aquifer ({@code NoiseBasedAquifer}). When false: the disabled aquifer, the global fluid picker below zero density. */
     public boolean aquifers = true;
+    /** Better Caves' liquid regions: the block kernels get a table per chunk and apply the mod's step to the aquifer's answer. */
+    public boolean liquidRegions;
     /** The settings' ore veins ({@code OreVeinifier}). */
     public boolean veins = true;
     /**
@@ -107,6 +109,12 @@ public final class ClEmitter {
     public boolean biomeRegions;
     /** {@code k_biome} also writes every quart's climate point ({@code targets}), for Lithostitched's injectors on the CPU. */
     public boolean biomeTargets;
+    /**
+     * {@code k_biome} writes the answers the CPU's own biome lookups take ({@code gpu.runtime.BiomeHand}): per quart, the nearest leaf
+     * and the nearest leaf of another biome of its tree, and of region 0's tree after a placeholder. Each only where it is the one leaf
+     * at its distance. {@code tkey} numbers each leaf's biome.
+     */
+    public boolean biomeHand;
     /**
      * Also generate the certified float corner and block kernels (and the double recheck of the cells they flag) next to the double
      * program. {@link #source()} throws {@link Unsupported} when the router has something they do not cover.
@@ -365,6 +373,7 @@ public final class ClEmitter {
               R mv[NM]; uchar mk[NM];
               float cv[NCV];
               __global const int* bp; int bps, bpn; __global const int* bj; int bjs, bjn; __global const float* bk;
+              __global const int* ek; int epn; int ovr;
             """);
         if (certify) {
             src.append("  float fv[NF]; float fe[NF]; uchar fk[NF]; float ce[NCV]; int unc; __global const float* cr32; __global const float* cre32;\n");
@@ -640,7 +649,7 @@ public final class ClEmitter {
         k.append("__kernel void k_corner(").append(COMMON_ARGS).append(", __global const R* hz, __global R* corners, int bx0, int bz0, int ncx, int ncz, int ncy) {\n");
         k.append("  int g = get_global_id(0); if (g >= ncx * ncz * ncy) return;\n");
         k.append("  int col = g / ncy; int cy = g % ncy;\n").append(ctxInit()).append(COMMON_INIT);
-        k.append("  c->bps = 0; c->bpn = 0; c->bjs = 0; c->bjn = 0;\n");
+        k.append("  c->bps = 0; c->bpn = 0; c->bjs = 0; c->bjn = 0; c->epn = 0; c->ovr = 0;\n");
         k.append("  c->hz = hz; c->hbase = col * ").append(nh).append(";\n");
         k.append("  c->bx = bx0 + (col / ncz) * ").append(cw).append("; c->bz = bz0 + (col % ncz) * ").append(cw)
             .append("; c->by = (cy + ").append(cellNoiseMinY).append(") * ").append(cellHeight).append(";\n");
@@ -780,6 +789,7 @@ public final class ClEmitter {
                 + " __global int* biomes, int cx0, int cz0, int hchunks, int nchunks, __global const R* cz, __global long* tieList, __global int* tieCount, int tieCap")
             .append(biomeRegions ? ", __global const int* troot, int ntrees, __global const int* tdefer, __global const int* regionMap, __global int* fallbacks" : "")
             .append(biomeTargets ? ", __global int* targets" : "")
+            .append(biomeHand ? ", __global const int* tkey, __global int* hand" : "")
             .append(") {\n");
         int quartsY = height / 4;
         // work-items in quart column order (y fastest). A warp's climate points differ in depth only, so the warp's walks meet the same
@@ -795,17 +805,34 @@ public final class ClEmitter {
         for (int i = 0; i < climate.length; i++) {
             k.append("  long q").append(i).append(" = (long) ((float) ").append(xz[i] ? "col[" + i + "]" : "ap_" + climate[i] + "(c)").append(" * 10000.0f);\n");
         }
+        if (biomeHand) {
+            // the handed answers: -1 where the CPU searches itself, -2 for no leaf of another biome, -3 for no second tree
+            k.append("  int hu1 = -1, hp1 = -1, hu2 = -3, hp2 = -3;\n");
+        }
         if (biomeRegions) {
             // TerraBlender: the column's region tree. A placeholder leaf sends the quart to region 0's tree. A region without a tree
             // is marked as a tie, so the CPU asks TerraBlender itself
             k.append("  int u = regionMap[b * 16 + qx * 4 + qz]; int root = u >= 0 && u < ntrees ? troot[u] : -1;\n");
             k.append("  int ties_n = 2; int leaf = 0; int fb = 0;\n");
             k.append("  if (root >= 0) {\n    leaf = tree_search(tb, toff, tfirst, tcount, root, q0, q1, q2, q3, q4, q5, &ties_n);\n");
+            if (biomeHand) {
+                k.append("    if (ties_n == 1) { hu1 = leaf; hp1 = hand_other(tb, toff, tfirst, tcount, tkey, root, leaf, q0, q1, q2, q3, q4, q5); }\n");
+            }
             k.append("    if (ties_n <= 1 && tdefer[leaf]) {\n      int ties_f; int root0 = troot[0];\n");
-            k.append("      if (root0 >= 0) { fb = tree_search(tb, toff, tfirst, tcount, root0, q0, q1, q2, q3, q4, q5, &ties_f); if (ties_f > 1) ties_n = ties_f; }\n");
+            k.append("      if (root0 >= 0) { fb = tree_search(tb, toff, tfirst, tcount, root0, q0, q1, q2, q3, q4, q5, &ties_f);");
+            if (biomeHand) {
+                k.append(" hu2 = -1; if (ties_f == 1) { hu2 = fb; hp2 = hand_other(tb, toff, tfirst, tcount, tkey, root0, fb, q0, q1, q2, q3, q4, q5); }");
+            }
+            k.append(" if (ties_f > 1) ties_n = ties_f; }\n");
             k.append("      else ties_n = 2;\n    }\n  }\n  fallbacks[g] = fb;\n");
         } else {
             k.append("  int ties_n;\n  int leaf = tree_search(tb, toff, tfirst, tcount, 0, q0, q1, q2, q3, q4, q5, &ties_n);\n");
+            if (biomeHand) {
+                k.append("  if (ties_n == 1) { hu1 = leaf; hp1 = hand_other(tb, toff, tfirst, tcount, tkey, 0, leaf, q0, q1, q2, q3, q4, q5); }\n");
+            }
+        }
+        if (biomeHand) {
+            k.append("  __global int* hq = hand + (long) g * 4; hq[0] = hu1; hq[1] = hp1; hq[2] = hu2; hq[3] = hp2;\n");
         }
         // the leaf. The CPU keeps vanilla's per-thread last result from it. On a tie, vanilla's answer depends on that last result. A tie
         // is marked and listed with its climate point, and the CPU searches it as vanilla does.
@@ -853,12 +880,13 @@ public final class ClEmitter {
         // Both kernels are double. As with k_corner, a certified program leaves them out.
         int fp64Kernel = k.length();
         k.append("__kernel void k_corner_pc(").append(COMMON_ARGS).append(", __global const R* hz, __global R* corners, int bx0, int bz0, int ncz, int ncy,"
-            + " int hchunks, int n, __global const int* lst, __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk) {\n");
+            + " int hchunks, int n, __global const int* lst, __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const int* ek) {\n");
         k.append("  int g = get_global_id(0); if (g >= n * ").append(pc).append(" * ncy) return;\n");
         k.append("  int li = g / (").append(pc).append(" * ncy); int rem = g % (").append(pc).append(" * ncy); int col = rem / ncy; int cy = rem % ncy;\n");
         k.append("  int b = lst[li]; int lcx = col / ").append(per + 1).append(", lcz = col % ").append(per + 1).append("; int ix = b / hchunks, iz = b % hchunks;\n");
         k.append(ctxInit()).append(COMMON_INIT);
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  c->hz = hz; c->hbase = ((ix * ").append(per).append(" + lcx) * ncz + iz * ").append(per).append(" + lcz) * ").append(nh).append(";\n");
         k.append("  c->bx = bx0 + ix * 16 + lcx * ").append(cw).append("; c->bz = bz0 + iz * 16 + lcz * ").append(cw)
             .append("; c->by = (cy + ").append(cellNoiseMinY).append(") * ").append(cellHeight).append(";\n");
@@ -872,13 +900,14 @@ public final class ClEmitter {
         k.append("__kernel void k_block(").append(COMMON_ARGS)
             .append(", __global const R* corners, __global uchar* out, __global R* dens, int bx0, int bz0, int nbz, int ncx, int ncz, int ncy, int n, __global const int* lst,"
                 + " __global const int* cells, int cx0, int cz0, int hchunks, ulong oreLo, ulong oreHi,"
-                + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const R* bh) {\n");
+                + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const int* ek, __global const R* bh" + lqArg() + ") {\n");
         k.append("  int g = get_global_id(0); if (g >= n * ").append(256 * h).append(") return;\n");
         k.append("  int li = g / ").append(256 * h).append("; int r = g % ").append(256 * h).append("; int Y = r % ").append(h).append("; int t = r / ").append(h)
             .append("; int lz = t & 15; int lx = t >> 4;\n");
         k.append("  int b = lst[li]; int X = (b / hchunks) * 16 + lx; int Z = (b % hchunks) * 16 + lz;\n");
         k.append(ctxInit()).append(COMMON_INIT);
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  int cellX = X / ").append(cw).append(", cellY = Y / ").append(cellHeight).append(", cellZ = Z / ").append(cw).append(";\n");
         if (!perChunkCorners) {
             k.append("  c->cr = corners; c->rstride = ncx * ncz * ncy; c->csx = ncz * ncy; c->csz = ncy; c->cbase = (cellX * ncz + cellZ) * ncy + cellY;\n");
@@ -902,11 +931,13 @@ public final class ClEmitter {
         } else {
             k.append("  int id = aquifer_disabled(c, (double) d, &flag);\n");
         }
+        k.append(lqLine());
         if (veins) {
             k.append("  if (id == ID_NONE) { id = vein_rule(c, oreLo, oreHi); if (id == ID_NONE) id = ").append(ID_STONE).append("; }\n");
         } else {
             k.append("  if (id == ID_NONE) id = ").append(ID_STONE).append(";\n");
         }
+        k.append(OVERRIDE_LINE);
         k.append(canonLine()).append("  out[g] = (uchar) (id | (flag << 7));\n}\n");
         if (certify) {
             k.setLength(fp64Kernel);
@@ -1057,6 +1088,8 @@ public final class ClEmitter {
             #define SEA %d
             #define PICK_LAVA_Y %d
             #define WAY_BELOW_MIN_Y (-32512)
+            #define LQ_STRIDE 257
+            #define LQ_NONE (-2147483647 - 1)
             #define MINGY %d
             #define SURF_PER_CHUNK SPC_VALUE
             #define FLUID_LAVA FLUID_LAVA_VALUE
@@ -1263,6 +1296,40 @@ public final class ClEmitter {
               }
               *ties = n;
               return best;
+            }
+            /*
+             * The nearest leaf whose biome (key) differs from excl's, walked as tree_search walks, with how many such leaves lie at its
+             * distance in *ties. -1 when the tree has no such leaf.
+             */
+            NI int tree_other(__global const long* tb, __global const long* toff, __global const int* first, __global const int* count,
+                              __global const int* key, int root, int excl, long q0, long q1, long q2, long q3, long q4, long q5, int* ties) {
+              if (count[root] == 0) { *ties = key[root] != excl ? 1 : 0; return key[root] != excl ? root : -1; }
+              int stack[64];
+              int sp = 0; stack[0] = first[root] + count[root]; stack[1] = first[root];
+              int best = -1, n = 0; long bd = 0x7fffffffffffffffL;
+              while (sp >= 0) {
+                int child = stack[2 * sp + 1];
+                if (child == stack[2 * sp]) { sp--; continue; }
+                stack[2 * sp + 1] = child + 1;
+                long d = node_dist(tb, toff, child, q0, q1, q2, q3, q4, q5);
+                if (d <= bd) {
+                  int cc = count[child];
+                  if (cc == 0) { if (key[child] != excl) { if (d < bd) { bd = d; best = child; n = 1; } else n++; } }
+                  else { int fc = first[child]; sp++; stack[2 * sp] = fc + cc; stack[2 * sp + 1] = fc; }
+                }
+              }
+              *ties = n;
+              return best;
+            }
+            /*
+             * The handed second answer for nearest leaf u: the nearest leaf of another biome when it is the only one at its distance,
+             * -2 when the tree has no leaf of another biome, -1 when several share the distance (the CPU searches itself).
+             */
+            int hand_other(__global const long* tb, __global const long* toff, __global const int* first, __global const int* count,
+                           __global const int* key, int root, int u, long q0, long q1, long q2, long q3, long q4, long q5) {
+              int t;
+              int p = tree_other(tb, toff, first, count, key, root, key[u], q0, q1, q2, q3, q4, q5, &t);
+              return p < 0 ? -2 : t == 1 ? p : -1;
             }
             """.replace("SPC_VALUE", surfacePerChunk ? "1" : "0").replace("FLUID_LAVA_VALUE", fluidLava ? "1" : "0").replace("PICKER_FN", pickerFunction()))
             .formatted(ID_AIR, ID_WATER, ID_LAVA, seaLevel,
@@ -2926,14 +2993,15 @@ public final class ClEmitter {
               } else d12 = 0.0;
               return 2.0 * (d12 + d10);
             }
-            NI int aquifer_decide32(Ctx* c, double density, double ed, __global const int* cells, int cbase, int bcx, int bcz, int lmax, int* flag) {
+            NI int aquifer_decide32(Ctx* c, double density, double ed, __global const int* cells, int cbase, int bcx, int bcz, int lmax, int lqOn, int* flag) {
               int x = c->bx, y = c->by, z = c->bz;
               if (CLOSE(density, ed)) c->unc |= 2;
               if (density > 0.0) { *flag = 0; return ID_NONE; }
               if (IS_LAVA(fs_at(picker(y), y))) { *flag = 0; return ID_LAVA; }
               /* 6 or more above every fluid level of the cells the chunk's blocks can see (lmax): each of them is air at y, and each pressure
-                 is 2 * d10 with d10 <= -2.6 (the barrier unread), never raising the density: vanilla returns air (no fluid, no mark) */
-              if (y >= lmax + 6) { *flag = 0; return ID_AIR; }
+                 is 2 * d10 with d10 <= -2.6 (the barrier unread), never raising the density: vanilla returns air (no fluid, no mark). Not
+                 where Better Caves' liquid regions apply (lqOn): the air becomes liquid there, and the mark needs vanilla's flag */
+              if (!lqOn && y >= lmax + 6) { *flag = 0; return ID_AIR; }
               int l = jfloordiv(x - 5, 16), i1 = jfloordiv(y + 1, 12), j1 = jfloordiv(z - 5, 16);
               int k1 = 0x7fffffff, l1 = 0x7fffffff, i2 = 0x7fffffff;
               int a1 = 0, a2 = 0, a3 = 0;
@@ -3045,7 +3113,7 @@ public final class ClEmitter {
         k.append("__kernel void k_corner32(").append(COMMON_ARGS).append(", __global const R* hz, __global float* corners, __global float* cornersE, int bx0, int bz0, int ncx, int ncz, int ncy) {\n");
         k.append("  int g = get_global_id(0); if (g >= ncx * ncz * ncy) return;\n");
         k.append("  int col = g / ncy; int cy = g % ncy;\n").append(ctxInit()).append(COMMON_INIT).append("  reset32(c);\n");
-        k.append("  c->bps = 0; c->bpn = 0; c->bjs = 0; c->bjn = 0;\n");
+        k.append("  c->bps = 0; c->bpn = 0; c->bjs = 0; c->bjn = 0; c->epn = 0; c->ovr = 0;\n");
         k.append("  c->hz = hz; c->hbase = col * ").append(nh).append(";\n");
         k.append("  c->bx = bx0 + (col / ncz) * ").append(cw).append("; c->bz = bz0 + (col % ncz) * ").append(cw)
             .append("; c->by = (cy + ").append(cellNoiseMinY).append(") * ").append(cellHeight).append(";\n");
@@ -3061,12 +3129,13 @@ public final class ClEmitter {
         k.append("}\n");
         // per-chunk corners
         k.append("__kernel void k_corner32_pc(").append(COMMON_ARGS).append(", __global const R* hz, __global float* corners, __global float* cornersE, int bx0, int bz0, int ncz, int ncy,"
-            + " int hchunks, int n, __global const int* lst, __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk) {\n");
+            + " int hchunks, int n, __global const int* lst, __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const int* ek) {\n");
         k.append("  int g = get_global_id(0); if (g >= n * ").append(pc).append(" * ncy) return;\n");
         k.append("  int li = g / (").append(pc).append(" * ncy); int rem = g % (").append(pc).append(" * ncy); int col = rem / ncy; int cy = rem % ncy;\n");
         k.append("  int b = lst[li]; int lcx = col / ").append(per + 1).append(", lcz = col % ").append(per + 1).append("; int ix = b / hchunks, iz = b % hchunks;\n");
         k.append(ctxInit()).append(COMMON_INIT).append("  reset32(c);\n");
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  c->hz = hz; c->hbase = ((ix * ").append(per).append(" + lcx) * ncz + iz * ").append(per).append(" + lcz) * ").append(nh).append(";\n");
         k.append("  c->bx = bx0 + ix * 16 + lcx * ").append(cw).append("; c->bz = bz0 + iz * 16 + lcz * ").append(cw)
             .append("; c->by = (cy + ").append(cellNoiseMinY).append(") * ").append(cellHeight).append(";\n");
@@ -3085,14 +3154,15 @@ public final class ClEmitter {
         k.append("__kernel void k_block32(").append(COMMON_ARGS)
             .append(", __global const float* corners, __global const float* cornersE, __global uchar* out, __global float* dens, int bx0, int bz0, int nbz, int ncx, int ncz, int ncy, int n,"
                 + " __global const int* lst, __global const int* cells, int cx0, int cz0, int hchunks, ulong oreLo, ulong oreHi,"
-                + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const R* bh,"
-                + " __global int* cflag, __global int* rlist, __global int* rcount, int rcap, __global const int* levels) {\n");
+                + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const int* ek, __global const R* bh,"
+                + " __global int* cflag, __global int* rlist, __global int* rcount, int rcap, __global const int* levels" + lqArg() + ") {\n");
         k.append("  int g = get_global_id(0); if (g >= n * ").append(256 * h).append(") return;\n");
         k.append("  int li = g / ").append(256 * h).append("; int r = g % ").append(256 * h).append("; int Y = r % ").append(h).append("; int t = r / ").append(h)
             .append("; int lz = t & 15; int lx = t >> 4;\n");
         k.append("  int b = lst[li]; int X = (b / hchunks) * 16 + lx; int Z = (b % hchunks) * 16 + lz;\n");
         k.append(ctxInit()).append(COMMON_INIT).append("  reset32(c);\n");
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  int cellX = X / ").append(cw).append(", cellY = Y / ").append(cellHeight).append(", cellZ = Z / ").append(cw).append(";\n");
         if (!perChunkCorners) {
             k.append("  c->cr32 = corners; c->cre32 = cornersE; c->rstride = ncx * ncz * ncy; c->csx = ncz * ncy; c->csz = ncy; c->cbase = (cellX * ncz + cellZ) * ncy + cellY;\n");
@@ -3114,15 +3184,18 @@ public final class ClEmitter {
         k.append("  int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  int flag = 0;\n");
         if (aquifers) {
-            k.append("  int id = aquifer_decide32(c, (double) d, (double) SAFE(ed), cells, b * ").append(cellsPerChunk).append(", bcx, bcz, levels[b], &flag);\n");
+            k.append("  int id = aquifer_decide32(c, (double) d, (double) SAFE(ed), cells, b * ").append(cellsPerChunk).append(", bcx, bcz, levels[b], ")
+                .append(liquidRegions ? "lq[li * LQ_STRIDE] != LQ_NONE && c->by <= lq[li * LQ_STRIDE]" : "0").append(", &flag);\n");
         } else {
             k.append("  int id = aquifer_disabled32(c, (double) d, (double) SAFE(ed), &flag);\n");
         }
+        k.append(lqLine());
         if (veins) {
             k.append("  if (id == ID_NONE) { id = vein_rule32(c, oreLo, oreHi); if (id == ID_NONE) id = ").append(ID_STONE).append("; }\n");
         } else {
             k.append("  if (id == ID_NONE) id = ").append(ID_STONE).append(";\n");
         }
+        k.append(OVERRIDE_LINE);
         k.append("#ifdef WRITE_DENSITY\n  dens[3 * di + 2] = as_float(c->unc); /* why the block's cell is rechecked (bits: 1 value, 2 density sign, 4 aquifer, 8+ veins) */\n#endif\n");
         k.append("  if (c->unc) {\n");
         k.append("    int ci = ((li * ").append(per).append(" + lx / ").append(cw).append(") * ").append(per).append(" + lz / ").append(cw).append(") * ").append(cellCountY)
@@ -3142,12 +3215,13 @@ public final class ClEmitter {
         // then in double, one thread per listed corner and root, a root per work-group (the roots are different functions)
         k.append("__kernel void k_recheck_corners(").append(COMMON_ARGS).append(", __global const R* hz, __global R* cval, int bx0, int bz0, int ncz, int ncy, int hchunks,"
             + " __global const int* lst, __global const int* clist, __global const int* rcount, int ccap, __global const int* bp, __global const int* bj, __global const int* bidx,"
-            + " __global const float* bk) {\n");
+            + " __global const float* bk, __global const int* ek) {\n");
         k.append("  int g = get_global_id(0); int ri = g / ccap; int kk = g % ccap; if (ri >= ").append(nr).append(" || kk >= rcount[1]) return;\n");
         k.append("  int idx = clist[kk]; int cy = idx % ncy; int t = idx / ncy; int col = t % ").append(pc).append("; int li = t / ").append(pc).append(";\n");
         k.append("  int b = lst[li]; int ix = b / hchunks, iz = b % hchunks;\n");
         k.append(ctxInit()).append(COMMON_INIT);
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  int colX = ix * ").append(per).append(" + col / ").append(per + 1).append(", colZ = iz * ").append(per).append(" + col % ").append(per + 1).append(";\n");
         k.append("  c->hz = hz; c->hbase = (colX * ncz + colZ) * ").append(nh).append(";\n");
         k.append("  c->bx = bx0 + colX * ").append(cw).append("; c->bz = bz0 + colZ * ").append(cw).append("; c->by = (cy + ").append(cellNoiseMinY)
@@ -3161,7 +3235,7 @@ public final class ClEmitter {
         // recheck: the listed cells' blocks in double over those corners
         k.append("__kernel void k_recheck_blocks(").append(COMMON_ARGS).append(", __global const R* cval, __global uchar* out, int bx0, int bz0, int nbz, int ncy, int hchunks,"
             + " __global const int* lst, __global const int* rlist, __global const int* rcount, int rcap, __global const int* cells, int cx0, int cz0, ulong oreLo, ulong oreHi,"
-            + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const R* bh) {\n");
+            + " __global const int* bp, __global const int* bj, __global const int* bidx, __global const float* bk, __global const int* ek, __global const R* bh" + lqArg() + ") {\n");
         k.append("  int g = get_global_id(0); int kk = g / CELL_BLOCKS; if (kk >= min(*rcount, rcap)) return; int q = g % CELL_BLOCKS;\n");
         k.append("  int iy = q % ").append(cellHeight).append("; int t = q / ").append(cellHeight).append("; int izc = t % ").append(cw).append("; int ixc = t / ").append(cw).append(";\n");
         k.append("  int ci = rlist[kk]; int cellY = ci % ").append(cellCountY).append("; t = ci / ").append(cellCountY).append("; int cellZ = t % ").append(per)
@@ -3169,7 +3243,8 @@ public final class ClEmitter {
         k.append("  int b = lst[li]; int lx = cellX * ").append(cw).append(" + ixc, lz = cellZ * ").append(cw).append(" + izc; int X = (b / hchunks) * 16 + lx, Z = (b % hchunks) * 16 + lz;")
             .append(" int Y = cellY * ").append(cellHeight).append(" + iy;\n");
         k.append(ctxInit()).append(COMMON_INIT);
-        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 4]; c->bpn = bidx[li * 4 + 1]; c->bjs = bidx[li * 4 + 2]; c->bjn = bidx[li * 4 + 3];\n");
+        k.append("  c->bp = bp; c->bj = bj; c->bk = bk; c->bps = bidx[li * 8]; c->bpn = bidx[li * 8 + 1]; c->bjs = bidx[li * 8 + 2]; c->bjn = bidx[li * 8 + 3];"
+            + " c->ek = ek; c->epn = bidx[li * 8 + 4]; c->ovr = 0;\n");
         k.append("  c->cr = cval; c->rstride = ").append(pc).append(" * ncy; c->csx = ").append(per + 1).append(" * ncy; c->csz = ncy; c->cbase = li * ").append(nr * pc)
             .append(" * ncy + (cellX * ").append(per + 1).append(" + cellZ) * ncy + cellY;\n");
         k.append("  c->dx = (R) ((double) ixc / (double) ").append(cw).append("); c->dy = (R) ((double) iy / (double) ").append(cellHeight)
@@ -3184,11 +3259,13 @@ public final class ClEmitter {
         } else {
             k.append("  int id = aquifer_disabled(c, (double) d, &flag);\n");
         }
+        k.append(lqLine());
         if (veins) {
             k.append("  if (id == ID_NONE) { id = vein_rule(c, oreLo, oreHi); if (id == ID_NONE) id = ").append(ID_STONE).append("; }\n");
         } else {
             k.append("  if (id == ID_NONE) id = ").append(ID_STONE).append(";\n");
         }
+        k.append(OVERRIDE_LINE);
         k.append(canonLine()).append("  out[(long) li * ").append(256 * h).append(" + (lx * 16 + lz) * ").append(h).append(" + Y] = (uchar) (id | (flag << 7));\n}\n");
         return k.toString();
     }
@@ -3871,6 +3948,24 @@ public final class ClEmitter {
     static final String BEARD = """
         double bury(double a, double b, double cz) { double d = sqrt(a * a + b * b + cz * cz); return jclampedMap(d, 0.0, 6.0, 1.0, 0.0); }
         double fast_inv_sqrt(double n) { double d0 = 0.5 * n; long i = as_long(n); i = 6910469410427058090L - (i >> 1); double x = as_double(i); return x * (1.5 - d0 * x * x); }
+        /* EnhancedTerrainAdaptation.computeDensityFactor of YUNG's API (t[7] == 0) and Integrated API, over the batch's adaptation table */
+        double enh_factor(__global const int* ek, __global const int* t, int dx, int dy, int dz, int yRel) {
+          int size = t[0]; int rad = size / 2;
+          int i = dx + rad, j = dy + rad, k = dz + rad;
+          if (!(i >= 0 && i < size && j >= 0 && j < size && k >= 0 && k < size)) return 0.0;
+          float kv = as_float(ek[t[1] + (k * size * size + i * size + j)]);
+          double d0 = (double) yRel + 0.5;
+          double d1 = (double) dx * (double) dx + d0 * d0 + (double) dz * (double) dz;
+          if (t[7] == 0) {
+            double d2 = fabs((d0 * fast_inv_sqrt(d1 / 2.0)) / 2.0);
+            int mod = d0 > 0.0 ? t[2] : t[3];
+            return (d2 * (double) kv) * (double) mod;
+          }
+          double d2 = ((-d0) * fast_inv_sqrt(d1 / 2.0)) / 2.0;
+          if (d2 > 0.0 && !t[5]) return 0.0;
+          if (d2 < 0.0 && !t[4]) return 0.0;
+          return d2 * (double) kv;
+        }
         double beard_c(__global const float* bk, int a, int b, int cz, int l1) {
           int i = a + 12, j = b + 12, k = cz + 12;
           if (i >= 0 && i < 24 && j >= 0 && j < 24 && k >= 0 && k < 24) {
@@ -3904,9 +3999,32 @@ public final class ClEmitter {
             int j2 = x - r[0], k2 = y - r[1], l2 = z - r[2];
             d0 += beard_c(c->bk, j2, k2, l2, k2) * 0.4;
           }
+          /* other mods' pieces and junctions after the vanilla pieces (beardifier.EnhancedBeard): their adaptation's kernel, scaled as
+             vanilla's beard, YUNG's API with its top and bottom actions, Integrated API with its carve/beard switches and direction */
+          for (int p = c->bps + c->bpn; p < c->bps + c->bpn + c->epn; p++) {
+            __global const int* r = c->bp + p * 8;
+            int a = r[6];
+            if (a < 0) continue;
+            __global const int* t = c->ek + a * 10;
+            int inv = r[7] & 2;
+            double v;
+            if (r[7] & 1) {
+              int j2 = x - r[0], k2 = inv ? r[1] - y : y - r[1], l2 = z - r[2];
+              v = enh_factor(c->ek, t, j2, k2, l2, k2) * 0.4;
+            } else {
+              int i1 = max(0, max(r[0] - x, x - r[3]));
+              int j1 = max(0, max(r[1] - y, y - r[4]));
+              int k1 = max(0, max(r[2] - z, z - r[5]));
+              int yRel = inv ? r[4] - y : y - r[1];
+              v = enh_factor(c->ek, t, i1, j1, k1, yRel) * 0.8;
+            }
+            d0 += v;
+            if (v != 0.0 && t[8] != 0) c->ovr = 1;
+          }
           return d0;
         }
         """;
+
 
     static final String LERP3C = """
         R lerp3c(Ctx* c, int r) {
@@ -3925,6 +4043,31 @@ public final class ClEmitter {
           return lerpR(c->dz, z0, z1);
         }
         """;
+
+    /**
+     * YUNG's aquifer override at the end of the fill: water and lava at a block some overriding piece marked become the chunk's
+     * override block ({@code bidx[li * 8 + 5]}, the mask's one override), as {@code yungsapi_dontFillMarkedPositions} does.
+     */
+    private static final String OVERRIDE_LINE = "  if (c->ovr && (id == ID_WATER || id == ID_LAVA)) id = bidx[li * 8 + 5];\n";
+
+    /** The block kernels' extra argument when the program applies Better Caves' liquid regions. */
+    private String lqArg() {
+        return liquidRegions ? ", __global const int* lq" : "";
+    }
+
+    /**
+     * Better Caves' step on the aquifer's answer, before the vein rule, as its handler runs at {@code computeSubstance}'s return: at or
+     * below the chunk's liquid altitude a block the aquifer did not leave solid becomes the column's liquid (or solid where the column
+     * has none), unless it is of that block already ({@code aquifer.LiquidRegions.apply}). The entry's bits say which of the
+     * aquifer's answers are of the liquid's block.
+     */
+    private String lqLine() {
+        if (!liquidRegions) {
+            return "";
+        }
+        return "  if (lq[li * LQ_STRIDE] != LQ_NONE && id != ID_NONE && c->by <= lq[li * LQ_STRIDE]) { int lqe = lq[li * LQ_STRIDE + 1 + (lx << 4 | lz)]; int liq = lqe & 0xff;"
+            + " if (liq == 0xff) id = ID_NONE; else if (!((id == ID_AIR && (lqe & 1024)) || (id == ID_WATER && (lqe & 256)) || (id == ID_LAVA && (lqe & 512)))) id = liq; }\n";
+    }
 
     /** A lifted static call's key in the tables above, in Mojang names. The IR keeps the running game's names ({@link Names}). */
     private static String staticKey(String owner, String name, String desc) {

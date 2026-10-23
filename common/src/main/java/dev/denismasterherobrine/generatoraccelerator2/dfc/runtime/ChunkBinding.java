@@ -305,7 +305,7 @@ public final class ChunkBinding {
         cellsFilled++;
         if (values == classifyValues && !beard) {
             CellBounds b = bounds[index];
-            int cls = b == null ? CellBounds.MIXED : b.classify(corners, y0, cellHeight, blenderEmpty);
+            int cls = b == null ? CellBounds.MIXED : b.classify(corners, x0, y0, z0, cellWidth, cellHeight, blenderEmpty);
             if (cls == CellBounds.SKY && !skipper.cellAir(x0, y0, z0, cellWidth, cellHeight)) {
                 // the aquifer's pressure terms can still make blocks solid here, and they read the density
                 cls = CellBounds.MIXED;

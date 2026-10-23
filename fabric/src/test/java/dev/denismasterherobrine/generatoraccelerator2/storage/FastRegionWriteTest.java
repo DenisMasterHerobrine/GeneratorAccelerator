@@ -123,7 +123,7 @@ public class FastRegionWriteTest {
         return Arrays.copyOfRange(buffer.array(), 0, buffer.limit());
     }
 
-    private static List<CompoundTag> synthetic() {
+    static List<CompoundTag> synthetic() {
         List<CompoundTag> out = new ArrayList<>();
         Random random = new Random(5);
         for (int n = 0; n < 20; n++) {

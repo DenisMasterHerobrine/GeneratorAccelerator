@@ -422,7 +422,8 @@ public final class ProgramCompiler {
         MethodHandles.Lookup lookup = HiddenClassLoader.define(cw, "cell-" + debugName);
         try {
             MethodHandle mh = lookup.findConstructor(lookup.lookupClass(), CTOR_TYPE);
-            dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds bounds = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.of(root, lerpIndex);
+            dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds bounds = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.of(root, lerpIndex,
+                specs.toArray(new NoiseSpec[0]));
             if (bounds == null) {
                 dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler.LOGGER.info("cell program {}: no whole-cell bounds (first uncovered node: {})", debugName,
                     dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.uncovered(root, lerpIndex));

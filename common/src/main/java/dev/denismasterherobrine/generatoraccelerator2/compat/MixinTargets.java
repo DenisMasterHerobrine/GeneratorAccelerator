@@ -62,14 +62,34 @@ public final class MixinTargets {
      * status vanilla's as long as statuses are computed in vanilla's order. With such mixins, the fast path only searches.
      */
     public static void recordAquifer(List<String> foreignMixins, List<String> orderKept) {
+        recordAquifer(foreignMixins, orderKept, List.of());
+    }
+
+    private static volatile List<String> aquiferLiquidRegions = List.of();
+
+    /**
+     * {@link #recordAquifer(List, List)}, plus the mixins whose step GA2 runs itself on its own answers ({@code KnownMixins}, key
+     * {@code aquifer.liquidRegions}: Better Caves' liquid regions, {@code aquifer.LiquidRegions}). They leave the fast path and
+     * the GPU on.
+     */
+    public static void recordAquifer(List<String> foreignMixins, List<String> orderKept, List<String> liquidRegions) {
         aquiferForeign = List.copyOf(foreignMixins);
         aquiferOrderKept = List.copyOf(orderKept);
+        aquiferLiquidRegions = List.copyOf(liquidRegions);
         aquiferInspected = true;
         warnForeign("aquifer fast path", foreignMixins, AQUIFER_FORCE);
         if (foreignMixins.isEmpty() && !orderKept.isEmpty()) {
             LOGGER.info("aquifer shared with {} -> fast path kept, statuses in vanilla order (search only)",
                 orderKept);
         }
+        if (!liquidRegions.isEmpty()) {
+            LOGGER.info("aquifer shared with {} -> fast path and GPU kept, the liquid regions applied to their answers", liquidRegions);
+        }
+    }
+
+    /** True when Better Caves' liquid regions change the aquifer's answers, which GA2's own answers then go through. */
+    public static boolean aquiferLiquidRegions() {
+        return !aquiferLiquidRegions.isEmpty();
     }
 
     /** True when the aquifer fast path may only search ({@link #recordAquifer(List, List)}). */
@@ -86,6 +106,7 @@ public final class MixinTargets {
     public static List<String> aquiferChanges() {
         List<String> all = new java.util.ArrayList<>(aquiferForeign);
         all.addAll(aquiferOrderKept);
+        all.addAll(aquiferLiquidRegions);
         return all;
     }
 

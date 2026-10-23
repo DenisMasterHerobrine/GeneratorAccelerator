@@ -40,9 +40,14 @@ public final class HiddenClassLoader {
         return define(bytes, debugName);
     }
 
+    /** Classes defined so far (every generated program of GA2 comes through here). */
+    public static final java.util.concurrent.atomic.LongAdder DEFINED = new java.util.concurrent.atomic.LongAdder();
+
     public static MethodHandles.Lookup define(byte[] bytes, String debugName) {
         try {
-            return MethodHandles.lookup().defineHiddenClass(bytes, true, MethodHandles.Lookup.ClassOption.NESTMATE);
+            MethodHandles.Lookup lookup = MethodHandles.lookup().defineHiddenClass(bytes, true, MethodHandles.Lookup.ClassOption.NESTMATE);
+            DEFINED.increment();
+            return lookup;
         } catch (Throwable t) {
             Path dump = dump(bytes, debugName);
             throw new DfcCompileException("defineHiddenClass failed for " + debugName + (dump != null ? " (class bytes dumped to " + dump + ")" : ""), t);

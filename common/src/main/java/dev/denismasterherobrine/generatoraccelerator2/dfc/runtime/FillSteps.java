@@ -117,6 +117,16 @@ public final class FillSteps {
      */
     public static boolean mayActForGpu(net.minecraft.world.level.StructureManager structures, net.minecraft.world.level.ChunkPos pos,
                                        net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker beardifier) {
+        return mayActForGpu(structures, pos, beardifier, false);
+    }
+
+    /**
+     * As {@link #mayActForGpu(net.minecraft.world.level.StructureManager, net.minecraft.world.level.ChunkPos, net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker)}.
+     * With {@code yungMaskOnGpu}, YUNG's step does not count: the GPU computes its mask and its replacement with the chunk's enhanced
+     * pieces ({@code beardifier.EnhancedBeard}).
+     */
+    public static boolean mayActForGpu(net.minecraft.world.level.StructureManager structures, net.minecraft.world.level.ChunkPos pos,
+                                       net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker beardifier, boolean yungMaskOnGpu) {
         if (STATE.allowed()) {
             return false;
         }
@@ -125,7 +135,7 @@ public final class FillSteps {
             return true;
         }
         for (Known k : steps) {
-            if (k.mixin().equals(YungPieces.NOISE_CHUNK_MIXIN) ? !YungPieces.none(beardifier) : ironsStructures(structures, pos)) {
+            if (k.mixin().equals(YungPieces.NOISE_CHUNK_MIXIN) ? !yungMaskOnGpu && !YungPieces.none(beardifier) : ironsStructures(structures, pos)) {
                 return true;
             }
         }

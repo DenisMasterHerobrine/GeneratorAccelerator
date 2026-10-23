@@ -1,9 +1,11 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.analysis;
 
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 
 /**
@@ -23,37 +25,107 @@ import javax.annotation.Nullable;
  * density, the aquifer or the ore vein rule. A tree with a node these bounds do not cover has no bounds, and every cell
  * takes the per-block path. Uncovered nodes include another mod's function or a blend near old chunks. A spline is
  * covered by the bounds vanilla computes for it, widened by two ulps on each side.
+ *
+ * <p>Noise leaves evaluated per block (datapack terrain: Terralith's caves, Tectonic's ridges) are first bounded by the
+ * noise's own maximum, as vanilla's MIN/MAX short cuts bound them. That rarely bounds a cell away from zero. A cell that
+ * stays mixed is then bounded again with each noise bounded over the cell itself ({@link NoiseBounds}), when the tree
+ * has such leaves. The second pass costs about as much as a few blocks of the per-block fill, so it is kept only while it
+ * decides cells: after 4096 tries with fewer than 2% decided it pauses for 32768 mixed cells ({@link Gate}).
+ * {@code -Dgeneratoraccelerator2.dfc.noiseBounds=false} turns the second pass off.
  */
 public final class CellBounds {
     public static final int MIXED = 0;
     public static final int SKY = 1;
     public static final int SOLID = 2;
 
+    /** Not final so a bench can compare both ways. */
+    public static boolean TIGHT = !"false".equals(System.getProperty("generatoraccelerator2.dfc.noiseBounds"));
+    /** Mixed cells bounded again with the noise leaves bounded over the cell, and those the second pass decided. */
+    public static final LongAdder TIGHT_TRIED = new LongAdder();
+    public static final LongAdder TIGHT_WON = new LongAdder();
+    /** Mixed cells the second pass skipped while paused. */
+    public static final LongAdder TIGHT_PAUSED = new LongAdder();
+
+    /** Whether the second pass pays for itself on this program's terrain. Shared by every chunk's instance. Racy counts are fine here. */
+    static final class Gate {
+        private static final int WINDOW = 4096;
+        private static final int PAUSE = 32768;
+        private int tried;
+        private int won;
+        private int paused;
+        private volatile boolean off;
+
+        boolean allows() {
+            if (!off) {
+                return true;
+            }
+            if (++paused >= PAUSE) {
+                paused = 0;
+                tried = 0;
+                won = 0;
+                off = false;
+                return true;
+            }
+            TIGHT_PAUSED.increment();
+            return false;
+        }
+
+        void record(boolean win) {
+            tried++;
+            if (win) {
+                won++;
+            }
+            if (tried >= WINDOW) {
+                if (won * 50 < tried) {
+                    off = true;
+                }
+                tried = 0;
+                won = 0;
+            }
+        }
+    }
+
     private final Node root;
     private final Map<Node.Marker, Integer> lerpIndex;
+    private final NoiseSpec[] specs;
+    private final boolean hasNoise;
+    private final Gate gate;
+    private NoiseBounds noise;
     private double[] corners;
+    private int x0;
+    private int x1;
     private int y0;
     private int y1;
+    private int z0;
+    private int z1;
     private boolean blenderEmpty;
+    /** Whether noise leaves are bounded over the cell (second pass) or by their maximum (first pass). */
+    private boolean tight;
     private double lo;
     private double hi;
     /** The bounds of the last {@link #classify}, for diagnostics. */
     public double lastLo;
     public double lastHi;
 
-    private CellBounds(Node root, Map<Node.Marker, Integer> lerpIndex) {
+    private CellBounds(Node root, Map<Node.Marker, Integer> lerpIndex, NoiseSpec[] specs, boolean hasNoise, Gate gate) {
         this.root = root;
         this.lerpIndex = lerpIndex;
+        this.specs = specs;
+        this.hasNoise = hasNoise;
+        this.gate = gate;
     }
 
     /**
      * Bounds for {@code root} (the per-block tree of a cell program), or null when some node is not covered. The instance
      * keeps the state of a classification, so a template shares it only as a prototype. Each chunk binding takes its own
-     * instance through {@link #fresh()}.
+     * instance through {@link #fresh()}. {@code specs} are the program's noises, for the second pass.
      */
     @Nullable
-    public static CellBounds of(Node root, Map<Node.Marker, Integer> lerpIndex) {
-        return covered(root, lerpIndex, new IdentityHashMap<>()) ? new CellBounds(root, lerpIndex) : null;
+    public static CellBounds of(Node root, Map<Node.Marker, Integer> lerpIndex, NoiseSpec[] specs) {
+        if (!covered(root, lerpIndex, new IdentityHashMap<>())) {
+            return null;
+        }
+        return new CellBounds(root, lerpIndex, specs, hasNoise(root, new IdentityHashMap<>()), new Gate());
     }
 
     /** The kind of the first node {@link #of} does not cover in {@code root}, or null when all are covered (for the compile log). */
@@ -95,7 +167,12 @@ public final class CellBounds {
 
     /** An instance of the same tree for one chunk binding (one thread at a time). */
     public CellBounds fresh() {
-        return new CellBounds(root, lerpIndex);
+        return new CellBounds(root, lerpIndex, specs, hasNoise, gate);
+    }
+
+    /** Whether the tree has noise leaves the second pass could tighten. */
+    public boolean hasNoise() {
+        return hasNoise;
     }
 
     private static boolean covered(Node n, Map<Node.Marker, Integer> lerpIndex, Map<Node, Boolean> seen) {
@@ -137,15 +214,61 @@ public final class CellBounds {
         };
     }
 
+    /** Whether the per-block part of {@code n} (above the interpolated markers) samples a noise the second pass can bound. */
+    private static boolean hasNoise(Node n, Map<Node, Boolean> seen) {
+        if (seen.put(n, Boolean.TRUE) != null) {
+            return false;
+        }
+        return switch (n) {
+            case Node.Noise x -> true;
+            case Node.ShiftedNoise x -> true;
+            case Node.ShiftA x -> true;
+            case Node.ShiftB x -> true;
+            case Node.Shift x -> true;
+            case Node.Ap2 a -> hasNoise(a.a(), seen) || hasNoise(a.b(), seen);
+            case Node.MulOrAdd m -> hasNoise(m.input(), seen);
+            case Node.Mapped m -> hasNoise(m.input(), seen);
+            case Node.Clamp c -> hasNoise(c.input(), seen);
+            case Node.RangeChoice r -> hasNoise(r.input(), seen) || hasNoise(r.inRange(), seen) || hasNoise(r.outRange(), seen);
+            case Node.Weird w -> hasNoise(w.input(), seen);
+            case Node.BlendDensity b -> hasNoise(b.input(), seen);
+            case Node.Marker m -> (m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D) && hasNoise(m.child(), seen);
+            default -> false;
+        };
+    }
+
     /**
      * Classifies the cell {@code [x0, x0 + w) x [y0, y0 + h) x [z0, z0 + w)} from the corners ({@code corners[root * 8 + i]}
      * as the cell programs read them) when no structure piece reaches it.
      */
-    public int classify(double[] corners, int y0, int h, boolean blenderEmpty) {
+    public int classify(double[] corners, int x0, int y0, int z0, int w, int h, boolean blenderEmpty) {
         this.corners = corners;
+        this.x0 = x0;
+        this.x1 = x0 + w - 1;
         this.y0 = y0;
         this.y1 = y0 + h - 1;
+        this.z0 = z0;
+        this.z1 = z0 + w - 1;
         this.blenderEmpty = blenderEmpty;
+        this.tight = false;
+        int cls = pass();
+        if (cls == MIXED && TIGHT && hasNoise && gate.allows()) {
+            this.tight = true;
+            if (noise == null) {
+                noise = new NoiseBounds();
+            }
+            cls = pass();
+            TIGHT_TRIED.increment();
+            boolean won = cls != MIXED;
+            if (won) {
+                TIGHT_WON.increment();
+            }
+            gate.record(won);
+        }
+        return cls;
+    }
+
+    private int pass() {
         if (!eval(root)) {
             lastLo = Double.NaN;
             lastHi = Double.NaN;
@@ -230,11 +353,59 @@ public final class CellBounds {
                 double b = Interpreter.clampedMap((double) y1, (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
                 set(Math.min(a, b), Math.max(a, b));
             }
-            case Node.Noise x -> set(-x.max(), x.max());
-            case Node.ShiftedNoise x -> set(-x.max(), x.max());
-            case Node.ShiftA x -> set(-x.max(), x.max());
-            case Node.ShiftB x -> set(-x.max(), x.max());
-            case Node.Shift x -> set(-x.max(), x.max());
+            case Node.Noise x -> {
+                // noise.getValue(blockX * xzScale, blockY * yScale, blockZ * xzScale)
+                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, x.xzScale()), ilo, ihi, scaled(y0, y1, x.yScale()), ilo, ihi,
+                    scaled(z0, z1, x.xzScale()), ilo, ihi, 1.0)) {
+                    set(-x.max(), x.max());
+                }
+            }
+            case Node.ShiftedNoise x -> {
+                if (!tight) {
+                    set(-x.max(), x.max());
+                } else {
+                    // noise.getValue(blockX * xzScale + shiftX, blockY * yScale + shiftY, blockZ * xzScale + shiftZ)
+                    if (!eval(x.shiftX())) {
+                        return false;
+                    }
+                    double sxl = lo, sxh = hi;
+                    if (!eval(x.shiftY())) {
+                        return false;
+                    }
+                    double syl = lo, syh = hi;
+                    if (!eval(x.shiftZ())) {
+                        return false;
+                    }
+                    double szl = lo, szh = hi;
+                    scaled(x0, x1, x.xzScale());
+                    double xl = ilo + sxl, xh = ihi + sxh;
+                    scaled(y0, y1, x.yScale());
+                    double yl = ilo + syl, yh = ihi + syh;
+                    scaled(z0, z1, x.xzScale());
+                    double zl = ilo + szl, zh = ihi + szh;
+                    if (!noiseOver(x.spec(), 0, xl, xh, 0, yl, yh, 0, zl, zh, 1.0)) {
+                        set(-x.max(), x.max());
+                    }
+                }
+            }
+            case Node.ShiftA x -> {
+                // noise.getValue(blockX * 0.25, 0.0, blockZ * 0.25) * 4.0
+                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
+                    set(-x.max(), x.max());
+                }
+            }
+            case Node.ShiftB x -> {
+                // noise.getValue(blockZ * 0.25, blockX * 0.25, 0.0) * 4.0
+                if (!tight || !noiseOver(x.spec(), scaled(z0, z1, 0.25), ilo, ihi, scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, 4.0)) {
+                    set(-x.max(), x.max());
+                }
+            }
+            case Node.Shift x -> {
+                // noise.getValue(blockX * 0.25, blockY * 0.25, blockZ * 0.25) * 4.0
+                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, scaled(y0, y1, 0.25), ilo, ihi, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
+                    set(-x.max(), x.max());
+                }
+            }
             case Node.Weird x -> set(x.min(), x.max());
             case Node.Blended x -> set(-x.max(), x.max());
             // Vanilla computes these in the reals from the control points. The float evaluation can land a float ulp outside.
@@ -281,6 +452,36 @@ public final class CellBounds {
                 return false;
             }
         }
+        return true;
+    }
+
+    /** The last {@link #scaled} interval. */
+    private double ilo;
+    private double ihi;
+
+    /**
+     * {@code (double) a * scale} over the integers {@code [a0, a1]}, into {@link #ilo}/{@link #ihi}: the two ends as the
+     * programs compute them. Rounding is monotone, so every block between lands between them. Returns 0 so it can sit in an
+     * argument list.
+     */
+    private int scaled(int a0, int a1, double scale) {
+        double p = (double) a0 * scale;
+        double q = (double) a1 * scale;
+        ilo = Math.min(p, q);
+        ihi = Math.max(p, q);
+        return 0;
+    }
+
+    /**
+     * Sets the bounds of {@code specs[spec]} over the input box, times {@code factor}. The unused int arguments let the
+     * callers compute each axis with {@link #scaled} in place. False when the noise could not be bounded (inputs past the
+     * wrap limit).
+     */
+    private boolean noiseOver(int spec, int unusedX, double xl, double xh, int unusedY, double yl, double yh, int unusedZ, double zl, double zh, double factor) {
+        if (!noise.normal(specs[spec], xl, xh, yl, yh, zl, zh)) {
+            return false;
+        }
+        set(noise.lo * factor, noise.hi * factor);
         return true;
     }
 

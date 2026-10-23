@@ -162,6 +162,21 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         : "findBlocks(Ljava/util/function/Predicate;Ljava/util/function/BiConsumer;)V";
 
     /** Scheduling, surface and carver hooks, keyed by mixin simple name. Recorded in {@link HookTargets}. */
+    private static final String TEMPLATE_PLACE = "placeInWorld(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/BlockPos;"
+        + "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;Lnet/minecraft/util/RandomSource;I)Z";
+    private static final String TEMPLATE_PROCESS = "processBlockInfos(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/BlockPos;"
+        + "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;Ljava/util/List;";
+    /**
+     * The template clip wraps one call in placeInWorld, so only changes to that call count there. It bypasses processBlockInfos and
+     * the position transform, so any change to those counts.
+     */
+    private static final List<FeatureHook> TEMPLATE_CLIP_HOOKS = List.of(
+        new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_CLIP, List.of(TEMPLATE_PLACE), List.of(), MergedMethods.Mode.WRAP, List.of("processBlockInfos")),
+        new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_CLIP, List.of(TEMPLATE_PROCESS + ")Ljava/util/List;",
+            TEMPLATE_PROCESS + "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;)Ljava/util/List;",
+            "calculateRelativePosition(Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/core/BlockPos;",
+            "transform(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/core/BlockPos;"),
+            MergedMethods.Mode.BYPASS));
     private static final Map<String, List<FeatureHook>> STEP_HOOKS = Map.ofEntries(
         // Zeta's cluster walk (compat/zeta). GA2's callback takes the loop over. What the loop does in place or relies on
         // counts wherever changed.
@@ -291,7 +306,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 "parameters()Lnet/minecraft/world/level/biome/Climate$ParameterList;"),
                 MergedMethods.Mode.BYPASS))),
         Map.entry("GpuClimateSamplerInspectMixin", List.of(
-            new FeatureHook(HookTargets.GPU_BIOMES, List.of("sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.GPU_BIOMES, List.of("sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), MergedMethods.Mode.BYPASS),
+            new FeatureHook(HookTargets.GPU_CLIMATE_POINTS, List.of("sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), MergedMethods.Mode.BYPASS))),
         Map.entry("NoiseChunkInspectMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL, List.of("updateForZ(ID)V"), MergedMethods.Mode.BYPASS),
             new FeatureHook(HookTargets.NOISE_FILL_STEPS, List.of("updateForX(ID)V", "updateForY(ID)V"), MergedMethods.Mode.BYPASS),
@@ -313,6 +329,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 "filterBlocks(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;"
                     + "Lnet/minecraft/world/level/block/Block;Z)Lit/unimi/dsi/fastutil/objects/ObjectArrayList;"),
                 MergedMethods.Mode.BYPASS))),
+        // placeInWorld's processBlockInfos call, clipped to the bounding box (structure.TemplatePlacement). One mixin per loader:
+        // NeoForge's call has a sixth argument. A listed method the running loader does not have is never matched.
+        Map.entry("StructureTemplatePlaceMixin", TEMPLATE_CLIP_HOOKS),
+        Map.entry("StructureTemplatePlaceNeoMixin", TEMPLATE_CLIP_HOOKS),
         Map.entry("CacheAllInCellInspectMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of("compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D"), MergedMethods.Mode.BYPASS))),
         // a change to the vein rule turns off the whole-cell short cut and the rule's transcription (dfc.runtime.VeinRule).
@@ -437,6 +457,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.LIGHT_SOURCES, List.of("findBlockLightSources(Ljava/util/function/BiConsumer;)V", LIGHT_SOURCE_SEARCH)))),
         Map.entry("RegionFileStorageMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_REGION_WRITE, List.of("write(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)V")),
+            new FeatureHook(HookTargets.STORAGE_REGION_SYNC, List.of("getRegionFile(Lnet/minecraft/world/level/ChunkPos;)Lnet/minecraft/world/level/chunk/storage/RegionFile;")),
             // a parallel read does read's work itself (region file lookup, stream, parse) instead of calling it
             new FeatureHook(HookTargets.STORAGE_PARALLEL_READ, List.of("read(Lnet/minecraft/world/level/ChunkPos;)Lnet/minecraft/nbt/CompoundTag;"),
                 List.of("getRegionFile(Lnet/minecraft/world/level/ChunkPos;)Lnet/minecraft/world/level/chunk/storage/RegionFile;"), MergedMethods.Mode.BYPASS, List.of()))),
@@ -482,6 +503,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 MergedMethods.Mode.BYPASS))),
         Map.entry("RegionFileAccessor", List.of(
             new FeatureHook(HookTargets.STORAGE_REGION_WRITE, List.of("getChunkDataOutputStream(Lnet/minecraft/world/level/ChunkPos;)Ljava/io/DataOutputStream;")))),
+        // region files synced in batches (storage.RegionSync): any other change to how the file is written or flushed keeps vanilla's write-through
+        Map.entry("RegionFileSyncMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_REGION_SYNC, List.of("write(Lnet/minecraft/world/level/ChunkPos;Ljava/nio/ByteBuffer;)V",
+                "clear(Lnet/minecraft/world/level/ChunkPos;)V", "flush()V", "close()V", "writeHeader()V", "padToFullSector()V")))),
         // the section tags are made inside write by wrapping the two codec calls. The rest of write runs as vanilla's.
         Map.entry("ChunkSerializerMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_SECTION_CODEC, List.of("write(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;)Lnet/minecraft/nbt/CompoundTag;",
@@ -535,6 +560,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
      */
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.endsWith(".StructureTemplatePlaceMixin") || mixinClassName.endsWith(".StructureTemplatePlaceNeoMixin")) {
+            // the loader's own processBlockInfos call: vanilla's five arguments on Fabric, NeoForge's six
+            return mixinClassName.endsWith("Neo" + "Mixin") == dev.denismasterherobrine.generatoraccelerator2.platform.Platform.isNeoForge();
+        }
         if ((mixinClassName.endsWith(".SectionDeltaMixin") || mixinClassName.endsWith(".GpuLevelChunkMixin") || mixinClassName.endsWith(".BlockStateIdMixin"))
             && !Boolean.getBoolean("generatoraccelerator2.gpu.decoration")) {
             // GPU decoration's write log costs every block write. Applied only when the option is on.
@@ -657,12 +686,16 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             }
             List<String> other = new java.util.ArrayList<>();
             List<String> orderKept = new java.util.ArrayList<>();
+            List<String> liquidRegions = new java.util.ArrayList<>();
             for (Map.Entry<String, List<String>> e : byMixin.entrySet()) {
                 boolean known = dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(
                     dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins.AQUIFER_ORDER_KEPT, e.getKey(), e.getValue()) != null;
-                (known ? orderKept : other).add(e.getKey());
+                // Better Caves' step on the answer, which GA2 applies to its own answers (aquifer.LiquidRegions)
+                boolean liquid = !known && dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(
+                    dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins.AQUIFER_LIQUID_REGIONS, e.getKey(), e.getValue()) != null;
+                (known ? orderKept : liquid ? liquidRegions : other).add(e.getKey());
             }
-            MixinTargets.recordAquifer(Coremods.withNames(targetClass.name, AQUIFER_METHODS, other), orderKept);
+            MixinTargets.recordAquifer(Coremods.withNames(targetClass.name, AQUIFER_METHODS, other), orderKept, liquidRegions);
             return;
         }
         if (mixinClassName.endsWith(".mixin.beardifier.BeardifierMixin")) {

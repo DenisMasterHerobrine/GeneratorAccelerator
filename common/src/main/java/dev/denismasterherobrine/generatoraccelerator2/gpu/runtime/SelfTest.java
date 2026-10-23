@@ -140,6 +140,7 @@ public final class SelfTest {
             ChunkPos pos = new ChunkPos(c[0], c[1]);
             ProtoChunk gpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, biomes, null);
             GpuWorldgen.BiomeResult b = null;
+            Object[] start = null;
             if (wg.decidesBiomes()) {
                 b = wg.biomes(pos).get(60, TimeUnit.SECONDS);
                 if (b == null) {
@@ -154,9 +155,22 @@ public final class SelfTest {
             } else {
                 // No structure manager here. The NoiseChunk the CPU's biome step asks for already exists, without structures.
                 gpu.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, randomState, none, settings.value(), picker.get(), Blender.empty()));
-                GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu)).join();
+                GpuWorldgen.BiomeResult handed = wg.handsBiomes() ? wg.biomes(pos).get(60, TimeUnit.SECONDS) : null;
+                if (handed != null && handed.hand() != null) {
+                    // the CPU's own lookups with the GPU's points and searches, from the same last search results as the CPU's fill below
+                    start = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.handState(wg);
+                    BiomeHand.fill(wg, gpu, handed, () -> GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu))).join();
+                } else {
+                    GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu)).join();
+                }
             }
-            GpuWorldgen.NoiseResult n = wg.noise(pos, GpuWorldgen.Beard.NONE).get(60, TimeUnit.SECONDS);
+            // no structures, but the chunk's Better Caves liquid regions, which the CPU's aquifer applies too
+            int[] liquids = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.liquids(wg, randomState, pos);
+            if (liquids == dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.LIQUID_WITHOUT_ID) {
+                continue;
+            }
+            GpuWorldgen.Beard beard = liquids == null ? GpuWorldgen.Beard.NONE : new GpuWorldgen.Beard(new int[0], new int[0], liquids);
+            GpuWorldgen.NoiseResult n = wg.noise(pos, beard).get(60, TimeUnit.SECONDS);
             if (n == null) {
                 continue; // Handed to the CPU, as in game: a recheck list overflow, or aquifer cells whose order decides a value.
             }
@@ -164,12 +178,18 @@ public final class SelfTest {
                 return "GPU blocks not applicable to chunk " + pos;
             }
             ProtoChunk cpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, biomes, null);
+            if (start != null) {
+                dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.restoreHandState(wg, start);
+            }
             cpu.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, randomState, none, settings.value(), picker.get(), Blender.empty()));
             GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, cpu)).join();
             GpuSteps.cpuOnly(() -> generator.fillFromNoise(Blender.empty(), randomState, structures, cpu)).join();
             String diff = ChunkCompare.blocks(cpu, gpu);
             if (diff == null && b != null) {
                 diff = ChunkCompare.biomes(cpu, gpu, b::tie);
+            } else if (diff == null && start != null) {
+                // the handed lookups started from the same last search results as the CPU's, so even ties must agree
+                diff = ChunkCompare.biomes(cpu, gpu, i -> false);
             }
             if (diff != null) {
                 return "chunk " + pos + ": " + diff + " (CPU vs GPU)";

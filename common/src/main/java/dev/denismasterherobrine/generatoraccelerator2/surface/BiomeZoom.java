@@ -21,8 +21,14 @@ import net.minecraft.world.level.biome.BiomeManager;
  */
 public final class BiomeZoom {
     private static final ThreadLocal<BiomeZoom> CACHE = ThreadLocal.withInitial(BiomeZoom::new);
-    /** A second instance per thread for generation regions, which outlive a surface pass on the same thread. */
-    private static final ThreadLocal<BiomeZoom> REGION_CACHE = ThreadLocal.withInitial(BiomeZoom::new);
+    /**
+     * A second instance per thread for generation regions, which outlive a surface pass on the same thread. Held weakly: the
+     * region keeps its zoom, and the zoom keeps the region as its owner, so between steps only this slot kept them both
+     * reachable, with the region's whole grid of chunks. Under another chunk system nothing calls {@link #releaseThread}, and a
+     * strong slot kept every thread's last region for good. While the thread's current region is alive, the instance is too, so
+     * the next region on the thread still takes it over as before.
+     */
+    private static final ThreadLocal<java.lang.ref.WeakReference<BiomeZoom>> REGION_CACHE = ThreadLocal.withInitial(() -> new java.lang.ref.WeakReference<>(null));
 
     private static final int NXZ = 6;
     private static final int LAYER = NXZ * NXZ;
@@ -74,7 +80,12 @@ public final class BiomeZoom {
      * lookup first checks {@link #owner()}.
      */
     public static BiomeZoom forRegion(BiomeManager manager, int minX, int minZ, int minY, int maxY, Object owner) {
-        BiomeZoom zoom = configure(REGION_CACHE.get(), manager, minX, minZ, minY, maxY);
+        BiomeZoom instance = REGION_CACHE.get().get();
+        if (instance == null) {
+            instance = new BiomeZoom();
+            REGION_CACHE.set(new java.lang.ref.WeakReference<>(instance));
+        }
+        BiomeZoom zoom = configure(instance, manager, minX, minZ, minY, maxY);
         zoom.owner = owner;
         return zoom;
     }
@@ -140,8 +151,8 @@ public final class BiomeZoom {
      * region on the thread takes the instance over ({@code RegionRefs}). The region in turn keeps its task's chunks.
      */
     public static void releaseThread() {
-        BiomeZoom region = REGION_CACHE.get();
-        if (region.owner != null || region.source != null) {
+        BiomeZoom region = REGION_CACHE.get().get();
+        if (region != null && (region.owner != null || region.source != null)) {
             region.release();
         }
         BiomeZoom chunk = CACHE.get();

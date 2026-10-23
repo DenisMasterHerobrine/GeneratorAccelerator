@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.storage.FastRegionWrite;
 import dev.denismasterherobrine.generatoraccelerator2.storage.Ga2RegionStorage;
 import dev.denismasterherobrine.generatoraccelerator2.storage.ParallelRead;
 import dev.denismasterherobrine.generatoraccelerator2.storage.Precompress;
+import dev.denismasterherobrine.generatoraccelerator2.storage.RegionSync;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,6 +22,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -36,6 +38,8 @@ public abstract class RegionFileStorageMixin implements Ga2RegionStorage {
     public Precompress ga2$precompress() {
         return this.ga2$precompress;
     }
+
+    @Shadow @org.spongepowered.asm.mixin.Final private java.nio.file.Path folder;
 
     @Shadow
     private RegionFile getRegionFile(ChunkPos pos) throws IOException {
@@ -73,6 +77,13 @@ public abstract class RegionFileStorageMixin implements Ga2RegionStorage {
         JvmProfiler.INSTANCE.onRegionFileWrite(access.ga2$info(), pos, access.ga2$version(), buffer.getInt(0));
         access.ga2$write(pos, buffer);
         ci.cancel();
+    }
+
+    /** A storage that would sync every write opens its files without DSYNC and syncs them in batches ({@link RegionSync}). */
+    @ModifyArg(method = "getRegionFile", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/chunk/storage/RegionFile;<init>("
+        + "Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Ljava/nio/file/Path;Z)V"), index = 3)
+    private boolean ga2$batchedSync(boolean sync) {
+        return RegionSync.openUnsynced(sync, this.folder);
     }
 
     /** {@code read} without the parse ({@link ParallelRead}). Uses the same region file lookup and stream. */

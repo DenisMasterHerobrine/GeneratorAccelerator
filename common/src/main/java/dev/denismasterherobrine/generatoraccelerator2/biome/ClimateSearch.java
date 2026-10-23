@@ -49,8 +49,17 @@ public final class ClimateSearch {
     /** {@link #search(Climate.RTree, Climate.TargetPoint)} for the target point of these six quantized coordinates. */
     @SuppressWarnings("unchecked")
     public static <T> T search(Climate.RTree<T> tree, long q0, long q1, long q2, long q3, long q4, long q5) {
-        FlatClimateTree flat = ((Ga2ClimateTree) (Object) tree).ga2$flat();
         Climate.RTree.Leaf<T> last = tree.lastResult.get();
+        // the GPU's nearest leaf, in a chunk whose biome step it handed it to. It is the only leaf at its distance, so the walk
+        // ends on it whatever the last result
+        Climate.RTree.Leaf<T> handed = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.nearest(tree, q0, q1, q2, q3, q4, q5);
+        if (handed != null) {
+            if (handed != last) {
+                tree.lastResult.set(handed);
+            }
+            return handed.value;
+        }
+        FlatClimateTree flat = ((Ga2ClimateTree) (Object) tree).ga2$flat();
         int lastId = last == null ? -1 : ((Ga2ClimateLeaf) (Object) last).ga2$index();
         int id = FlatClimateTree.COLUMNS ? flat.searchColumns(q0, q1, q2, q3, q4, q5, lastId) : flat.search(q0, q1, q2, q3, q4, q5, lastId);
         if (VERIFY_EVERY > 0 && SEEN.incrementAndGet() % VERIFY_EVERY == 0) {

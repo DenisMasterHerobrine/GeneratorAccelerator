@@ -133,6 +133,11 @@ public final class FlatClimateTree {
         return above > 0L ? above : Math.max(below, 0L);
     }
 
+    /** Node {@code id}'s distance to the point, as vanilla's {@code Node::distance} computes it. */
+    public long distanceTo(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
+        return nodeDistance(id, q0, q1, q2, q3, q4, q5);
+    }
+
     private long nodeDistance(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
         long[] b = this.bounds;
         int o = id * 12;

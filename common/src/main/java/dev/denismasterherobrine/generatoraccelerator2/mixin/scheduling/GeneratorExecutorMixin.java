@@ -18,6 +18,10 @@ public abstract class GeneratorExecutorMixin {
         target = "Ljava/util/concurrent/CompletableFuture;supplyAsync(Ljava/util/function/Supplier;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"),
         index = 1)
     private Executor ga2$laneExecutor(Executor executor) {
+        if (dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.inFill()) {
+            // a biome step with the GPU's answers handed to its lookups: they are this thread's, so the step runs here
+            return Runnable::run;
+        }
         Executor lane = StepLane.currentExecutor();
         return lane != null ? lane : executor;
     }

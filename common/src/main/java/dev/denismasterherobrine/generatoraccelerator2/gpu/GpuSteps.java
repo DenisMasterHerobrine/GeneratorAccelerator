@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.distanthorizons.DHThreads;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BeardCuller;
@@ -49,6 +50,8 @@ public final class GpuSteps {
     public static final LongAdder NOISE_CPU = new LongAdder();
     public static final LongAdder BIOMES_GPU = new LongAdder();
     public static final LongAdder BIOMES_CPU = new LongAdder();
+    /** Chunks whose biome step ran on the CPU with the GPU's climate points and searches ({@code gpu.runtime.BiomeHand}). */
+    public static final LongAdder BIOMES_HANDED = new LongAdder();
     public static final LongAdder GPU_ERRORS = new LongAdder();
     /** WAIT: from the step's call to the GPU's answer on the step's executor. APPLY: writing the result into the chunk there. */
     public static final Lat BIOMES_WAIT = new Lat(), BIOMES_APPLY = new Lat(), NOISE_WAIT = new Lat(), NOISE_APPLY = new Lat(), NOISE_CHUNK = new Lat();
@@ -183,7 +186,7 @@ public final class GpuSteps {
             NOISE_EARLY.increment();
             gpu = wg.timed(early);
         } else {
-            gpu = CompletableFuture.supplyAsync(() -> beard(structures, pos), ex != null ? ex : Runnable::run)
+            gpu = CompletableFuture.supplyAsync(() -> beard(wg, randomState, structures, pos), ex != null ? ex : Runnable::run)
                 .thenCompose(b -> b == null ? CompletableFuture.completedFuture(null) : wg.timed(wg.noise(pos, b)));
         }
         gpu = gpu.exceptionally(e -> {
@@ -201,6 +204,10 @@ public final class GpuSteps {
                 if (spec != null) {
                     // SURFACE and CARVERS read the GPU's surface levels and aquifer cells. No NoiseChunk is made.
                     GpuTerrain terrain = new GpuTerrain(spec, res.terrain(), pos.x, pos.z);
+                    if (LiquidRegions.active()) {
+                        // the carvers' aquifer applies Better Caves' step as the chunk's NoiseChunk aquifer would
+                        terrain.liquids = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x, pos.z);
+                    }
                     gc.ga2$setGpuTerrain(terrain);
                     GpuTerrain.CHUNKS.increment();
                     // The GPU computes the surface while the chunk waits for its SURFACE step.
@@ -225,7 +232,7 @@ public final class GpuSteps {
             return null;
         }
         GpuWorldgen wg = Gpu.worldgen(generator, settings, picker, randomState, chunk);
-        if (wg == null || !wg.ready() || !wg.decidesBiomes() || !wg.asking() || !Apply.fits(wg, chunk)) {
+        if (wg == null || !wg.ready() || !wg.biomeKernels() || !wg.asking() || !Apply.fits(wg, chunk)) {
             return null;
         }
         Executor ex = executor();
@@ -234,6 +241,28 @@ public final class GpuSteps {
             GPU_ERRORS.increment();
             return null;
         });
+        if (wg.handsBiomes()) {
+            // other mods' lookups decide the biomes. The biome step runs as it is, here, with the GPU's points and searches handed to it
+            return onAnswer(gpu, res -> {
+                long t1 = System.nanoTime();
+                BIOMES_WAIT.add(t1 - t0);
+                if (res == null || res.hand() == null) {
+                    BIOMES_CPU.increment();
+                    return cpuOnly(() -> generator.createBiomes(randomState, blender, structures, chunk));
+                }
+                Object[] start = GpuVerify.active() ? GpuVerify.handState(wg) : null;
+                CompletableFuture<ChunkAccess> f = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fill(wg, chunk, res,
+                    () -> cpuOnly(() -> generator.createBiomes(randomState, blender, structures, chunk)));
+                BIOMES_APPLY.since(t1);
+                BIOMES_HANDED.increment();
+                if (f.isDone() && !f.isCompletedExceptionally()) {
+                    // the step ran here, so this thread's last search results are the fill's
+                    GpuVerify.handBiomes(generator, randomState, chunk, structures, wg, start);
+                    askNoise(wg, randomState, structures, blender, chunk);
+                }
+                return f;
+            }, ex);
+        }
         // Ties go to the biome source through the chunk's own climate sampler. The sampler comes from the NoiseChunk that vanilla's
         // biome step makes, which is kept for NOISE.
         Supplier<net.minecraft.world.level.biome.Climate.Sampler> tieSampler = () -> ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker)
@@ -248,7 +277,7 @@ public final class GpuSteps {
                 BIOMES_APPLY.since(t1);
                 BIOMES_GPU.increment();
                 GpuVerify.biomes(generator, randomState, chunk, structures, wg, res, start);
-                askNoise(wg, structures, blender, chunk);
+                askNoise(wg, randomState, structures, blender, chunk);
                 return CompletableFuture.completedFuture(chunk);
             }
             BIOMES_CPU.increment();
@@ -259,6 +288,8 @@ public final class GpuSteps {
     /** {@code -Dgeneratoraccelerator2.gpu.earlyNoise=false} requests the GPU's blocks at the NOISE step instead (for comparisons). */
     private static final boolean EARLY_NOISE = !"false".equals(System.getProperty("generatoraccelerator2.gpu.earlyNoise"));
     public static final LongAdder NOISE_EARLY = new LongAdder();
+    /** Chunks whose other mods' structure pieces (YUNG's API, Integrated API) went to the GPU as data. */
+    public static final LongAdder ENHANCED_CHUNKS = new LongAdder();
 
     /**
      * Asks the GPU for the chunk's blocks as soon as the chunk's biomes are in. The NOISE step's beardifier reads the chunk's structure
@@ -266,7 +297,7 @@ public final class GpuSteps {
      * around it then. So the GPU decides the blocks while the chunk waits for its neighbours' biomes, and the NOISE step finds them
      * ready. The NOISE step checks again whether the GPU may fill the chunk. If not, the answer is dropped.
      */
-    private static void askNoise(GpuWorldgen wg, StructureManager structures, Blender blender, ChunkAccess chunk) {
+    private static void askNoise(GpuWorldgen wg, RandomState randomState, StructureManager structures, Blender blender, ChunkAccess chunk) {
         if (!EARLY_NOISE || !noiseHooksAllowed() || !freshProto(chunk, blender)) {
             return;
         }
@@ -274,23 +305,69 @@ public final class GpuSteps {
         if (gc == null) {
             return;
         }
-        GpuWorldgen.Beard b = beard(structures, chunk.getPos());
+        GpuWorldgen.Beard b = beard(wg, randomState, structures, chunk.getPos());
         if (b != null) {
             gc.ga2$setGpuNoise(wg.noise(chunk.getPos(), b));
         }
+    }
+
+    /** {@link #liquids}' answer when a column's liquid is a state the program has no id for. The CPU fills the chunk. */
+    public static final int[] LIQUID_WITHOUT_ID = new int[0];
+
+    /** Better Caves' liquid regions of the chunk, as the GPU's block kernels apply them ({@code aquifer.LiquidRegions.gpu}). Null without them. */
+    @javax.annotation.Nullable
+    public static int[] liquids(GpuWorldgen wg, RandomState randomState, ChunkPos pos) {
+        if (!wg.liquidRegions) {
+            return null;
+        }
+        LiquidRegions.Table table = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x, pos.z);
+        if (table == null) {
+            return null;
+        }
+        int[] liquids = LiquidRegions.gpu(table, wg.states);
+        return liquids == null ? LIQUID_WITHOUT_ID : liquids;
     }
 
     /**
      * The chunk's structures as the NOISE step's beardifier sees them ({@code Beardifier.forStructuresInChunk}, including other mods'
      * changes to it). Returns null when the beardifier is not vanilla's sum for this chunk. The CPU then fills the chunk.
      */
-    public static GpuWorldgen.Beard beard(StructureManager structures, ChunkPos pos) {
-        Beardifier beardifier = Beardifier.forStructuresInChunk(structures, pos);
-        if (!BeardCuller.mayCull(beardifier)) {
+    public static GpuWorldgen.Beard beard(GpuWorldgen wg, RandomState randomState, StructureManager structures, ChunkPos pos) {
+        int[] liquids = liquids(wg, randomState, pos);
+        if (liquids == LIQUID_WITHOUT_ID) {
             return null;
         }
-        if (!STATE_HOOK.allowed() && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps.mayActForGpu(structures, pos, beardifier)) {
-            return null; // Another mod's fluid step acts in the chunk (YUNG's API pieces, an Iron's Spellbooks structure). The CPU runs it.
+        Beardifier beardifier = Beardifier.forStructuresInChunk(structures, pos);
+        // other mods' pieces (YUNG's API, Integrated API): their terrain adaptation goes to the GPU as data (beardifier.EnhancedBeard)
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk enhanced = null;
+        int overrideId = -1;
+        if (!BeardCuller.mayCull(beardifier)) {
+            enhanced = dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras.enhancedFor(beardifier, pos);
+            if (enhanced == null) {
+                return null;
+            }
+            if (enhanced.isEmpty()) {
+                enhanced = null;
+            } else if (enhanced.override() != null) {
+                // YUNG's aquifer override at the marked blocks: the default block, or a named state the program must have an id for
+                dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation o = enhanced.override();
+                if (o.overrideKind() == dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.OVERRIDE_SOLIDIFY) {
+                    overrideId = dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter.ID_STONE;
+                } else {
+                    for (int i = 0; i < wg.states.length; i++) {
+                        if (wg.states[i] == o.overrideState()) {
+                            overrideId = i;
+                        }
+                    }
+                    if (overrideId < 0) {
+                        return null;
+                    }
+                }
+            }
+            ENHANCED_CHUNKS.increment();
+        }
+        if (!STATE_HOOK.allowed() && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps.mayActForGpu(structures, pos, beardifier, enhanced != null)) {
+            return null; // Another mod's fluid step acts in the chunk (an Iron's Spellbooks structure). The CPU runs it.
         }
         BeardifierAccessor acc = (BeardifierAccessor) beardifier;
         ObjectListIterator<Beardifier.Rigid> pieces = acc.ga2$pieceIterator();
@@ -317,9 +394,9 @@ public final class GpuSteps {
             j.add(jj.getSourceZ());
         }
         junctions.back(Integer.MAX_VALUE);
-        if (p.isEmpty() && j.isEmpty()) {
+        if (p.isEmpty() && j.isEmpty() && liquids == null && enhanced == null) {
             return GpuWorldgen.Beard.NONE;
         }
-        return new GpuWorldgen.Beard(p.toIntArray(), j.toIntArray());
+        return new GpuWorldgen.Beard(p.toIntArray(), j.toIntArray(), liquids, enhanced, overrideId);
     }
 }

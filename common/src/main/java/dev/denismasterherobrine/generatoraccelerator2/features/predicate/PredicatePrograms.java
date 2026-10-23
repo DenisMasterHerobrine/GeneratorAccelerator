@@ -102,12 +102,51 @@ public final class PredicatePrograms {
      * predicate's whole test.
      */
     public static Object programFor(BlockPredicate predicate) {
-        return enabled() ? compile(predicate) : NONE;
+        if (!enabled()) {
+            return NONE;
+        }
+        return COMPILE_AFTER <= 0 ? compile(predicate) : new Lazy();
+    }
+
+    /**
+     * How often a predicate is asked before its program is made ({@code -Dgeneratoraccelerator2.predicatePrograms.after}, 0 makes
+     * it at the first call). Each program is a generated class, which the JIT then compiles once it is hot. A modded pack has
+     * thousands of placed features, most asked a few times a minute; their classes cost compiler time (a whole core for the first
+     * minute on a four-core machine) for a gain of a few nanoseconds per test. Until then the predicate is asked itself.
+     */
+    public static int COMPILE_AFTER = Integer.getInteger("generatoraccelerator2.predicatePrograms.after", 1024); // not final for the tests
+
+    /** True once {@code program} (from {@link #programFor}) runs its own code: made at once, or a lazy one asked often enough. */
+    public static boolean made(Object program) {
+        return program instanceof Program || (program instanceof Lazy lazy && lazy.program != null);
+    }
+
+    /** A program not made yet: the caller keeps this and the predicate answers itself until it has been asked {@link #COMPILE_AFTER} times. */
+    static final class Lazy {
+        int calls;
+        volatile Object program;
     }
 
     /** The answer of {@code predicate.test(level, pos)}, through {@code program} (from {@link #programFor} for this predicate). */
     public static boolean test(Object program, BlockPredicate predicate, WorldGenLevel level, BlockPos pos) {
         if (!(program instanceof Program compiled)) {
+            if (program instanceof Lazy lazy) {
+                Object made = lazy.program;
+                if (made == null) {
+                    // racy count: a second thread may compile too, and both get the same program
+                    if (++lazy.calls < COMPILE_AFTER) {
+                        return predicate.test(level, pos);
+                    }
+                    synchronized (lazy) {
+                        made = lazy.program;
+                        if (made == null) {
+                            made = compile(predicate);
+                            lazy.program = made;
+                        }
+                    }
+                }
+                return test(made, predicate, level, pos);
+            }
             return predicate.test(level, pos);
         }
         boolean answer = compiled.run(level, pos);

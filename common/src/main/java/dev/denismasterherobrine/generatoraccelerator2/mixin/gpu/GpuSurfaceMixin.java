@@ -30,8 +30,11 @@ public abstract class GpuSurfaceMixin {
             return;
         }
         NoiseBasedChunkGenerator self = (NoiseBasedChunkGenerator) (Object) this;
+        net.minecraft.world.level.levelgen.NoiseGeneratorSettings settings = self.generatorSettings().value();
         if (dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob.apply(chunk,
-            copy -> self.buildSurface(copy, context, randomState, structures, biomeManager, biomes, blender))) {
+            copy -> self.buildSurface(copy, context, randomState, structures, biomeManager, biomes, blender),
+            () -> dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks.records(randomState.surfaceSystem(), randomState, biomeManager, biomes,
+                settings.useLegacyRandomSource(), context, chunk, settings.surfaceRule()))) {
             ci.cancel();
         }
     }

@@ -112,6 +112,7 @@ public final class SurfaceCompiler {
                 throw new IllegalStateException("generated surface method " + huge + " is over the JIT's method size limit");
             }
             MethodHandles.Lookup lookup = MethodHandles.lookup().defineHiddenClass(bytes, true, MethodHandles.Lookup.ClassOption.NESTMATE);
+            HiddenClassLoader.DEFINED.increment();
             MethodHandle ctorHandle = lookup.findConstructor(lookup.lookupClass(), MethodType.methodType(void.class, BlockState[].class));
             return (SurfaceProgram.Evaluator) ctorHandle.invoke(constants.toArray(new BlockState[0]));
         }

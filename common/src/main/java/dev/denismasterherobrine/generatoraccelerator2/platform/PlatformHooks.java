@@ -31,6 +31,18 @@ public final class PlatformHooks {
         boolean isEmpty(BlockState state);
 
         Biome.ClimateSettings climateSettings(Biome biome);
+
+        /**
+         * One processor's step on a template block, as the loader's {@code StructureTemplate.processBlockInfos} calls it. NeoForge
+         * calls {@code process} with the template, vanilla {@code processBlock}.
+         */
+        @javax.annotation.Nullable
+        net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
+            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
+            @javax.annotation.Nullable net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template);
     }
 
     private static final Service SERVICE = Platform.load(Service.class);
@@ -71,5 +83,16 @@ public final class PlatformHooks {
     /** The biome's climate as the game sees it. On NeoForge, after biome modifiers. On vanilla, the biome's own. */
     public static Biome.ClimateSettings climateSettings(Biome biome) {
         return SERVICE.climateSettings(biome);
+    }
+
+    /** One processor's step on a template block, as the loader's {@code processBlockInfos} calls it ({@code structure.TemplatePlacement}). */
+    @javax.annotation.Nullable
+    public static net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
+            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
+            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
+            @javax.annotation.Nullable net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template) {
+        return SERVICE.processTemplateBlock(processor, level, offset, pivot, raw, placed, settings, template);
     }
 }

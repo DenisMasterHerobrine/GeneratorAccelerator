@@ -44,26 +44,38 @@ public final class SectionCursor {
 
     /** Kinds of fast path with a cursor of their own on each thread ({@link #mine}). */
     public static final int DISK = 0, SPRING = 1, SNOW = 2, SEAGRASS = 3, KELP = 4, MULTIFACE = 5, TREE = 6, GEODE = 7, MONSTER_ROOM = 8;
-    private static final ThreadLocal<SectionCursor[]> MINE = ThreadLocal.withInitial(() -> new SectionCursor[MONSTER_ROOM + 1]);
+    /**
+     * The thread's cursors, held weakly. A cursor is strongly reachable only from the placement that uses it. Between placements
+     * only this slot points at it. So the region it last read, and that region's whole grid of chunks, can be collected as soon as
+     * the step is over, whether or not anything calls {@link #releaseMine}. Under another chunk system (Moonrise, C2ME) nothing does,
+     * and a strong slot kept the last region of every kind on every thread until that kind's next placement there. Between two
+     * placements of a kind in one step the cursor is nearly always still there and is reused as before.
+     */
+    @SuppressWarnings("unchecked")
+    private static final ThreadLocal<java.lang.ref.WeakReference<SectionCursor>[]> MINE =
+        ThreadLocal.withInitial(() -> (java.lang.ref.WeakReference<SectionCursor>[]) new java.lang.ref.WeakReference[MONSTER_ROOM + 1]);
 
     /**
      * This thread's cursor of the fast path {@code kind}, as a new one over {@code region}, instead of a new cursor per placement. For
      * fast paths that place no feature of their own kind while they run and never wait, so no other placement runs on the thread
-     * in between. The region the cursor last read stays referenced until the kind's next placement on the thread, or until the end
-     * of the thread's step ({@link #releaseMine}).
+     * in between. The region the cursor last read stays referenced until the kind's next placement on the thread, the end of the
+     * thread's step ({@link #releaseMine}) or the next collection, whichever comes first.
      */
     public static SectionCursor mine(int kind, Ga2Region region) {
-        SectionCursor[] mine = MINE.get();
-        SectionCursor cursor = mine[kind];
+        java.lang.ref.WeakReference<SectionCursor>[] mine = MINE.get();
+        java.lang.ref.WeakReference<SectionCursor> ref = mine[kind];
+        SectionCursor cursor = ref == null ? null : ref.get();
         if (cursor == null) {
-            cursor = mine[kind] = new SectionCursor();
+            cursor = new SectionCursor();
+            mine[kind] = new java.lang.ref.WeakReference<>(cursor);
         }
         return cursor.reset(region);
     }
 
     /** Clears this thread's cursors ({@link #mine}), so they no longer hold their last region and its chunks ({@link RegionRefs}). */
     public static void releaseMine() {
-        for (SectionCursor cursor : MINE.get()) {
+        for (java.lang.ref.WeakReference<SectionCursor> ref : MINE.get()) {
+            SectionCursor cursor = ref == null ? null : ref.get();
             if (cursor != null && cursor.region != null) {
                 cursor.clear();
             }

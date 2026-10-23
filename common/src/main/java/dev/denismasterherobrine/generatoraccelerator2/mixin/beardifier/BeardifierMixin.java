@@ -155,6 +155,11 @@ public abstract class BeardifierMixin {
             int dy = y - j[b + 1];
             sum += getBeardContribution(x - j[b], dy, z - j[b + 2], dy) * 0.4;
         }
+        java.util.function.Function<net.minecraft.world.level.ChunkPos, dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk> test =
+            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks;
+        if (test != null) {
+            sum += dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.density(test.apply(new net.minecraft.world.level.ChunkPos(x >> 4, z >> 4)), x, y, z, null);
+        }
         BeardExtras.Plan plan = this.ga2$plan;
         return plan != null ? plan.apply((Beardifier) (Object) this, context, sum) : sum;
     }

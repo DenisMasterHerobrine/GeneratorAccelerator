@@ -114,21 +114,39 @@ public final class BiolithSearch {
         if (u == -2 || p == -2) {
             return null;
         }
-        int[] ids;
-        long[] distance;
-        if (FlatClimateTree.COLUMNS) {
+        int uId, pId;
+        long uDist, pDist;
+        // the GPU's two answers, in a chunk whose biome step it handed them to. They are this walk's answers when the last answers
+        // are of two biomes (see FlatClimateTree.searchFittest)
+        Climate.RTree.Leaf<?>[] handed = u >= 0 && p >= 0 && keys[u] == keys[p] ? null
+            : dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fittest(tree, target);
+        int hu = handed == null ? -2 : id(flat, handed[0]);
+        int hp = handed == null ? -2 : id(flat, handed[1]);
+        if (hu >= 0 && hp != -2) {
+            uId = hu;
+            pId = hp;
+            uDist = flat.distanceTo(hu, target.temperature(), target.humidity(), target.continentalness(), target.erosion(), target.depth(), target.weirdness());
+            pDist = hp < 0 ? Long.MAX_VALUE
+                : flat.distanceTo(hp, target.temperature(), target.humidity(), target.continentalness(), target.erosion(), target.depth(), target.weirdness());
+        } else if (FlatClimateTree.COLUMNS) {
             FlatClimateTree.Fittest r = flat.fittestColumns(target.temperature(), target.humidity(), target.continentalness(), target.erosion(), target.depth(),
                 target.weirdness(), keys, u, p);
-            ids = r.ids;
-            distance = r.distance;
+            uId = r.ids[0];
+            pId = r.ids[1];
+            uDist = r.distance[0];
+            pDist = r.distance[1];
         } else {
-            ids = new int[2];
-            distance = new long[2];
+            int[] ids = new int[2];
+            long[] distance = new long[2];
             flat.searchFittest(target.temperature(), target.humidity(), target.continentalness(), target.erosion(), target.depth(), target.weirdness(),
                 keys, u, p, ids, distance);
+            uId = ids[0];
+            pId = ids[1];
+            uDist = distance[0];
+            pDist = distance[1];
         }
-        Climate.RTree.Leaf<?> ultimate = ids[0] < 0 ? null : flat.leaf(ids[0]);
-        Climate.RTree.Leaf<?> penultimate = ids[1] < 0 ? null : flat.leaf(ids[1]);
+        Climate.RTree.Leaf<?> ultimate = uId < 0 ? null : flat.leaf(uId);
+        Climate.RTree.Leaf<?> penultimate = pId < 0 ? null : flat.leaf(pId);
         // Unchanged answers are common across a column's quarts. Thread-local writes cost more than the reads above.
         if (ultimate != ultimateBefore) {
             ultimateLast.set(ultimate);
@@ -140,7 +158,7 @@ public final class BiolithSearch {
         // Biolith's answer is an immutable record. The previous one on this thread is returned again when it holds the same leaves
         // at the same distances. That is common along a column, where the depth term often stays the same.
         LastAnswer last = LAST.get();
-        long du = distance[0], dp = penultimate == null ? 0 : distance[1];
+        long du = uDist, dp = penultimate == null ? 0 : pDist;
         int g = generation;
         if (last.generation != g) {
             last.answer = last.ultimate = last.penultimate = null;

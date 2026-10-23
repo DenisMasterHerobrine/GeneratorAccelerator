@@ -33,6 +33,9 @@ public final class CompatModules {
         if (Compat.isLoaded(NaturesSpiritMixins.MOD_ID)) {
             NaturesSpiritSurface.register();
         }
+        if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins.MOD_ID)) {
+            dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsSurface.register();
+        }
         if (Compat.isLoaded(BiomesWeveGoneMixins.MOD_ID)) {
             BiomesWeveGoneSurface.register();
             BiomesWeveGoneRules.register();

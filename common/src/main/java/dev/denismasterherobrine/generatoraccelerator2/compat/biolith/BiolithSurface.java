@@ -25,6 +25,35 @@ public final class BiolithSurface {
 
     public static void register() {
         ColumnHooks.register(BiolithMixins.SURFACE, BiolithSurface::hooks);
+        // Biolith's two wrappers only run the builders that mods registered. With none they call the test and change nothing, so the
+        // GPU's surface may be the build. While some are registered, the CPU builds each chunk's surface
+        dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_SURFACE,
+            BiolithMixins.SURFACE, () -> BUILDERS != null);
+        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob.addCpuCondition(BiolithSurface::hasBuilders);
+    }
+
+    /** Biolith's registered surface builders ({@code SurfaceBuilderCollector.getBuilders}), or null when this version has no such list. */
+    private static final java.lang.invoke.MethodHandle BUILDERS = builders();
+
+    private static java.lang.invoke.MethodHandle builders() {
+        try {
+            Class<?> c = Class.forName("com.terraformersmc.biolith.impl.surface.SurfaceBuilderCollector", false, BiolithSurface.class.getClassLoader());
+            return java.lang.invoke.MethodHandles.publicLookup().findStatic(c, "getBuilders", java.lang.invoke.MethodType.methodType(java.util.Set.class));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            return null;
+        }
+    }
+
+    /** Whether some mod registered a Biolith surface builder. True when the list cannot be read. */
+    public static boolean hasBuilders() {
+        if (BUILDERS == null) {
+            return true;
+        }
+        try {
+            return !((java.util.Set<?>) BUILDERS.invokeExact()).isEmpty();
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     private static List<ColumnHooks.Hook> hooks() throws ReflectiveOperationException {

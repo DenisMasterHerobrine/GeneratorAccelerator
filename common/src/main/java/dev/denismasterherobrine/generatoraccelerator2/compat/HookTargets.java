@@ -135,6 +135,11 @@ public final class HookTargets {
      */
     public static final String GPU_BIOMES = "gpu.biomes";
     /**
+     * {@code Climate.Sampler.sample}, whose answers the GPU hands to the CPU's own biome lookups at the chunk's quarts
+     * ({@code gpu.runtime.BiomeHand}) when other mods change the lookup ({@link #GPU_BIOMES} off).
+     */
+    public static final String GPU_CLIMATE_POINTS = "gpu.climatePoints";
+    /**
      * A chunk the GPU filled goes without a NoiseChunk ({@code gpu.GpuTerrain}). Covers the surface step's {@code getOrCreateNoiseChunk} call
      * and the rule context's {@code preliminarySurfaceLevel} calls, which are wrapped.
      */
@@ -181,6 +186,11 @@ public final class HookTargets {
     public static final String NOISE_SECTION_WRITES = "noise.sectionWrites";
     /** {@code StructureTemplate.filterBlocks}, answered from a per-palette cache for jigsaw blocks. When changed, every call runs the method. */
     public static final String STRUCTURE_JIGSAW_BLOCKS = "structures.jigsawBlocks";
+    /**
+     * {@code StructureTemplate.placeInWorld}'s call of {@code processBlockInfos}, that method and the position transform, whose work
+     * {@code structure.TemplatePlacement} does for the blocks inside the bounding box only. When changed, every placement processes the whole template.
+     */
+    public static final String STRUCTURE_TEMPLATE_CLIP = "structures.templateClip";
     /** Nether fossil placement ({@code NetherFossilStructure.findGenerationPoint} and the biome check behind it). When changed, every probe runs. */
     public static final String STRUCTURE_FOSSIL_PROBE = "structures.fossilProbe";
     /** Where ring placements (strongholds) can put positions ({@code RingBounds}). When the ring computation or the check is changed, every check waits for the positions. */
@@ -190,6 +200,8 @@ public final class HookTargets {
     /** {@code NoiseBasedChunkGenerator.createFluidPicker} and its lambda: the picker whose fluids depend on y alone. Whole-cell air relies on that. */
     public static final String NOISE_FLUID_PICKER = "noise.fluidPicker";
     public static final String STORAGE_PACK = "storage.pack";
+    /** {@code RegionFile}'s writes, header, flush and close, and {@code RegionFileStorage.getRegionFile}: files synced in batches ({@code storage.RegionSync}). */
+    public static final String STORAGE_REGION_SYNC = "storage.regionSync";
     public static final String STORAGE_REGION_WRITE = "storage.regionWrite";
     public static final String STORAGE_OLD_CHUNK_SCAN = "storage.oldChunkScan";
     public static final String STORAGE_PRECOMPRESS = "storage.precompress";

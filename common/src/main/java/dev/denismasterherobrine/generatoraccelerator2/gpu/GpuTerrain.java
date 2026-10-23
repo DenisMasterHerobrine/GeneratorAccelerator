@@ -199,6 +199,9 @@ public final class GpuTerrain {
     final int[] data;
     final int cx, cz;
     private GpuAquifer aquifer;
+    /** Better Caves' liquid regions of the chunk, applied to the carvers' aquifer answers ({@code aquifer.LiquidRegions}), or null. */
+    @javax.annotation.Nullable
+    public dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.Table liquids;
 
     public GpuTerrain(Spec spec, int[] data, int cx, int cz) {
         this.spec = spec;
