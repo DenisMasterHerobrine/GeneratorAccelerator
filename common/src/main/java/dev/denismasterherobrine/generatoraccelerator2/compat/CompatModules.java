@@ -27,6 +27,9 @@ public final class CompatModules {
     private CompatModules() {}
 
     public static void init() {
+        if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests.MOD_ID)) {
+            dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests.register();
+        }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins.register();
         }

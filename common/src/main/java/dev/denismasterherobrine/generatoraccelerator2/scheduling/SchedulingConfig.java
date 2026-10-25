@@ -20,6 +20,7 @@ public final class SchedulingConfig {
     public static final ConfigSpec.IntValue FEATURES_GUARD_RADIUS;
     public static final ConfigSpec.BooleanValue DEDICATED_MAILBOX_THREADS;
     public static final ConfigSpec.BooleanValue STEADY_LIGHT_UPDATES;
+    public static final ConfigSpec.IntValue CHUNKY_IN_FLIGHT;
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();
@@ -44,6 +45,9 @@ public final class SchedulingConfig {
             "dimensions loaded after the change. Ignored while Moonrise or C2ME runs the chunk system.").define("dedicatedMailboxThreads", true);
         STEADY_LIGHT_UPDATES = b.comment("Schedule light updates whenever the main thread polls for tasks. Vanilla skips them while the distance manager is",
             "busy, which during heavy generation means light only catches up after generation stops, holding finished chunks back.").define("steadyLightUpdates", true);
+        CHUNKY_IN_FLIGHT = b.comment("How many chunks Chunky may request at once (its chunky.maxWorkingCount, 50 by default). A chunk spends most of its",
+            "time waiting between threads, so more open requests keep the CPU busy. 0 picks a count from the processors and the memory.",
+            "50 is Chunky's own default. A -Dchunky.maxWorkingCount JVM argument wins. Read at startup.").defineInRange("chunkyInFlight", 0, 0, 4096);
         b.pop();
         SPEC = b.build();
     }
@@ -70,6 +74,14 @@ public final class SchedulingConfig {
             return SPEC.isLoaded() ? FEATURES_GUARD_RADIUS.get() : 2;
         } catch (RuntimeException e) {
             return 2;
+        }
+    }
+
+    public static int chunkyInFlight() {
+        try {
+            return SPEC.isLoaded() ? CHUNKY_IN_FLIGHT.get() : 0;
+        } catch (RuntimeException e) {
+            return 0;
         }
     }
 }
