@@ -55,12 +55,15 @@ public class ParallelLightExactnessTest {
     private static void compare(String where, TerrainHarness.World world, ProtoChunk[] base, boolean sky, long seed) {
         LightExactnessTest.Run vanilla;
         boolean fast = FastLight.ENABLED;
+        boolean snapshots = LightSnapshot.ENABLED;
         try {
             FastLight.ENABLED = false;
+            LightSnapshot.ENABLED = false;
             ParallelLight.ENABLED = false;
             vanilla = LightExactnessTest.run(world, base, sky, seed);
         } finally {
             FastLight.ENABLED = fast;
+            LightSnapshot.ENABLED = snapshots;
             ParallelLight.ENABLED = true;
         }
         TreeSet<String> vanillaUpdates = new TreeSet<>(vanilla.updates);
@@ -71,7 +74,8 @@ public class ParallelLightExactnessTest {
                 ParallelLight.helpersOverride = helpers;
                 for (int repeat = 0; repeat < REPEATS; repeat++) {
                     long before = parallelBatches();
-                    LightExactnessTest.Run run = LightExactnessTest.run(world, base, sky, seed);
+                    // the helpers write the working map directly. The published map must still match it after every batch.
+                    LightExactnessTest.Run run = LightExactnessTest.run(world, base, sky, seed, true, seed * 7 + 1, 3, LightExactnessTest::checkPublished);
                     String label = where + " with " + helpers + " helpers, run " + repeat;
                     assertTrue(parallelBatches() > before, label + ": batches were split");
                     assertEquals(vanilla.layers.keySet(), run.layers.keySet(), label + ": sections with light data");

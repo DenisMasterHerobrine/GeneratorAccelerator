@@ -195,7 +195,18 @@ public final class SurfaceBatches {
         if (launched) {
             cl.flush(queue);
         }
+        waiting = pending.size();
         return wait;
+    }
+
+    /** Published by the GPU thread: the requests waiting for a batch slot. */
+    private volatile int waiting;
+    /** The tests' slower GPU ({@code GpuDevice.debugSpin}): called with a batch's chunks before its work, or null. */
+    public java.util.function.IntConsumer spin;
+
+    /** Whether a full batch already waits for a slot, so a request made now would wait for a whole batch more. Any thread. */
+    public boolean behind() {
+        return waiting >= CAP;
     }
 
     private void launch(Slot s, List<Request> reqs) {
@@ -229,6 +240,9 @@ public final class SurfaceBatches {
             s.hFlag.putInt(0);
         }
         s.hStore.position(store.position() << 3);
+        if (spin != null) {
+            spin.accept(n);
+        }
         rel(cl.write(queue, s.inStore, false, 0, s.hStore.flip()));
         rel(cl.write(queue, s.inMeta, false, 0, s.hMeta.flip()));
         rel(cl.write(queue, s.tops, false, 0, s.hTops.flip()));

@@ -94,16 +94,49 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
     public static final LongAdder BATCHES = new LongAdder(), ENTRIES = new LongAdder(), SECTIONS = new LongAdder(), CHANGED = new LongAdder(),
         NANOS = new LongAdder(), FILL = new LongAdder(), RACE = new LongAdder(), OUTSIDE = new LongAdder(), UNSTORED = new LongAdder(), LARGE = new LongAdder(),
         ERRORS = new LongAdder(), CPU_CHOSEN = new LongAdder();
+    /** A batch's parts on the light thread: waiting for the lock, the host arrays, the GPU's work with its transfers, and the write-back. */
+    public static final LongAdder LOCK_NANOS = new LongAdder(), PREP_NANOS = new LongAdder(), GPU_NANOS = new LongAdder(), BACK_NANOS = new LongAdder();
+    /** The host arrays by part: the batch's slots, their levels and neighbours, the entries, the blocks, the face tables. Sections read block by block. */
+    public static final LongAdder[] PREP_PARTS = { new LongAdder(), new LongAdder(), new LongAdder(), new LongAdder(), new LongAdder() };
+    public static final LongAdder RAW_SECTIONS = new LongAdder(), BLOCK_SECTIONS = new LongAdder();
 
     private static final Object LOCK = new Object();
     private static volatile LightProgram program;
     private static volatile GpuDevice building;
     private static volatile String off;
 
-    /** Per light layer (block 0, sky 1): the light thread's nanoseconds per queued entry on the GPU and on the CPU, -1 before a sample. */
-    private static final double[] GPU_COST = { -1, -1 }, CPU_COST = { -1, -1 };
-    private static final int[] SINCE_PROBE = new int[2];
+    /**
+     * Recent samples of the light thread's nanoseconds per queued entry on one path. The choice goes by their median, so a few slow
+     * batches move it little. The first batches on a cold JIT and driver took up to 70 ms where later ones took 8, and a moving
+     * average kept the GPU out of most batches long after.
+     */
+    private static final class Costs {
+        private final double[] ring = new double[8];
+        private int n, next;
+
+        synchronized void add(long nanos, int entries) {
+            this.ring[this.next] = (double) nanos / Math.max(1, entries);
+            this.next = (this.next + 1) % this.ring.length;
+            this.n = Math.min(this.n + 1, this.ring.length);
+        }
+
+        /** The median of the recent samples, -1 before a sample. */
+        synchronized double median() {
+            if (this.n == 0) {
+                return -1;
+            }
+            double[] s = java.util.Arrays.copyOf(this.ring, this.n);
+            java.util.Arrays.sort(s);
+            return s[this.n / 2];
+        }
+    }
+
+    /** Per light layer (block 0, sky 1): the light thread's time per queued entry on the GPU and on the CPU. */
+    private static final Costs[] GPU_COST = { new Costs(), new Costs() }, CPU_COST = { new Costs(), new Costs() };
+    private static final int[] SINCE_PROBE = new int[2], DECIDED = new int[2];
     private static final int PROBE_EVERY = 32;
+    /** Choices per layer that alternate between the two paths first, so each is measured before either is judged. */
+    private static final int FIRST_CHOICES = 6;
 
     private GpuLight() {}
 
@@ -125,19 +158,18 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             return true;
         }
         int layer = sky ? 1 : 0;
-        double gpu = GPU_COST[layer], cpu = CPU_COST[layer];
-        if (gpu < 0) {
-            return true;
-        }
-        if (cpu < 0) {
-            CPU_CHOSEN.increment();
-            return false;
-        }
-        boolean gpuWins = gpu <= cpu;
-        if (++SINCE_PROBE[layer] >= PROBE_EVERY) {
-            // the other path once in a while, so its time follows the load
-            SINCE_PROBE[layer] = 0;
-            gpuWins = !gpuWins;
+        boolean gpuWins;
+        if (DECIDED[layer] < FIRST_CHOICES) {
+            gpuWins = DECIDED[layer]++ % 2 == 0;
+        } else {
+            double gpu = GPU_COST[layer].median(), cpu = CPU_COST[layer].median();
+            // A path without a sample yet goes first. The CPU path is only measured when its batch is not split.
+            gpuWins = gpu < 0 || cpu < 0 || gpu <= cpu;
+            if (gpu >= 0 && cpu >= 0 && ++SINCE_PROBE[layer] >= PROBE_EVERY) {
+                // the other path once in a while, so its time follows the load
+                SINCE_PROBE[layer] = 0;
+                gpuWins = !gpuWins;
+            }
         }
         if (!gpuWins) {
             CPU_CHOSEN.increment();
@@ -149,15 +181,8 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
     public void cpuIncreases(boolean sky, int increases, long nanos) {
         long work = sky ? increases : increases * 16L;
         if (work >= MIN_WORK) {
-            sample(CPU_COST, sky, nanos, increases);
+            CPU_COST[sky ? 1 : 0].add(nanos, increases);
         }
-    }
-
-    private static void sample(double[] costs, boolean sky, long nanos, int entries) {
-        int layer = sky ? 1 : 0;
-        double x = (double) nanos / Math.max(1, entries);
-        double old = costs[layer];
-        costs[layer] = old < 0 ? x : old * 0.8 + x * 0.2;
     }
 
     /** The device's light program once built, else null. The first call for a device starts its build in the background. */
@@ -216,15 +241,14 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         final Long2IntOpenHashMap slotOf = new Long2IntOpenHashMap();
         /** The entries' own sections, whose neighbourhoods are in the batch. */
         final it.unimi.dsi.fastutil.longs.LongOpenHashSet seedSections = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
-        /** Direct host buffers by {@link LightProgram.Buf}, kept between batches. */
-        final ByteBuffer[] host = new ByteBuffer[LightProgram.Buf.values().length];
         final LongArrayList keys = new LongArrayList();
         final Long2ObjectOpenHashMap<ChunkInfo> chunks = new Long2ObjectOpenHashMap<>();
-        final LongArrayList words = new LongArrayList();
+        /** The batch's block words, a view of the program's pinned upload buffer, and how many are written. */
+        java.nio.LongBuffer words;
+        int wordCount;
         final it.unimi.dsi.fastutil.ints.IntArrayList sinfo = new it.unimi.dsi.fastutil.ints.IntArrayList();
         final it.unimi.dsi.fastutil.shorts.ShortArrayList pal = new it.unimi.dsi.fastutil.shorts.ShortArrayList();
         final it.unimi.dsi.fastutil.ints.IntArrayList kslots = new it.unimi.dsi.fastutil.ints.IntArrayList();
-        byte[] sn = new byte[0];
         byte[] storing = new byte[0];
         int[] nbr = new int[0];
         int[] hazard = new int[0];
@@ -234,6 +258,17 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         { slotOf.defaultReturnValue(-1); }
+    }
+
+    private static final Direction[] DIRECTIONS = Direction.values();
+
+    /** A section's nibble array with every level {@code v}, by v. The levels of a section without stored light are 0. */
+    private static final byte[][] LEVELS = new byte[16][2048];
+
+    static {
+        for (int v = 0; v < 16; v++) {
+            java.util.Arrays.fill(LEVELS[v], (byte) (v | v << 4));
+        }
     }
 
     private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
@@ -266,7 +301,9 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         }
         int result;
         try {
+            long locking = System.nanoTime();
             synchronized (LOCK) {
+                LOCK_NANOS.add(System.nanoTime() - locking);
                 result = p.closed ? -1 : run(p, e, sky, s, entries, n / 2);
             }
         } catch (RuntimeException | LinkageError ex) {
@@ -284,12 +321,13 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         }
         long dt = System.nanoTime() - t0;
         NANOS.add(dt);
-        sample(GPU_COST, sky, dt, n / 2);
+        GPU_COST[sky ? 1 : 0].add(dt, n / 2);
         return result;
     }
 
     /** The batch on the GPU. Returns the entries processed, or -1 when the light thread must propagate it itself. */
     private static int run(LightProgram p, LightEngineAccessor e, boolean sky, Scratch s, long[] entries, int count) {
+        long tPrep = System.nanoTime();
         LayerLightSectionStorageAccessor storage = (LayerLightSectionStorageAccessor) e.ga2pl$storage();
         var updating = storage.ga2pl$updatingSectionData();
         Long2ObjectOpenHashMap<DataLayer> map = ((DataLayerStorageMapAccessor) updating).ga2pl$map();
@@ -329,11 +367,11 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             }
         }
         int slots = keys.size();
+        long tSlots = System.nanoTime();
+        PREP_PARTS[0].add(tSlots - tPrep);
 
-        // per section: stored or not, the levels, the neighbours, and for the sky the empty-section hazard
-        if (s.sn.length < slots * 2048) {
-            s.sn = new byte[slots * 2048 + (slots << 9)];
-        }
+        // per section: stored or not, the levels (straight into the upload buffer), the neighbours, and for the sky the
+        // empty-section hazard
         if (s.storing.length < slots) {
             int c = slots + (slots >> 1);
             s.storing = new byte[c];
@@ -341,47 +379,55 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             s.hazard = new int[c];
             s.changed = new int[c];
         }
-        byte[] sn = s.sn;
+        ByteBuffer snHost = p.host(LightProgram.Buf.SN, slots * 2048);
+        int stored = 0;
         for (int slot = 0; slot < slots; slot++) {
             long key = keys.getLong(slot);
             DataLayer layer = map.get(key);
             s.storing[slot] = (byte) (layer != null ? 1 : 0);
             int base = slot * 2048;
             if (layer == null) {
-                java.util.Arrays.fill(sn, base, base + 2048, (byte) 0);
-            } else if (layer.isDefinitelyHomogenous()) {
-                int v = layer.get(0, 0, 0);
-                java.util.Arrays.fill(sn, base, base + 2048, (byte) (v | v << 4));
+                snHost.put(base, LEVELS[0], 0, 2048);
             } else {
-                System.arraycopy(layer.getData(), 0, sn, base, 2048);
+                stored++;
+                snHost.put(base, layer.isDefinitelyHomogenous() ? LEVELS[layer.get(0, 0, 0)] : layer.getData(), 0, 2048);
             }
-            for (Direction d : Direction.values()) {
-                s.nbr[slot * 6 + d.ordinal()] = slotOf.get(SectionPos.offset(key, d));
+            int x = SectionPos.x(key), y = SectionPos.y(key), z = SectionPos.z(key);
+            for (Direction d : DIRECTIONS) {
+                int nx = x + d.getStepX(), ny = y + d.getStepY(), nz = z + d.getStepZ();
+                s.nbr[slot * 6 + d.ordinal()] = slotOf.get(SectionPos.asLong(nx, ny, nz));
             }
             s.hazard[slot] = sky ? hazard(map, (SkyLightSectionStorageAccessor) storage, key) : 0;
         }
+        snHost.limit(slots * 2048);
 
+        long tLevels = System.nanoTime();
+        PREP_PARTS[1].add(tLevels - tSlots);
         // the entries, each in a stored section of the batch (vanilla's propagation reads its stored level)
         if (s.seeds.length < count * 2) {
             s.seeds = new int[count * 2 + count];
         }
         for (int i = 0; i < count; i++) {
             long pos = entries[2 * i];
+            int x = BlockPos.getX(pos), y = BlockPos.getY(pos), z = BlockPos.getZ(pos);
             int slot = slotOf.get(SectionPos.blockToSection(pos));
             if (slot < 0 || s.storing[slot] == 0) {
                 UNSTORED.increment();
                 return -1;
             }
-            int x = BlockPos.getX(pos), y = BlockPos.getY(pos), z = BlockPos.getZ(pos);
             s.seeds[2 * i] = slot * 4096 + ((y & 15) << 8 | (z & 15) << 4 | (x & 15));
             s.seeds[2 * i + 1] = (int) (entries[2 * i + 1] & 0xFFF);
         }
 
-        // the blocks of every stored section
+        long tSeeds = System.nanoTime();
+        PREP_PARTS[2].add(tSeeds - tLevels);
+        // the blocks of every stored section, their words straight into the upload buffer (at most 1024 per section)
         LightTypes types = s.types;
         types.reset();
         s.chunks.clear();
-        s.words.clear();
+        ByteBuffer wordsHost = p.host(LightProgram.Buf.WORDS, Math.max(1, stored) * 8192);
+        s.words = wordsHost.asLongBuffer();
+        s.wordCount = 0;
         s.sinfo.clear();
         s.pal.clear();
         s.kslots.clear();
@@ -393,80 +439,77 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         }
         s.chunks.clear();
         int nk = s.kslots.size();
+        long tBlocks = System.nanoTime();
+        PREP_PARTS[3].add(tBlocks - tSeeds);
+        BLOCK_SECTIONS.add(nk);
         LightTypes.Faces faces = types.faceTables();
+        PREP_PARTS[4].add(System.nanoTime() - tBlocks);
 
         // upload, propagate, read back
+        long tGpu = System.nanoTime();
         long q = p.queue;
         var cl = p.cl;
-        long words = p.upload(LightProgram.Buf.WORDS, longs(s, LightProgram.Buf.WORDS, s.words));
-        long sinfo = p.upload(LightProgram.Buf.SINFO, ints(s, LightProgram.Buf.SINFO, s.sinfo.elements(), s.sinfo.size()));
-        long pal = p.upload(LightProgram.Buf.PAL, shorts(s, LightProgram.Buf.PAL, s.pal.elements(), s.pal.size()));
+        long words = p.upload(LightProgram.Buf.WORDS, wordsHost.limit(s.wordCount * 8));
+        long sinfo = p.upload(LightProgram.Buf.SINFO, ints(p, LightProgram.Buf.SINFO, s.sinfo.elements(), s.sinfo.size()));
+        long pal = p.upload(LightProgram.Buf.PAL, shorts(p, LightProgram.Buf.PAL, s.pal.elements(), s.pal.size()));
         long typesMem = p.buffer(LightProgram.Buf.TYPES, (long) slots * 4096 * 2);
-        long snMem = p.upload(LightProgram.Buf.SN, bytes(s, LightProgram.Buf.SN, sn, slots * 2048));
+        long snMem = p.upload(LightProgram.Buf.SN, snHost);
         long cur = p.buffer(LightProgram.Buf.CUR, (long) slots * 4096 * 4);
-        long seeds = p.upload(LightProgram.Buf.SEEDS, ints(s, LightProgram.Buf.SEEDS, s.seeds, count * 2));
-        long nbr = p.upload(LightProgram.Buf.NBR, ints(s, LightProgram.Buf.NBR, s.nbr, slots * 6));
-        long storingMem = p.upload(LightProgram.Buf.STORING, bytes(s, LightProgram.Buf.STORING, s.storing, slots));
-        long hazard = p.upload(LightProgram.Buf.HAZARD, ints(s, LightProgram.Buf.HAZARD, s.hazard, slots));
-        long opac = p.upload(LightProgram.Buf.OPAC, bytes(s, LightProgram.Buf.OPAC, types.opacity, types.count));
-        long face = p.upload(LightProgram.Buf.FACE, shorts(s, LightProgram.Buf.FACE, types.faces, types.count * 6));
-        long cover = p.upload(LightProgram.Buf.COVER, bytes(s, LightProgram.Buf.COVER, faces.cover(), faces.cover().length));
-        long part = p.upload(LightProgram.Buf.PART, shorts(s, LightProgram.Buf.PART, faces.part(), faces.part().length));
-        long pairs = p.upload(LightProgram.Buf.PAIRS, ints(s, LightProgram.Buf.PAIRS, faces.pairs(), faces.pairs().length));
-        long kslots = p.upload(LightProgram.Buf.KSLOTS, ints(s, LightProgram.Buf.KSLOTS, s.kslots.elements(), nk));
+        long seeds = p.upload(LightProgram.Buf.SEEDS, ints(p, LightProgram.Buf.SEEDS, s.seeds, count * 2));
+        long nbr = p.upload(LightProgram.Buf.NBR, ints(p, LightProgram.Buf.NBR, s.nbr, slots * 6));
+        long storingMem = p.upload(LightProgram.Buf.STORING, bytes(p, LightProgram.Buf.STORING, s.storing, slots));
+        long hazard = p.upload(LightProgram.Buf.HAZARD, ints(p, LightProgram.Buf.HAZARD, s.hazard, slots));
+        long opac = p.upload(LightProgram.Buf.OPAC, bytes(p, LightProgram.Buf.OPAC, types.opacity, types.count));
+        long face = p.upload(LightProgram.Buf.FACE, shorts(p, LightProgram.Buf.FACE, types.faces, types.count * 6));
+        long cover = p.upload(LightProgram.Buf.COVER, bytes(p, LightProgram.Buf.COVER, faces.cover(), faces.cover().length));
+        long part = p.upload(LightProgram.Buf.PART, shorts(p, LightProgram.Buf.PART, faces.part(), faces.part().length));
+        long pairs = p.upload(LightProgram.Buf.PAIRS, ints(p, LightProgram.Buf.PAIRS, faces.pairs(), faces.pairs().length));
+        long kslots = p.upload(LightProgram.Buf.KSLOTS, ints(p, LightProgram.Buf.KSLOTS, s.kslots.elements(), nk));
         java.util.Arrays.fill(s.changed, 0, slots, 0);
-        long changed = p.upload(LightProgram.Buf.CHANGED, ints(s, LightProgram.Buf.CHANGED, s.changed, slots));
-        long fail = p.upload(LightProgram.Buf.FAIL, ints(s, LightProgram.Buf.FAIL, new int[] { 0 }, 1));
+        long changed = p.upload(LightProgram.Buf.CHANGED, ints(p, LightProgram.Buf.CHANGED, s.changed, slots));
+        long fail = p.upload(LightProgram.Buf.FAIL, ints(p, LightProgram.Buf.FAIL, new int[] { 0 }, 1));
         long out = p.buffer(LightProgram.Buf.OUT, (long) slots * 2048);
 
         int a = 0;
-        cl.argMem(p.kUnpack, a++, words);
-        cl.argMem(p.kUnpack, a++, sinfo);
-        cl.argMem(p.kUnpack, a++, pal);
-        cl.argMem(p.kUnpack, a++, typesMem);
-        cl.argInt(p.kUnpack, a++, nk);
-        cl.argMem(p.kUnpack, a, fail);
-        rel(cl, cl.launch(q, p.kUnpack, (long) nk * 4096, 64));
-        cl.argMem(p.kInit, 0, snMem);
-        cl.argMem(p.kInit, 1, cur);
-        cl.argInt(p.kInit, 2, slots);
-        rel(cl, cl.launch(q, p.kInit, (long) slots * 4096, 64));
-        cl.argMem(p.kEmit, 0, seeds);
-        cl.argInt(p.kEmit, 1, count);
-        cl.argMem(p.kEmit, 2, snMem);
-        cl.argMem(p.kEmit, 3, cur);
-        rel(cl, cl.launch(q, p.kEmit, count, 64));
-        long[] stepArgs = { nbr, storingMem, snMem, cur, typesMem, opac, face, cover, part, pairs };
+        cl.argMem(p.kPrepare, a++, words);
+        cl.argMem(p.kPrepare, a++, sinfo);
+        cl.argMem(p.kPrepare, a++, pal);
+        cl.argMem(p.kPrepare, a++, typesMem);
+        cl.argInt(p.kPrepare, a++, nk);
+        cl.argMem(p.kPrepare, a++, fail);
+        cl.argMem(p.kPrepare, a++, snMem);
+        cl.argMem(p.kPrepare, a++, cur);
+        cl.argInt(p.kPrepare, a, slots);
+        rel(cl, cl.launch(q, p.kPrepare, (long) slots * 4096, 64));
+        // The level's arguments but the level and the emission flag stay. A launch copies them when it is queued.
+        a = 3;
+        cl.argMem(p.kLevel, a++, seeds);
+        cl.argInt(p.kLevel, a++, count);
+        cl.argMem(p.kLevel, a++, kslots);
+        cl.argInt(p.kLevel, a++, nk);
+        stepArgs(cl, p.kLevel, a, new long[] { nbr, storingMem, snMem, cur, typesMem, opac, face, cover, part, pairs }, faces.partials(), hazard, fail);
+        cl.argInt(p.kLevel, 1, sky ? 1 : 0);
         for (int lvl = 15; lvl >= 2; lvl--) {
-            a = 0;
-            cl.argInt(p.kSeeds, a++, lvl);
-            cl.argInt(p.kSeeds, a++, sky ? 1 : 0);
-            cl.argMem(p.kSeeds, a++, seeds);
-            cl.argInt(p.kSeeds, a++, count);
-            a = stepArgs(cl, p.kSeeds, a, stepArgs, faces.partials(), hazard, fail);
-            rel(cl, cl.launch(q, p.kSeeds, count, 64));
-            a = 0;
-            cl.argInt(p.kRound, a++, lvl);
-            cl.argInt(p.kRound, a++, sky ? 1 : 0);
-            cl.argMem(p.kRound, a++, kslots);
-            cl.argInt(p.kRound, a++, nk);
-            stepArgs(cl, p.kRound, a, stepArgs, faces.partials(), hazard, fail);
-            rel(cl, cl.launch(q, p.kRound, (long) nk * 4096, 64));
+            cl.argInt(p.kLevel, 0, lvl);
+            cl.argInt(p.kLevel, 2, lvl == 15 ? 1 : 0);
+            rel(cl, cl.launch(q, p.kLevel, count + (long) nk * 4096, 64));
         }
-        cl.argMem(p.kChanged, 0, kslots);
-        cl.argInt(p.kChanged, 1, nk);
-        cl.argMem(p.kChanged, 2, snMem);
-        cl.argMem(p.kChanged, 3, cur);
-        cl.argMem(p.kChanged, 4, changed);
-        rel(cl, cl.launch(q, p.kChanged, (long) nk * 4096, 64));
-        cl.argMem(p.kPack, 0, kslots);
-        cl.argInt(p.kPack, 1, nk);
-        cl.argMem(p.kPack, 2, cur);
-        cl.argMem(p.kPack, 3, out);
-        rel(cl, cl.launch(q, p.kPack, (long) nk * 2048, 64));
-        ByteBuffer failHost = host(s, LightProgram.Buf.FAIL, 4);
-        ByteBuffer changedHost = host(s, LightProgram.Buf.CHANGED, slots * 4);
-        rel(cl, cl.read(q, fail, true, 0, failHost.limit(4)));
+        cl.argMem(p.kFinish, 0, kslots);
+        cl.argInt(p.kFinish, 1, nk);
+        cl.argMem(p.kFinish, 2, snMem);
+        cl.argMem(p.kFinish, 3, cur);
+        cl.argMem(p.kFinish, 4, changed);
+        cl.argMem(p.kFinish, 5, out);
+        rel(cl, cl.launch(q, p.kFinish, (long) nk * 4096, 64));
+        // The reads go after the kernels in the queue. The FAIL and CHANGED host buffers were the uploads' sources. The queue runs in
+        // order, so each read lands after its upload went out. One wait for the whole batch.
+        ByteBuffer failHost = p.host(LightProgram.Buf.FAIL, 4);
+        ByteBuffer changedHost = p.host(LightProgram.Buf.CHANGED, slots * 4);
+        ByteBuffer outHost = p.host(LightProgram.Buf.OUT, slots * 2048);
+        p.download(fail, failHost.limit(4));
+        p.download(changed, changedHost.limit(slots * 4));
+        p.download(out, outHost.limit(slots * 2048));
+        cl.finish(q);
         int failed = failHost.getInt(0);
         if (failed != 0) {
             if ((failed & 2) != 0) {
@@ -478,14 +521,15 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             }
             return -1;
         }
-        rel(cl, cl.read(q, changed, true, 0, changedHost.limit(slots * 4)));
         changedHost.asIntBuffer().get(s.changed, 0, slots);
         if (s.out.length < slots * 2048) {
             s.out = new byte[slots * 2048 + (slots << 9)];
         }
-        ByteBuffer outHost = host(s, LightProgram.Buf.OUT, slots * 2048);
-        rel(cl, cl.read(q, out, true, 0, outHost.limit(slots * 2048)));
         outHost.get(s.out, 0, slots * 2048);
+
+        long tBack = System.nanoTime();
+        GPU_NANOS.add(tBack - tGpu);
+        PREP_NANOS.add(tGpu - tPrep);
 
         // the changed sections, as setStoredLevel leaves them
         LongSet changedSections = storage.ga2pl$changedSections();
@@ -519,6 +563,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         ENTRIES.add(count);
         SECTIONS.add(slots);
         CHANGED.add(changedCount);
+        BACK_NANOS.add(System.nanoTime() - tBack);
         return count;
     }
 
@@ -595,12 +640,13 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             }
             if (!dynamic) {
                 int bits = storage.getBits();
-                int wo = s.words.size();
+                int wo = s.wordCount;
                 if (bits != 0) {
                     long[] raw = storage.getRaw();
-                    s.words.addElements(wo, raw, 0, raw.length);
+                    s.words.put(wo, raw, 0, raw.length);
+                    s.wordCount += raw.length;
                 }
-                s.sinfo.addElements(s.sinfo.size(), new int[] { slot, bits, wo, po, size });
+                info(s, slot, bits, wo, po, size);
                 return;
             }
             s.pal.size(po);
@@ -608,16 +654,27 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         raw(s, types, level, slot, sx, sy, sz, i -> dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(data, i));
     }
 
+    /** A section's entry for {@code k_prepare}: its slot, bits per block, first word, palette offset (-1: none) and palette size. */
+    private static void info(Scratch s, int slot, int bits, int words, int palette, int size) {
+        it.unimi.dsi.fastutil.ints.IntArrayList info = s.sinfo;
+        info.add(slot);
+        info.add(bits);
+        info.add(words);
+        info.add(palette);
+        info.add(size);
+    }
+
     /** A section of one block. */
     private static void single(Scratch s, int slot, int type) {
         int po = s.pal.size();
         s.pal.add((short) type);
-        s.sinfo.addElements(s.sinfo.size(), new int[] { slot, 0, 0, po, 1 });
+        info(s, slot, 0, 0, po, 1);
     }
 
     /** A section's types block by block (16 bits each), a block whose properties may depend on its position asked there. */
     private static void raw(Scratch s, LightTypes types, BlockGetter level, int slot, int sx, int sy, int sz, java.util.function.IntFunction<BlockState> state) {
-        int wo = s.words.size();
+        RAW_SECTIONS.increment();
+        int wo = s.wordCount;
         long word = 0;
         for (int i = 0; i < 4096; i++) {
             BlockState b = state.apply(i);
@@ -629,11 +686,11 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             }
             word |= (long) (t & 0xFFFF) << ((i & 3) << 4);
             if ((i & 3) == 3) {
-                s.words.add(word);
+                s.words.put(s.wordCount++, word);
                 word = 0;
             }
         }
-        s.sinfo.addElements(s.sinfo.size(), new int[] { slot, 16, wo, -1, 65536 });
+        info(s, slot, 16, wo, -1, 65536);
     }
 
     private static ChunkInfo chunkInfo(@Nullable LightChunk chunk) {
@@ -670,40 +727,24 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         }
     }
 
-    /** This thread's host buffer {@code b} with room for {@code bytes}, cleared. */
-    private static ByteBuffer host(Scratch s, LightProgram.Buf b, int bytes) {
-        ByteBuffer h = s.host[b.ordinal()];
-        if (h == null || h.capacity() < bytes) {
-            h = LightProgram.direct(Math.max(bytes, h == null ? 0 : h.capacity() + (h.capacity() >> 1)));
-            s.host[b.ordinal()] = h;
-        }
-        h.clear();
-        return h;
-    }
+    // The program's pinned host buffers, filled for one upload each per batch
 
-    private static ByteBuffer bytes(Scratch s, LightProgram.Buf buf, byte[] a, int n) {
-        ByteBuffer b = host(s, buf, n);
+    private static ByteBuffer bytes(LightProgram p, LightProgram.Buf buf, byte[] a, int n) {
+        ByteBuffer b = p.host(buf, n);
         b.put(a, 0, n).flip();
         return b;
     }
 
-    private static ByteBuffer ints(Scratch s, LightProgram.Buf buf, int[] a, int n) {
-        ByteBuffer b = host(s, buf, n * 4);
+    private static ByteBuffer ints(LightProgram p, LightProgram.Buf buf, int[] a, int n) {
+        ByteBuffer b = p.host(buf, n * 4);
         b.asIntBuffer().put(a, 0, n);
         return b.limit(n * 4);
     }
 
-    private static ByteBuffer shorts(Scratch s, LightProgram.Buf buf, short[] a, int n) {
-        ByteBuffer b = host(s, buf, n * 2);
+    private static ByteBuffer shorts(LightProgram p, LightProgram.Buf buf, short[] a, int n) {
+        ByteBuffer b = p.host(buf, n * 2);
         b.asShortBuffer().put(a, 0, n);
         return b.limit(n * 2);
-    }
-
-    private static ByteBuffer longs(Scratch s, LightProgram.Buf buf, LongArrayList list) {
-        int n = list.size();
-        ByteBuffer b = host(s, buf, n * 8);
-        b.asLongBuffer().put(list.elements(), 0, n);
-        return b.limit(n * 8);
     }
 
     // ------------------------------------------------------------------------------------------------ status
@@ -720,9 +761,33 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
                 + " back to the CPU: %,d empty-section fills, %,d palettes changed while read, %,d too large, %,d other; %,d left to the CPU by time",
             batches, ENTRIES.sum(), SECTIONS.sum(), CHANGED.sum(), batches == 0 ? 0.0 : NANOS.sum() / 1e6 / batches, FILL.sum(), RACE.sum(), LARGE.sum(),
             OUTSIDE.sum() + UNSTORED.sum() + ERRORS.sum(), CPU_CHOSEN.sum()));
-        lines.add(String.format(java.util.Locale.ROOT, "  ns per queued entry, GPU / CPU: block light %s / %s, sky light %s / %s", cost(GPU_COST[0]), cost(CPU_COST[0]),
-            cost(GPU_COST[1]), cost(CPU_COST[1])));
+        lines.add(String.format(java.util.Locale.ROOT, "  ns per queued entry (median of the last 8 batches), GPU / CPU: block light %s / %s, sky light %s / %s", cost(GPU_COST[0].median()), cost(CPU_COST[0].median()),
+            cost(GPU_COST[1].median()), cost(CPU_COST[1].median())));
+        lines.add(String.format(java.util.Locale.ROOT, "  per batch on the light thread: %.2f ms waiting for the lock, %.2f ms for the host arrays, %.2f ms on the GPU"
+                + " (transfers and kernels), %.2f ms writing back", batches == 0 ? 0.0 : LOCK_NANOS.sum() / 1e6 / batches, batches == 0 ? 0.0 : PREP_NANOS.sum() / 1e6 / batches,
+            batches == 0 ? 0.0 : GPU_NANOS.sum() / 1e6 / batches, batches == 0 ? 0.0 : BACK_NANOS.sum() / 1e6 / batches));
+        double per = Math.max(1L, batches) * 1e6;
+        lines.add(String.format(java.util.Locale.ROOT, "  host arrays per batch: %.3f ms the slots, %.3f ms their levels and neighbours, %.3f ms the entries, %.3f ms the blocks,"
+                + " %.3f ms the face tables; %,d of %,d stored sections read block by block",
+            PREP_PARTS[0].sum() / per, PREP_PARTS[1].sum() / per, PREP_PARTS[2].sum() / per, PREP_PARTS[3].sum() / per, PREP_PARTS[4].sum() / per,
+            RAW_SECTIONS.sum(), BLOCK_SECTIONS.sum()));
         return lines;
+    }
+
+    /** Sums so far, for {@link #report}. */
+    public static long[] snapshot() {
+        return new long[] { BATCHES.sum(), ENTRIES.sum(), SECTIONS.sum(), LOCK_NANOS.sum(), PREP_NANOS.sum(), GPU_NANOS.sum(), BACK_NANOS.sum() };
+    }
+
+    /** One line: the batches on the GPU per chunk, their entries and sections, and the light threads' ms per batch in each part. */
+    public static String report(long[] before, long chunks) {
+        long[] now = snapshot();
+        long b = now[0] - before[0];
+        double per = Math.max(1L, b);
+        return String.format(java.util.Locale.ROOT, "GPU light: %.2f batches per chunk, %.0f entries and %.0f sections each; per batch %.2f ms waiting for the lock,"
+                + " %.2f ms for the host arrays, %.2f ms on the GPU, %.2f ms writing back",
+            b / (double) Math.max(1L, chunks), (now[1] - before[1]) / per, (now[2] - before[2]) / per, (now[3] - before[3]) / 1e6 / per,
+            (now[4] - before[4]) / 1e6 / per, (now[5] - before[5]) / 1e6 / per, (now[6] - before[6]) / 1e6 / per);
     }
 
     private static String cost(double c) {

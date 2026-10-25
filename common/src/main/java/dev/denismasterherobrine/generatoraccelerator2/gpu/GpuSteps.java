@@ -177,6 +177,11 @@ public final class GpuSteps {
         if (wg == null || !wg.ready() || !wg.asking() || !Apply.fits(wg, chunk)) {
             return null;
         }
+        if (early == null && !wg.takesBlocks(chunk.getPos())) {
+            // the GPU is behind: the CPU fills this chunk now instead of waiting
+            GpuWorldgen.SHARED_BLOCKS.increment();
+            return null;
+        }
         Executor ex = executor();
         ChunkPos pos = chunk.getPos();
         long t0 = System.nanoTime();
@@ -233,6 +238,11 @@ public final class GpuSteps {
         }
         GpuWorldgen wg = Gpu.worldgen(generator, settings, picker, randomState, chunk);
         if (wg == null || !wg.ready() || !wg.biomeKernels() || !wg.asking() || !Apply.fits(wg, chunk)) {
+            return null;
+        }
+        if (!wg.takesRegion(chunk.getPos())) {
+            // the GPU is behind on its regions: the CPU does this chunk's biomes now instead of waiting for a new one
+            GpuWorldgen.SHARED_BIOMES.increment();
             return null;
         }
         Executor ex = executor();
@@ -302,7 +312,8 @@ public final class GpuSteps {
             return;
         }
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
-        if (gc == null) {
+        if (gc == null || !wg.takesBlocks(chunk.getPos())) {
+            // a GPU that is behind is asked at the NOISE step again, or the CPU fills the chunk then
             return;
         }
         GpuWorldgen.Beard b = beard(wg, randomState, structures, chunk.getPos());

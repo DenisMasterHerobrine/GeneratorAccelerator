@@ -1,12 +1,19 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.light;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LayerMap;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightStorage;
+import dev.denismasterherobrine.generatoraccelerator2.light.Ga2SnapshotCopy;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightSnapshot;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.chunk.DataLayer;
+import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.lighting.DataLayerStorageMap;
 import net.minecraft.world.level.lighting.LayerLightSectionStorage;
 import org.spongepowered.asm.mixin.Final;
@@ -23,15 +30,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * and the neighbour sections the block touches to {@code sectionsAffectedByLightUpdates}. Both sets only grow until
  * {@code swapSectionMap} clears them, so adding a section already added changes nothing. This mixin remembers the last
  * section added to {@code changedSections}, and the sections recently added to {@code sectionsAffectedByLightUpdates} in
- * a 16-slot direct-mapped cache. It skips those repeats. Everything else is vanilla's body.
+ * a 16-slot direct-mapped cache. It skips those repeats. Everything else is vanilla's body. At the end of a batch, the
+ * mixin also publishes a snapshot built from the changed sections instead of a clone of the whole map ({@link LightSnapshot}).
  */
 @Mixin(value = LayerLightSectionStorage.class, priority = 5000)
 public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMap<M>> implements Ga2LightStorage {
     @Shadow @Final protected LongSet changedSections;
     @Shadow @Final protected LongSet sectionsAffectedByLightUpdates;
     @Shadow @Final protected M updatingSectionData;
+    @Shadow @Final protected LightChunkGetter chunkSource;
 
     @Unique private long ga2$lastChanged = Long.MAX_VALUE;
+    /** The last snapshot this storage published, or null after a publish by vanilla's clone. Read and written by the light thread. */
+    @Unique @Nullable private LightSnapshot ga2$published;
     /** Direct-mapped record of sections recently added to {@code sectionsAffectedByLightUpdates}. Reset with that set. */
     @Unique private final long[] ga2$affected = ga2$emptyAffected();
 
@@ -108,5 +119,39 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
     private void ga2$swapSectionMap(CallbackInfo ci) {
         this.ga2$lastChanged = Long.MAX_VALUE;
         java.util.Arrays.fill(this.ga2$affected, Long.MAX_VALUE);
+    }
+
+    /**
+     * Publishes a snapshot built from the changed sections instead of a clone of the whole working map ({@link LightSnapshot}).
+     * The map class's own {@code copy} still makes the published object. Only its clone of the section map is replaced. A
+     * publish by vanilla's clone forgets the last snapshot, so the next snapshot is built from the whole map again.
+     */
+    @WrapOperation(method = "swapSectionMap", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/world/level/lighting/DataLayerStorageMap;copy()Lnet/minecraft/world/level/lighting/DataLayerStorageMap;"))
+    private DataLayerStorageMap<?> ga2$publish(DataLayerStorageMap<?> working, Operation<DataLayerStorageMap<?>> original) {
+        if (!LightSnapshot.on || !(working instanceof Ga2SnapshotCopy)) {
+            this.ga2$published = null;
+            return original.call(working);
+        }
+        Ga2LayerMap map = (Ga2LayerMap) working;
+        LightSnapshot next;
+        try {
+            // the level's light sections: one below and one above its block sections
+            LevelHeightAccessor level = this.chunkSource.getLevel();
+            next = LightSnapshot.next(this.ga2$published, map.ga2$map(), this.changedSections, level.getMinSection() - 1, level.getSectionsCount() + 2);
+        } catch (RuntimeException e) {
+            LightSnapshot.fail(e);
+            this.ga2$published = null;
+            return original.call(working);
+        }
+        DataLayerStorageMap<?> copy;
+        map.ga2$copyWith(next);
+        try {
+            copy = original.call(working);
+        } finally {
+            map.ga2$copyWith(null);
+        }
+        this.ga2$published = ((Ga2LayerMap) copy).ga2$map() == next ? next : null;
+        return copy;
     }
 }

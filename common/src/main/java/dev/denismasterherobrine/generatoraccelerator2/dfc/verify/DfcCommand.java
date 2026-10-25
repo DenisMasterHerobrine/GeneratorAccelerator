@@ -33,6 +33,15 @@ public final class DfcCommand {
         dev.denismasterherobrine.generatoraccelerator2.light.FastLight.refresh();
         String fast = "fast light engine: " + (dev.denismasterherobrine.generatoraccelerator2.light.FastLight.on ? "on" : "off");
         source.sendSuccess(() -> Component.literal(fast), false);
+        for (String line : dev.denismasterherobrine.generatoraccelerator2.light.LightTasks.statusLines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
+        for (String line : dev.denismasterherobrine.generatoraccelerator2.light.LightLayers.statusLines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
+        for (String line : dev.denismasterherobrine.generatoraccelerator2.light.LightSnapshot.statusLines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
         for (String line : dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight.statusLines()) {
             source.sendSuccess(() -> Component.literal(line), false);
         }

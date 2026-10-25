@@ -43,7 +43,8 @@ public final class ParallelLightStats {
     static final LongAdder RUNS = new LongAdder(), RUN_NANOS = new LongAdder(), RUN_TASKS = new LongAdder(), RUN_GAP_NANOS = new LongAdder();
     static final java.util.concurrent.atomic.AtomicLong RUN_MAX_NANOS = new java.util.concurrent.atomic.AtomicLong();
 
-    public static void run(long nanos, int tasks, long gapNanos) {
+    public static void run(long nanos, int tasks, long gapNanos, long cpuNanos) {
+        RUN_CPU_NANOS.add(cpuNanos);
         RUNS.increment();
         RUN_NANOS.add(nanos);
         RUN_TASKS.add(tasks);
@@ -54,6 +55,70 @@ public final class ParallelLightStats {
     /** Sums so far: updates, their nanoseconds, their tasks, the nanoseconds between updates. */
     public static long[] runs() {
         return new long[] { RUNS.sum(), RUN_NANOS.sum(), RUN_TASKS.sum(), RUN_GAP_NANOS.sum() };
+    }
+
+    /** Parts of a batch on the light thread, per light layer (block 0, sky 1). */
+    public static final int CHECKS = 0, DECREASES = 1, INCREASES = 2, OFFLOAD = 3, SPLIT = 4, END = 5;
+    private static final String[] PARTS = { "node checks", "decreases", "increases", "increases elsewhere (GPU)", "split", "end of batch" };
+    private static final LongAdder[] PART_NANOS = new LongAdder[PARTS.length * 2];
+    /** Per light layer: batches and the entries queued when their propagation began. */
+    private static final LongAdder[] LAYER_BATCHES = { new LongAdder(), new LongAdder() }, LAYER_QUEUED = { new LongAdder(), new LongAdder() };
+    /** CPU time of the light threads in whole updates, where the JVM can tell. */
+    static final LongAdder RUN_CPU_NANOS = new LongAdder();
+
+    static {
+        for (int i = 0; i < PART_NANOS.length; i++) {
+            PART_NANOS[i] = new LongAdder();
+        }
+    }
+
+    static void part(int layer, int part, long nanos) {
+        PART_NANOS[layer * PARTS.length + part].add(nanos);
+    }
+
+    static void queued(int layer, int entries) {
+        LAYER_BATCHES[layer].increment();
+        LAYER_QUEUED[layer].add(entries);
+    }
+
+    /** Sums so far, for {@link #partsReport}. */
+    public static long[] parts() {
+        long[] s = new long[PART_NANOS.length + 5];
+        for (int i = 0; i < PART_NANOS.length; i++) {
+            s[i] = PART_NANOS[i].sum();
+        }
+        int n = PART_NANOS.length;
+        s[n] = LAYER_BATCHES[0].sum();
+        s[n + 1] = LAYER_QUEUED[0].sum();
+        s[n + 2] = LAYER_BATCHES[1].sum();
+        s[n + 3] = LAYER_QUEUED[1].sum();
+        s[n + 4] = RUN_CPU_NANOS.sum();
+        return s;
+    }
+
+    /**
+     * One line: per light layer, the batches and entries queued per chunk and the light thread's ms per chunk in each part of a
+     * batch, then the light thread's CPU ms per chunk in whole updates.
+     */
+    public static String partsReport(long[] before, long chunks) {
+        long[] now = parts();
+        double c = Math.max(1L, chunks);
+        int n = PART_NANOS.length;
+        StringBuilder b = new StringBuilder("light batches per chunk:");
+        for (int layer = 1; layer >= 0; layer--) {
+            b.append(String.format(Locale.ROOT, " %s %.2f batches, %.0f entries queued;", layer == 1 ? "sky" : "block",
+                (now[n + layer * 2] - before[n + layer * 2]) / c, (now[n + 1 + layer * 2] - before[n + 1 + layer * 2]) / c));
+            for (int p = 0; p < PARTS.length; p++) {
+                long d = now[layer * PARTS.length + p] - before[layer * PARTS.length + p];
+                if (d > 0) {
+                    b.append(String.format(Locale.ROOT, " %s %.3f ms,", PARTS[p], d / 1e6 / c));
+                }
+            }
+            b.setLength(b.length() - 1);
+            b.append(';');
+        }
+        b.append(String.format(Locale.ROOT, " light thread CPU in whole updates %.3f ms", (now[n + 4] - before[n + 4]) / 1e6 / c));
+        return b.toString();
     }
 
     /** Batches on the light thread alone: their queued entries and the entries processed. */
@@ -103,8 +168,15 @@ public final class ParallelLightStats {
     /** Clears the counters (benchmarks compare configurations). */
     public static void reset() {
         for (LongAdder a : new LongAdder[] { PARALLEL_BATCHES, SERIAL_BATCHES, NO_HELPER, KEEPING_UP, WORKERS, QUEUED, PROCESSED, SENT, NANOS, START_NANOS, WORK_NANOS, WAIT_NANOS, IMBALANCE, BATCH_NANOS, BATCHES,
-            RUNS, RUN_NANOS, RUN_TASKS, RUN_GAP_NANOS, SERIAL_QUEUED, SERIAL_PROCESSED }) {
+            RUNS, RUN_NANOS, RUN_TASKS, RUN_GAP_NANOS, SERIAL_QUEUED, SERIAL_PROCESSED, RUN_CPU_NANOS }) {
             a.reset();
+        }
+        for (LongAdder a : PART_NANOS) {
+            a.reset();
+        }
+        for (int layer = 0; layer < 2; layer++) {
+            LAYER_BATCHES[layer].reset();
+            LAYER_QUEUED[layer].reset();
         }
         RUN_MAX_NANOS.set(0L);
     }

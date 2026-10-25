@@ -241,6 +241,10 @@ public final class PregenBench {
         final long starts0;
         final long lightBatches0;
         final long[] lightRuns0;
+        final long[] lightParts0;
+        final long[] lightTasks0;
+        final long[] lightLayers0;
+        final long[] gpuLight0;
         final double[] locks0;
         final ThreadCpu threads = new ThreadCpu();
         int ticks;
@@ -265,6 +269,10 @@ public final class PregenBench {
             this.starts0 = ParallelSteps.STARTS_ASYNC.sum() + ParallelSteps.STARTS_INLINE.sum();
             this.lightBatches0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.batchNanos();
             this.lightRuns0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.runs();
+            this.lightParts0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.parts();
+            this.lightTasks0 = dev.denismasterherobrine.generatoraccelerator2.light.LightTasks.snapshot();
+            this.lightLayers0 = dev.denismasterherobrine.generatoraccelerator2.light.LightLayers.snapshot();
+            this.gpuLight0 = dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.snapshot();
             this.locks0 = AreaLocks.occupancy();
             dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.takeRunMax();
         }
@@ -349,6 +357,10 @@ public final class PregenBench {
                 runs[0] - lightRuns0[0], (runs[1] - lightRuns0[1]) / 1e6 / n, dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.takeRunMax() / 1e6,
                 (runs[2] - lightRuns0[2]) / (double) n, (runs[3] - lightRuns0[3]) / 1e6 / n));
             send(source, perThread.toString());
+            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.partsReport(lightParts0, total));
+            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.light.LightTasks.report(lightTasks0, total));
+            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.light.LightLayers.report(lightLayers0, total));
+            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.report(gpuLight0, total));
             double[] locks = AreaLocks.occupancy();
             send(source, String.format(Locale.ROOT, "bench: steps run: structure starts %d, surface %d, features %d; on average %.1f decorations running under their area locks, %.1f light initializations, %.1f requests parked",
                 starts, surface, features, (locks[0] - locks0[0]) / seconds, (locks[1] - locks0[1]) / seconds, (locks[2] - locks0[2]) / seconds));

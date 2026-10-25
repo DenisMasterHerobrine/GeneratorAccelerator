@@ -51,6 +51,8 @@ public class GpuLightBench {
             { "overworld", TerrainHarness.Preset.OVERWORLD, 1234567L, 0, 0 },
             { "amplified", TerrainHarness.Preset.AMPLIFIED, -42L, 40, -7 },
             { "plain overworld", TerrainHarness.Preset.OVERWORLD, 1234567L, 0, 0 },
+            // 15x15 full chunks of a vanilla world, with -Dga2.bench.regionFile=<.mca>
+            { "real chunks", TerrainHarness.Preset.OVERWORLD, 1234567L, 8, 8 },
         };
         String only = System.getProperty("ga2.bench.terrain");
         ParallelLight.anyEngine = true;
@@ -68,8 +70,17 @@ public class GpuLightBench {
                     continue;
                 }
                 TerrainHarness.World world = TerrainHarness.world((TerrainHarness.Preset) t[1], (Long) t[2]);
-                ProtoChunk[] base = ((String) t[0]).startsWith("plain") ? plain((TerrainHarness.Preset) t[1], (Long) t[2], (Integer) t[3], (Integer) t[4])
-                    : LightExactnessTest.terrain((TerrainHarness.Preset) t[1], (Long) t[2], (Integer) t[3], (Integer) t[4]);
+                ProtoChunk[] base;
+                if (t[0].equals("real chunks")) {
+                    String file = System.getProperty("ga2.bench.regionFile");
+                    base = file == null ? null : dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.load(Path.of(file), (Integer) t[3], (Integer) t[4], 15, world);
+                    if (base == null) {
+                        continue;
+                    }
+                } else {
+                    base = ((String) t[0]).startsWith("plain") ? plain((TerrainHarness.Preset) t[1], (Long) t[2], (Integer) t[3], (Integer) t[4])
+                        : LightExactnessTest.terrain((TerrainHarness.Preset) t[1], (Long) t[2], (Integer) t[3], (Integer) t[4]);
+                }
                 for (int batch : batches) {
                     double[][] ms = new double[Mode.values().length][rounds];
                     double[][] parts = new double[Mode.values().length][3];

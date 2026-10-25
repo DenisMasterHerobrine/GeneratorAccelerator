@@ -45,8 +45,13 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
     @Unique private long[] ga2pl$propagationBefore, ga2pl$propagationAfter;
     @Unique private long ga2pl$gcBefore;
 
+    /** The light thread's CPU time at the start of the update, or -1 where the JVM cannot tell. */
+    @Unique private long ga2pl$cpuStart;
+    @Unique private static final java.lang.management.ThreadMXBean ga2pl$THREADS = java.lang.management.ManagementFactory.getThreadMXBean();
+
     @Inject(method = "runUpdate", at = @At("HEAD"))
     private void ga2pl$startUpdate(CallbackInfo ci) {
+        this.ga2pl$cpuStart = ga2pl$THREADS.getCurrentThreadCpuTime();
         this.ga2pl$updateStart = System.nanoTime();
         this.ga2pl$updateTasks = Math.min(this.lightTasks.size(), 1000);
         if (TRACE) {
@@ -120,7 +125,8 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
         long start = this.ga2pl$updateStart;
         this.ga2pl$busyNanos += now - start;
         // Idle time before the update, capped at 50 ms. A longer gap means a dimension with nothing to light.
-        ParallelLightStats.run(now - start, this.ga2pl$updateTasks, this.ga2pl$updateEnd == 0L ? 0L : Math.min(start - this.ga2pl$updateEnd, 50_000_000L));
+        long cpu = this.ga2pl$cpuStart < 0 ? 0L : Math.max(0L, ga2pl$THREADS.getCurrentThreadCpuTime() - this.ga2pl$cpuStart);
+        ParallelLightStats.run(now - start, this.ga2pl$updateTasks, this.ga2pl$updateEnd == 0L ? 0L : Math.min(start - this.ga2pl$updateEnd, 50_000_000L), cpu);
         this.ga2pl$updateEnd = now;
         if (TRACE && now - start > 50_000_000L) {
             long[] b = this.ga2pl$propagationBefore, a = this.ga2pl$propagationAfter;

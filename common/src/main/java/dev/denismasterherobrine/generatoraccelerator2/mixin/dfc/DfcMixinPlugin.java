@@ -426,7 +426,24 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 MergedMethods.Mode.BYPASS))),
         Map.entry("DataLayerStorageMapMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("getLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "clearCache()V", "setLayer(JLnet/minecraft/world/level/chunk/DataLayer;)V",
-                "copyDataLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "removeLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;")))),
+                "copyDataLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "removeLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;")),
+            // a snapshot holds what the working map holds. Another mod's change to how sections enter or leave it counts.
+            new FeatureHook(HookTargets.LIGHT_PUBLISH, List.of("setLayer(JLnet/minecraft/world/level/chunk/DataLayer;)V",
+                "copyDataLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;", "removeLayer(J)Lnet/minecraft/world/level/chunk/DataLayer;"), MergedMethods.Mode.BYPASS))),
+        // while recording, the callbacks take over the calls to both layers and the propagation
+        Map.entry("LevelLightEngineMixin", List.of(
+            new FeatureHook(HookTargets.LIGHT_LAYERS, List.of("checkBlock", "updateSectionStatus", "setLightEnabled", "propagateLightSources",
+                "queueSectionData", "retainData", "runLightUpdates")))),
+        // the recording lasts from the update's start to its propagation. Another mod's change between the two counts.
+        Map.entry("ThreadedLightLayersMixin", List.of(
+            new FeatureHook(HookTargets.LIGHT_LAYERS, List.of("runUpdate")))),
+        // the queue takes over both methods. Other mods' code in the update itself (runUpdate) still runs.
+        Map.entry("ThreadedLightTasksMixin", List.of(
+            new FeatureHook(HookTargets.LIGHT_TASKS, List.of("addTask", "tryScheduleUpdate")))),
+        Map.entry("SkyLayerMapCopyMixin", List.of(
+            new FeatureHook(HookTargets.LIGHT_PUBLISH, List.of("copy"), List.of(), MergedMethods.Mode.WRAP, List.of()))),
+        Map.entry("BlockLayerMapCopyMixin", List.of(
+            new FeatureHook(HookTargets.LIGHT_PUBLISH, List.of("copy"), List.of(), MergedMethods.Mode.WRAP, List.of()))),
         Map.entry("LightEngineMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("getChunk(II)Lnet/minecraft/world/level/chunk/LightChunk;", "clearChunkCache()V", "propagateIncreases()I",
                 "getState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
@@ -437,7 +454,11 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("BlockLightEngineMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("propagateIncrease(JJI)V")))),
         Map.entry("LayerLightSectionStorageMixin", List.of(
-            new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("setStoredLevel(JI)V", "swapSectionMap()V")))),
+            new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("setStoredLevel(JI)V", "swapSectionMap()V")),
+            new FeatureHook(HookTargets.LIGHT_PUBLISH, List.of("swapSectionMap()V"), List.of(), MergedMethods.Mode.WRAP, List.of()),
+            // the working map's sections change only here, each one recorded in changedSections
+            new FeatureHook(HookTargets.LIGHT_PUBLISH, List.of("getDataLayerToWrite(J)Lnet/minecraft/world/level/chunk/DataLayer;", "setStoredLevel(JI)V",
+                "markNewInconsistencies(Lnet/minecraft/world/level/lighting/LightEngine;)V", "initializeSection(J)V"), MergedMethods.Mode.BYPASS))),
         // parallellight (own mixin config). The propagation of a split batch runs the bodies of these methods itself.
         Map.entry("LightEngineParallelMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_PARALLEL, List.of("runLightUpdates()I", "propagateIncreases()I", "propagateDecreases()I",
@@ -571,7 +592,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             return mixinClassName.endsWith("Neo" + "Mixin") == dev.denismasterherobrine.generatoraccelerator2.platform.Platform.isNeoForge();
         }
         if ((mixinClassName.endsWith(".ChunkMapMailboxMixin") || mixinClassName.endsWith(".MainThreadExecutorMixin")
-            || mixinClassName.endsWith(".ChunkMapUnloadMixin"))
+            || mixinClassName.endsWith(".ChunkMapUnloadMixin") || mixinClassName.endsWith(".ThreadedLightTasksMixin")
+            || mixinClassName.endsWith(".ChunkMapLightTasksMixin") || mixinClassName.endsWith(".ThreadedLightLayersMixin"))
             && (Compat.isLoaded("c2me") || Compat.isLoaded("moonrise"))) {
             // their chunk systems schedule these mailboxes, their light engines and their unloads themselves
             return false;

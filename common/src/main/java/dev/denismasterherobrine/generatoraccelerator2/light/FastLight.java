@@ -41,8 +41,10 @@ public final class FastLight {
     public static final byte KIND_PROTO = 1;
     public static final byte KIND_LEVEL = 2;
 
+    /** Also refreshes {@link LightSnapshot}. */
     public static void refresh() {
         on = ENABLED && LightConfig.fastEngine() && HookTargets.allowed(HookTargets.LIGHT_ENGINE);
+        LightSnapshot.refresh();
     }
 
     /** Slot of a section key in a {@link #LAYER_SLOTS} cache, from x and z mod 4 and y mod 2. A section and its six neighbours never share a slot. */

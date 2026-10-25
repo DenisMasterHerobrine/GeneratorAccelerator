@@ -588,6 +588,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (surfaceSpec != null && surfacePart < 0) {
             surfaces = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue,
                 programs[kernelPart.get("k_sbuild")], surfaceSpec, height, perm, od, oi, of, device::wake);
+            surfaces.spin = debugSpin();
         }
         long budget = (long) (device.info.globalMemory() * GpuConfig.vramShare());
         if (device.info.hostUnifiedMemory()) {
@@ -684,6 +685,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             surfaceReadyMs = b.readyMs[surfacePart];
             var s = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue, prog, surfaceSpec,
                 height, perm, od, oi, of, device::wake);
+            s.spin = debugSpin();
             CompletableFuture<Void> published = new CompletableFuture<>();
             device.submit(() -> {
                 if (state == State.FAILED || closed()) {
@@ -1099,6 +1101,90 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
     }
 
+    // ---- sharing: the GPU's queues stay full but short, and the CPU does the chunks past that at once ----
+
+    /** {@code -Dgeneratoraccelerator2.gpu.share=false}: every chunk the GPU can do waits for it, however far behind it is (for comparisons). */
+    public static final boolean SHARE = !"false".equals(System.getProperty("generatoraccelerator2.gpu.share"));
+    /**
+     * Regions whose work may run or wait at once, at most, per region queue ({@code -Dgeneratoraccelerator2.gpu.regionsPerQueue}).
+     * Each queue then has one region running and one ready to follow.
+     */
+    private static final int REGIONS_PER_QUEUE = Math.max(1, Integer.getInteger("generatoraccelerator2.gpu.regionsPerQueue", 2));
+    /**
+     * How long a region's work may take from its launch ({@code -Dgeneratoraccelerator2.gpu.regionWaitMs}, half the answer time). A
+     * region that took longer halves the regions that may run or wait at once (at least one), one that took under half of it adds one.
+     */
+    private static final long REGION_WAIT_NS = Long.getLong("generatoraccelerator2.gpu.regionWaitMs", ANSWER_MS / 2) * 1_000_000L;
+    /** Steps the CPU did because the GPU was behind: biomes of a new region, blocks, surfaces. */
+    public static final LongAdder SHARED_BIOMES = new LongAdder(), SHARED_BLOCKS = new LongAdder(), SHARED_SURFACES = new LongAdder();
+    /** Keys of {@link #regions}, for the requesting threads. */
+    private final java.util.Set<Long> live = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Regions launched whose work was not seen done, in launch order (GPU thread). */
+    private final ArrayDeque<Region> busy = new ArrayDeque<>();
+    /** Published by the GPU thread: {@link #busy}'s size, and the requests whose region is done that wait for a free batch slot. */
+    private volatile int busyCount, readyWaiting;
+    /**
+     * Published by the GPU thread: the regions that may run or wait at once, 1 to {@link #REGIONS_PER_QUEUE} per region queue, set
+     * by how long the regions' work took ({@link #REGION_WAIT_NS}). 0 before the first region: the most.
+     */
+    private volatile int regionLimit;
+
+    /**
+     * False while the GPU has as many regions running and waiting as it may ({@link #regionLimit}), and the region of {@code pos} is
+     * not among them. A region it holds costs nothing more.
+     */
+    public boolean takesRegion(ChunkPos pos) {
+        return !SHARE || live.contains(regionKey(pos)) || busyCount < regionLimit();
+    }
+
+    private int regionLimit() {
+        int limit = regionLimit;
+        return limit > 0 ? limit : REGIONS_PER_QUEUE * device.regionQueues.length;
+    }
+
+    /** False while a full batch of ready requests already waits for a slot, or the region of {@code pos} cannot start now. */
+    public boolean takesBlocks(ChunkPos pos) {
+        return !SHARE || readyWaiting < Math.max(1, GpuConfig.batchChunks()) && takesRegion(pos);
+    }
+
+    /** The surface batches' share of the tests' slower GPU ({@link GpuDevice#debugSpin}), or null. */
+    private java.util.function.IntConsumer debugSpin() {
+        return GpuDevice.DEBUG_SPIN_US > 0 ? n -> device.debugSpin(device.queue, n * 0.35) : null;
+    }
+
+    /** Drops the regions whose work is done from {@link #busy}, and sets {@link #regionLimit} by how long they took (GPU thread). */
+    private void trackRegions() {
+        for (Iterator<Region> it = busy.iterator(); it.hasNext(); ) {
+            Region r = it.next();
+            // done is 0 once after() saw it complete, or the region was let go
+            if (r.done == 0 || cl.eventStatus(r.done) <= ClApi.CL_COMPLETE) {
+                it.remove();
+                long now = System.nanoTime();
+                r.doneAt = now;
+                long took = now - r.launched;
+                int limit = regionLimit();
+                if (took > REGION_WAIT_NS) {
+                    regionLimit = Math.max(1, limit / 2);
+                } else if (took < REGION_WAIT_NS / 2) {
+                    regionLimit = Math.min(REGIONS_PER_QUEUE * device.regionQueues.length, limit + 1);
+                }
+            }
+        }
+        busyCount = busy.size();
+    }
+
+    /** Publishes how many requests whose region is done wait for a batch slot (GPU thread). */
+    private void trackBlocks() {
+        int ready = 0;
+        for (NoiseReq n : pending) {
+            Region r = regions.get(regionKey(n.pos));
+            if (r != null && r.doneAt != 0) {
+                ready++;
+            }
+        }
+        readyWaiting = ready;
+    }
+
     public boolean decidesBiomes() {
         return biomesOff == null;
     }
@@ -1223,6 +1309,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         final List<BiomeReq> waiting = new ArrayList<>();
         int users;
         long launched;
+        /** When the region's work was seen done (0 before). */
+        long doneAt;
         /** When a request last used the region ({@link #evict}). */
         long used;
         /** The region queue's event after the work that batches read (corners, hoists, aquifer cells). 0 once known complete. */
@@ -1259,6 +1347,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         RegionBuffers rb;
 
         void release() {
+            live.remove(key);
             if (readEvent != 0) {
                 cl.releaseEvent(readEvent);
                 readEvent = 0;
@@ -1558,6 +1647,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             inflight.poll();
             long h0 = System.nanoTime(); finishBatch(b); HOST_NS[1].add(System.nanoTime() - h0);
         }
+        trackRegions();
         // new batches
         long wait = Long.MAX_VALUE;
         int max = Math.max(1, GpuConfig.batchChunks());
@@ -1593,6 +1683,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (launched) {
             cl.flush(device.queue);
             cl.flush(device.sideQueue);
+        }
+        if (SHARE) {
+            trackBlocks();
         }
         if (surfaces != null) {
             wait = Math.min(wait, surfaces.pump(now));
@@ -1803,7 +1896,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private static final int PRESSURE_REGIONS = 4;
 
     private void prefetch(ChunkPos pos) {
-        if (PREFETCH <= 0 || dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high()) {
+        // a prefetch only fills a region queue that would otherwise idle
+        if (PREFETCH <= 0 || dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high()
+            || SHARE && busy.size() >= Math.min(device.regionQueues.length, regionLimit())) {
             return;
         }
         int lx = Math.floorMod(pos.x, side), lz = Math.floorMod(pos.z, side);
@@ -1853,6 +1948,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (r == null) {
             r = new Region(k, rx * side, rz * side);
             regions.put(k, r);
+            live.add(k);
             long h0 = System.nanoTime(); launchRegion(r); HOST_NS[3].add(System.nanoTime() - h0);
             REGIONS.increment();
         }
@@ -1897,6 +1993,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         r.levels = rb.levels;
         // regions take the region queues in turn. One region's kernels run in order. Different regions run side by side.
         long q = device.regionQueues[Math.floorMod(regionTurn++, device.regionQueues.length)];
+        device.debugSpin(q, nchunks * 0.4);
         int a = common(kFlat, r, qx0, qz0, nqx, nqz);
         long lastK = kFlat, last = cl.launch(q, kFlat, (long) nqx * nqz, 64);
         if (biomeKernels()) {
@@ -2072,6 +2169,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         r.done = last;
+        busy.add(r);
+        busyCount = busy.size();
+        if (SHARE) {
+            // the region's end frees its place for the next one (trackRegions)
+            cl.wakeOnComplete(last);
+        }
         cl.flush(q);
     }
 
@@ -2396,6 +2499,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         long q = device.queue;
+        device.debugSpin(q, n * 0.25);
         rel(cl.write(q, s.lst, false, 0, s.lstHost.flip()));
         rel(cl.write(q, s.bidx, false, 0, s.bidxHost.flip()));
         rel(cl.write(q, s.ek, false, 0, s.ekHost.flip()));
@@ -2876,6 +2980,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             r.release();
         }
         regions.clear();
+        busy.clear();
         completed.clear();
         doneRegions.clear();
         for (Slot s : slots) {
@@ -2945,7 +3050,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
                 + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
                 + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(java.util.Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")
-                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions);
+                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions)
+                + (SHARE ? ", " + regionLimit() + " at once" : "");
         };
     }
 

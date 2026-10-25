@@ -117,6 +117,11 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         if (batches == null || terrain == null || gc == null || !allowed() || structures == null || cpuNow()) {
             return false;
         }
+        if (GpuWorldgen.SHARE && batches.behind()) {
+            // the GPU's surface batches are behind: the SURFACE step builds this one on the CPU
+            GpuWorldgen.SHARED_SURFACES.increment();
+            return false;
+        }
         LevelAccessor level = ((StructureManagerLevelAccessor) structures).ga2$level();
         if (!(level instanceof WorldGenRegion region)) {
             return false;

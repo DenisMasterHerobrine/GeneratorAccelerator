@@ -3,9 +3,17 @@ package dev.denismasterherobrine.generatoraccelerator2.light;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.DataLayerStorageMapAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LayerLightSectionStorageAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LightEngineAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMaps;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -13,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -33,6 +42,7 @@ import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.lighting.LayerLightSectionStorage;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import org.junit.jupiter.api.Test;
@@ -75,17 +85,49 @@ public class LightExactnessTest {
         compare(TerrainHarness.world(preset, seed), terrain(preset, seed, x0, z0), sky, seed, preset + " at " + x0 + "," + z0);
     }
 
+    /**
+     * Light published as snapshots of the changed sections ({@link LightSnapshot}) equals light published by vanilla's
+     * clones. The published maps are checked after every batch, and the light read through them at the end.
+     */
+    @Test
+    void snapshots() {
+        TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
+        ProtoChunk[] base = terrain(TerrainHarness.Preset.OVERWORLD, 1234567L, 16, -40);
+        Run clones;
+        boolean enabled = LightSnapshot.ENABLED;
+        try {
+            LightSnapshot.ENABLED = false;
+            clones = run(world, base, true, 5L, true, 36L, 2, LightExactnessTest::checkPublished);
+        } finally {
+            LightSnapshot.ENABLED = enabled;
+        }
+        long deltas = LightSnapshot.DELTAS.sum();
+        Run snapshots = run(world, base, true, 5L, true, 36L, 2, LightExactnessTest::checkPublished);
+        assertTrue(!clones.snapshotsWereOn, "the clone run had snapshots off");
+        assertTrue(snapshots.snapshotsWereOn, "snapshots were on");
+        assertTrue(LightSnapshot.DELTAS.sum() - deltas > 20, "snapshots built from the changed sections: " + (LightSnapshot.DELTAS.sum() - deltas));
+        same(clones, snapshots, base.length, "overworld 16,-40, snapshots against clones");
+    }
+
     private static void compare(TerrainHarness.World world, ProtoChunk[] base, boolean sky, long seed, String where) {
         Run vanilla;
+        boolean snapshots = LightSnapshot.ENABLED;
         try {
             FastLight.ENABLED = false;
+            LightSnapshot.ENABLED = false;
             vanilla = run(world, base, sky, seed);
         } finally {
             FastLight.ENABLED = true;
+            LightSnapshot.ENABLED = snapshots;
         }
-        Run fast = run(world, base, sky, seed);
+        Run fast = run(world, base, sky, seed, true, seed * 7 + 1, 3, LightExactnessTest::checkPublished);
         assertTrue(fast.fastWasOn, "the fast engine was on");
         assertTrue(!vanilla.fastWasOn, "the vanilla run had it off");
+        assertTrue(!vanilla.snapshotsWereOn, "the vanilla run had snapshots off");
+        same(vanilla, fast, base.length, where);
+    }
+
+    private static void same(Run vanilla, Run fast, int chunks, String where) {
         assertEquals(vanilla.layers.keySet(), fast.layers.keySet(), where + ": sections with light data");
         int nonEmpty = 0;
         for (Map.Entry<String, byte[]> e : vanilla.layers.entrySet()) {
@@ -94,7 +136,7 @@ public class LightExactnessTest {
                 nonEmpty++;
             }
         }
-        assertTrue(nonEmpty > base.length * 10, where + ": sections compared " + nonEmpty);
+        assertTrue(nonEmpty > chunks * 10, where + ": sections compared " + nonEmpty);
         assertEquals(vanilla.types, fast.types, where + ": section types");
         assertArrayEquals(vanilla.brightness, fast.brightness, where + ": brightness sample");
         assertEquals(vanilla.updates.size(), fast.updates.size(), where + ": light change notifications");
@@ -149,6 +191,7 @@ public class LightExactnessTest {
         final List<String> updates = new ArrayList<>();
         int[] brightness;
         boolean fastWasOn;
+        boolean snapshotsWereOn;
         long lightNanos;
         long initNanos;
         long sourcesNanos;
@@ -167,6 +210,12 @@ public class LightExactnessTest {
 
     /** @param orderSeed shuffles the order chunks are lit in; @param batch chunks lit per batch of updates */
     static Run run(TerrainHarness.World world, ProtoChunk[] base, boolean sky, long seed, boolean changes, long orderSeed, int batch) {
+        return run(world, base, sky, seed, changes, orderSeed, batch, null);
+    }
+
+    /** @param afterBatch called after every batch of updates, or null */
+    static Run run(TerrainHarness.World world, ProtoChunk[] base, boolean sky, long seed, boolean changes, long orderSeed, int batch,
+                   @Nullable Consumer<LevelLightEngine> afterBatch) {
         Run out = new Run();
         int side = (int) Math.round(Math.sqrt(base.length));
         LevelHeightAccessor heights = world.heights;
@@ -223,6 +272,7 @@ public class LightExactnessTest {
         long t0 = System.nanoTime();
         LevelLightEngine engine = new LevelLightEngine(getter, true, sky);
         out.fastWasOn = FastLight.on;
+        out.snapshotsWereOn = LightSnapshot.on;
 
         // INITIALIZE_LIGHT: light sources of the column, section status (pre task), then light enabled = false, retain = false (post task)
         for (ProtoChunk c : chunks) {
@@ -236,7 +286,7 @@ public class LightExactnessTest {
                 }
             }
         }
-        engine.runLightUpdates();
+        update(engine, afterBatch);
         for (ProtoChunk c : chunks) {
             engine.setLightEnabled(c.getPos(), false);
             engine.retainData(c.getPos(), false);
@@ -252,7 +302,7 @@ public class LightExactnessTest {
             long tu = System.nanoTime();
             out.sourcesNanos += tu - ts;
             if (i % batch == batch - 1 || i == order.size() - 1) {
-                engine.runLightUpdates();
+                update(engine, afterBatch);
                 out.updatesNanos += System.nanoTime() - tu;
             }
         }
@@ -274,7 +324,7 @@ public class LightExactnessTest {
             pos.set(minX + random.nextInt(16 * side), heights.getMinBuildHeight() + random.nextInt(heights.getHeight()), minZ + random.nextInt(16 * side));
             byPos.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4)).setBlockState(pos, palette[random.nextInt(palette.length)], false);
             if (k % 40 == 39) {
-                engine.runLightUpdates();
+                update(engine, afterBatch);
             }
         }
         ProtoChunk middle = chunks[side / 2 + side / 2 * side];
@@ -286,16 +336,16 @@ public class LightExactnessTest {
                 }
             }
         }
-        engine.runLightUpdates();
+        update(engine, afterBatch);
         int filled = middle.getMaxBuildHeight() - 24;
         for (int z = 0; z < 16; z++) {
             for (int x = 0; x < 16; x++) {
                 middle.setBlockState(pos.set(middle.getPos().getMinBlockX() + x, filled, middle.getPos().getMinBlockZ() + z), Blocks.STONE.defaultBlockState(), false);
             }
         }
-        engine.runLightUpdates();
+        update(engine, afterBatch);
         while (engine.hasLightWork()) {
-            engine.runLightUpdates();
+            update(engine, afterBatch);
         }
 
         out.updateNanos = System.nanoTime() - t1;
@@ -320,5 +370,53 @@ public class LightExactnessTest {
             out.brightness[i] = engine.getRawBrightness(pos, 0) * 100 + engine.getLayerListener(LightLayer.BLOCK).getLightValue(pos);
         }
         return out;
+    }
+
+    private static void update(LevelLightEngine engine, @Nullable Consumer<LevelLightEngine> afterBatch) {
+        engine.runLightUpdates();
+        if (afterBatch != null) {
+            afterBatch.accept(engine);
+        }
+    }
+
+    private static final Field VISIBLE;
+
+    static {
+        try {
+            VISIBLE = LayerLightSectionStorage.class.getDeclaredField("visibleSectionData");
+            VISIBLE.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    /**
+     * After a batch, the published section map of each light layer holds the working map's sections, the same objects. A
+     * clone of the working map at the end of the batch, vanilla's publish, holds exactly that. With snapshots on, every
+     * publish of a non-empty map is a snapshot. Checks lookups only, so the snapshots are not filled.
+     */
+    static void checkPublished(LevelLightEngine engine) {
+        for (LightLayer layer : LightLayer.values()) {
+            if (!(engine.getLayerListener(layer) instanceof LightEngineAccessor listener)) {
+                continue;
+            }
+            LayerLightSectionStorage<?> storage = listener.ga2pl$storage();
+            Long2ObjectOpenHashMap<DataLayer> working = ((DataLayerStorageMapAccessor) ((LayerLightSectionStorageAccessor) storage).ga2pl$updatingSectionData()).ga2pl$map();
+            Long2ObjectOpenHashMap<DataLayer> published;
+            try {
+                published = ((DataLayerStorageMapAccessor) VISIBLE.get(storage)).ga2pl$map();
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+            if (LightSnapshot.on && !working.isEmpty()) {
+                assertTrue(published instanceof LightSnapshot, layer + ": published map is a snapshot");
+            }
+            assertEquals(working.size(), published.size(), layer + ": published sections");
+            for (Long2ObjectMap.Entry<DataLayer> e : Long2ObjectMaps.fastIterable(working)) {
+                if (published.get(e.getLongKey()) != e.getValue()) {
+                    fail(layer + ": published section " + SectionPos.of(e.getLongKey()) + " is " + published.get(e.getLongKey()) + ", working " + e.getValue());
+                }
+            }
+        }
     }
 }

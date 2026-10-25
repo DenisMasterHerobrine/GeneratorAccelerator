@@ -87,6 +87,8 @@ public final class ParallelLight {
         if (!ParallelLightConfig.enabled() || !compatGate.getAsBoolean()) {
             return -1;
         }
+        int layer = sky ? 1 : 0;
+        long t0 = System.nanoTime();
         LongOpenHashSet nodes = e.ga2pl$blockNodesToCheck();
         LongIterator it = nodes.iterator();
         while (it.hasNext()) {
@@ -98,18 +100,23 @@ public final class ParallelLight {
         int processed = -1;
         IncreaseOffload off = offload;
         int increasesQueued = e.ga2pl$increaseQueue().size() / 2;
+        long t1 = System.nanoTime();
+        ParallelLightStats.part(layer, ParallelLightStats.CHECKS, t1 - t0);
+        ParallelLightStats.queued(layer, queued);
         if (off != null && increasesQueued > 0 && off.wants(engine, sky, increasesQueued, e.ga2pl$decreaseQueue().size() / 2)) {
             // decreases first, as vanilla runs them, then the offload's increases
             processed = e.ga2pl$propagateDecreases();
+            long t2 = System.nanoTime();
+            ParallelLightStats.part(layer, ParallelLightStats.DECREASES, t2 - t1);
             int increases = off.propagateIncreases(engine, sky);
+            long t3 = System.nanoTime();
+            ParallelLightStats.part(layer, ParallelLightStats.OFFLOAD, t3 - t2);
             if (increases < 0) {
                 increases = timedIncreases(e, off, sky);
+                ParallelLightStats.part(layer, ParallelLightStats.INCREASES, System.nanoTime() - t3);
             }
             processed += increases;
-            e.ga2pl$clearChunkCache();
-            LayerLightSectionStorageAccessor storage = (LayerLightSectionStorageAccessor) e.ga2pl$storage();
-            storage.ga2pl$markNewInconsistencies(engine);
-            storage.ga2pl$swapSectionMap();
+            endBatch(engine, e, layer);
             return processed;
         }
         int min = minEntriesOverride >= 0 ? minEntriesOverride : ParallelLightConfig.minEntries();
@@ -126,6 +133,8 @@ public final class ParallelLight {
                 processed = PropagationJob.run(e, sky, helpers);
                 if (processed < 0) {
                     ParallelLightStats.NO_HELPER.increment();
+                } else {
+                    ParallelLightStats.part(layer, ParallelLightStats.SPLIT, System.nanoTime() - t1);
                 }
             }
         }
@@ -134,15 +143,26 @@ public final class ParallelLight {
                 ParallelLightStats.SERIAL_BATCHES.increment();
                 ParallelLightStats.SERIAL_QUEUED.add(queued);
             }
+            long t2 = System.nanoTime();
             processed = e.ga2pl$propagateDecreases();
+            long t3 = System.nanoTime();
+            ParallelLightStats.part(layer, ParallelLightStats.DECREASES, t3 - t2);
             processed += off != null ? timedIncreases(e, off, sky) : e.ga2pl$propagateIncreases();
+            ParallelLightStats.part(layer, ParallelLightStats.INCREASES, System.nanoTime() - t3);
             ParallelLightStats.SERIAL_PROCESSED.add(processed);
         }
+        endBatch(engine, e, layer);
+        return processed;
+    }
+
+    /** Vanilla's end of a batch: the chunk cache emptied, the sections' changes settled, the light published. Timed. */
+    private static void endBatch(LightEngine<?, ?> engine, LightEngineAccessor e, int layer) {
+        long t0 = System.nanoTime();
         e.ga2pl$clearChunkCache();
         LayerLightSectionStorageAccessor storage = (LayerLightSectionStorageAccessor) e.ga2pl$storage();
         storage.ga2pl$markNewInconsistencies(engine);
         storage.ga2pl$swapSectionMap();
-        return processed;
+        ParallelLightStats.part(layer, ParallelLightStats.END, System.nanoTime() - t0);
     }
 
     /** The engine's own increase propagation, timed for the offload's choice between it and the offload. */

@@ -25,9 +25,11 @@ public final class ParallelLightConfig {
             "of the processor threads, at most 4, and none on a machine with four processor threads or fewer.").defineInRange("threads", 0, 0, 64);
         MIN_ENTRIES = b.comment("Smallest batch, in queued light changes, worth splitting; smaller batches run on the light thread alone.")
             .defineInRange("minEntries", 512, 1, Integer.MAX_VALUE);
+        // Named minBusy up to 2.0.20.222, with 0.75. Light updates now start as soon as there is work, so a light thread that
+        // keeps up is busy about 80% of the time. The new name keeps an old file's 0.75 from applying.
         MIN_BUSY = b.comment("Split batches only while the dimension's light thread is busy at least this share of the time (measured over",
             "half a second). Below it the light thread keeps up on its own, and helpers would only take processor time from world",
-            "generation. 0 = always split large batches.").defineInRange("minBusy", 0.75, 0.0, 1.0);
+            "generation. 0 = always split large batches.").defineInRange("splitWhenBusy", 0.9, 0.0, 1.0);
         b.pop();
         SPEC = b.build();
     }
@@ -58,9 +60,9 @@ public final class ParallelLightConfig {
 
     public static double minBusy() {
         try {
-            return SPEC.isLoaded() ? MIN_BUSY.get() : 0.75;
+            return SPEC.isLoaded() ? MIN_BUSY.get() : 0.9;
         } catch (RuntimeException e) {
-            return 0.75;
+            return 0.9;
         }
     }
 

@@ -69,12 +69,15 @@ public class GpuLightExactnessTest {
     private static void compare(String where, TerrainHarness.World world, ProtoChunk[] base, boolean sky, long seed) throws Exception {
         LightExactnessTest.Run vanilla;
         boolean fast = FastLight.ENABLED;
+        boolean snapshots = LightSnapshot.ENABLED;
         try {
             FastLight.ENABLED = false;
+            LightSnapshot.ENABLED = false;
             ParallelLight.ENABLED = false;
             vanilla = LightExactnessTest.run(world, base, sky, seed);
         } finally {
             FastLight.ENABLED = fast;
+            LightSnapshot.ENABLED = snapshots;
             ParallelLight.ENABLED = true;
         }
         TreeSet<String> vanillaUpdates = new TreeSet<>(vanilla.updates);
@@ -93,7 +96,7 @@ public class GpuLightExactnessTest {
             assertTrue(GpuLight.statusLines().get(0).startsWith("GPU light: on"), "GPU light program: " + GpuLight.statusLines().get(0));
             long before = GpuLight.BATCHES.sum();
             long fallbacksBefore = GpuLight.FILL.sum() + GpuLight.RACE.sum() + GpuLight.OUTSIDE.sum() + GpuLight.UNSTORED.sum() + GpuLight.LARGE.sum();
-            LightExactnessTest.Run run = LightExactnessTest.run(world, base, sky, seed);
+            LightExactnessTest.Run run = LightExactnessTest.run(world, base, sky, seed, true, seed * 7 + 1, 3, LightExactnessTest::checkPublished);
             long batches = GpuLight.BATCHES.sum() - before;
             long fallbacks = GpuLight.FILL.sum() + GpuLight.RACE.sum() + GpuLight.OUTSIDE.sum() + GpuLight.UNSTORED.sum() + GpuLight.LARGE.sum() - fallbacksBefore;
             assertTrue(batches > 0, where + ": no batch propagated on the GPU (" + fallbacks + " handed back)");

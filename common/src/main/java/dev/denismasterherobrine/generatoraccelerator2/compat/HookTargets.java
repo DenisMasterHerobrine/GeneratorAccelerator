@@ -237,6 +237,22 @@ public final class HookTargets {
     public static final String LIGHT_SOURCES = "light.sources";
     /** The propagation methods the parallel light propagation runs itself ({@code parallellight}). When changed, every batch runs vanilla's. */
     public static final String LIGHT_PARALLEL = "light.parallel";
+    /**
+     * {@code LayerLightSectionStorage.swapSectionMap}, the light maps' {@code copy} and the methods that change the working
+     * section map: light published from the changed sections ({@code light.LightSnapshot}). When changed, every publish is
+     * vanilla's clone of the whole map.
+     */
+    public static final String LIGHT_PUBLISH = "light.publish";
+    /**
+     * {@code ThreadedLevelLightEngine.addTask} and {@code tryScheduleUpdate}: light tasks handed straight to the light thread
+     * ({@code light.LightTasks}). When changed, tasks go through vanilla's chunk priority sorter.
+     */
+    public static final String LIGHT_TASKS = "light.tasks";
+    /**
+     * {@code LevelLightEngine}'s calls to both layers, its {@code runLightUpdates}, and {@code ThreadedLevelLightEngine.runUpdate}:
+     * block light and sky light of an update at once ({@code light.LightLayers}). When changed, the layers update one after the other.
+     */
+    public static final String LIGHT_LAYERS = "light.layers";
     /** {@code MinecraftServer.prepareLevels}: the spawn area the server waits for before players can join ({@code join.JoinWait}). */
     public static final String JOIN_SPAWN_WAIT = "join.spawnWait";
 

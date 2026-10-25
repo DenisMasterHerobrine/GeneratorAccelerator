@@ -194,4 +194,52 @@ public final class GpuDevice {
     public String describe() {
         return info.describe() + ", " + binding;
     }
+
+    // ---- tests: a slower GPU ----
+
+    /**
+     * {@code -Dgeneratoraccelerator2.gpu.debugSpinUs=N} (tests): about N µs more device time per chunk, as a slower GPU would take.
+     * Regions, batches and surface batches each put a kernel that fills the device for their share before their work.
+     */
+    public static final double DEBUG_SPIN_US = Double.parseDouble(System.getProperty("generatoraccelerator2.gpu.debugSpinUs", "0"));
+    private static final String SPIN_SOURCE = "__kernel void k_spin(__global uint* sink, uint n) {"
+        + " uint x = get_global_id(0) * 2654435761u + 1u;"
+        + " for (uint i = 0; i < n; i++) { x = x * 1664525u + 1013904223u; }"
+        + " if (x == 0x9e3779b9u) { sink[0] = x; } }";
+    private long spinProgram, spinKernel, spinSink, spinGlobal;
+    private double spinItersPerUs;
+
+    /** Puts {@code chunks} chunks' share of {@link #DEBUG_SPIN_US} on {@code queue} (GPU thread). */
+    public void debugSpin(long queue, double chunks) {
+        if (DEBUG_SPIN_US <= 0 || chunks <= 0) {
+            return;
+        }
+        if (spinKernel == 0) {
+            spinProgram = cl.buildProgram(context, info.device(), SPIN_SOURCE, "", new StringBuilder());
+            spinKernel = cl.createKernel(spinProgram, "k_spin");
+            spinSink = cl.createBuffer(context, ClApi.MEM_READ_WRITE, 16);
+            // more work-items than the device holds at once, so the kernel leaves no room beside it
+            spinGlobal = (long) info.computeUnits() * 2048;
+            cl.argMem(spinKernel, 0, spinSink);
+            int n = 1 << 18;
+            spin(hostQueue, n);
+            cl.finish(hostQueue);
+            long t0 = System.nanoTime();
+            spin(hostQueue, n);
+            cl.finish(hostQueue);
+            spinItersPerUs = n / Math.max(1.0, (System.nanoTime() - t0) / 1000.0);
+            closers.add(() -> {
+                cl.releaseKernel(spinKernel);
+                cl.releaseProgram(spinProgram);
+                cl.releaseMem(spinSink);
+            });
+            LOGGER.info("debug spin: {} iterations per µs -> {} µs more device time per chunk", String.format(java.util.Locale.ROOT, "%.1f", spinItersPerUs), DEBUG_SPIN_US);
+        }
+        spin(queue, (int) Math.min(Integer.MAX_VALUE, Math.round(chunks * DEBUG_SPIN_US * spinItersPerUs)));
+    }
+
+    private void spin(long queue, int n) {
+        cl.argInt(spinKernel, 1, n);
+        cl.releaseEvent(cl.launch(queue, spinKernel, spinGlobal, 64));
+    }
 }
