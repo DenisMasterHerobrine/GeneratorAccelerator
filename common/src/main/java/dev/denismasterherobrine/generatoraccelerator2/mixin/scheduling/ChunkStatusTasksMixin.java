@@ -109,14 +109,10 @@ public abstract class ChunkStatusTasksMixin {
                                             StructureManager structures, ChunkAccess chunk, GenerationStep.Carving carving, Operation<Void> original,
                                             @Local(argsOnly = true) ChunkStep step, @Local(argsOnly = true) StaticCache2D<GenerationChunkHolder> cache,
                                             @Share("ga2$async") LocalRef<CompletableFuture<ChunkAccess>> async) {
-        // the GPU's copy of the chunk ({@code gpu.decoration}) gets what the carvers wrote
-        Runnable call = () -> {
-            original.call(generator, region, seed, randomState, biomeManager, structures, chunk, carving);
-            dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.flushChunk(chunk);
-        };
-        CompletableFuture<ChunkAccess> future = ParallelSteps.carvers(step, cache, chunk, generator, call);
+        CompletableFuture<ChunkAccess> future = ParallelSteps.carvers(step, cache, chunk, generator,
+            () -> original.call(generator, region, seed, randomState, biomeManager, structures, chunk, carving));
         if (future == null) {
-            call.run();
+            original.call(generator, region, seed, randomState, biomeManager, structures, chunk, carving);
         } else {
             async.set(future);
         }
@@ -153,27 +149,21 @@ public abstract class ChunkStatusTasksMixin {
         HeightmapPriming.prime(chunk, types, (c, t) -> original.call(c, t));
     }
 
-    /** The GPU's copy of the chunks around ({@code gpu.decoration}) gets what the decoration wrote into them. */
+    /** While the decoration census runs ({@link dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus}), each decoration is timed. */
     @WrapOperation(method = "generateFeatures", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/chunk/ChunkGenerator;applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"),
         require = 0)
-    private static void ga2$gpuDecoration(ChunkGenerator generator, net.minecraft.world.level.WorldGenLevel region, ChunkAccess chunk, StructureManager structures,
-                                          Operation<Void> original) {
-        if (!dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ENABLED) {
+    private static void ga2$census(ChunkGenerator generator, net.minecraft.world.level.WorldGenLevel region, ChunkAccess chunk, StructureManager structures,
+                                   Operation<Void> original) {
+        if (!dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.on) {
             original.call(generator, region, chunk, structures);
             return;
         }
-        var job = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.beforeFeatures(chunk, region, generator);
-        var prev = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.CURRENT.get();
-        dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.CURRENT.set(job);
+        dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.chunkStart(region);
         try {
             original.call(generator, region, chunk, structures);
         } finally {
-            dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.CURRENT.set(prev);
-            if (job != null) {
-                job.unbind();
-            }
-            dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.afterFeatures(region, chunk);
+            dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.chunkEnd();
         }
     }
 

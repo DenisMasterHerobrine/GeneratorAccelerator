@@ -574,20 +574,6 @@ public final class SurfaceSpec {
     }
 
     /**
-     * The parts of the surface source that GPU decoration's own program needs, emitted after {@code ClEmitter.decorPrelude}. These
-     * are the window and zoom defines, the climate table's offset, the zoom hash and the temperature noises.
-     */
-    public String decorHelpers() {
-        StringBuilder b = new StringBuilder();
-        b.append("// ---- surface helpers for decoration (gpu.surface.SurfaceSpec) ----\n");
-        b.append("#define SF_MINY ").append(minY).append("\n#define SF_H ").append(height).append("\n#define SF_QY ").append(quartsY).append("\n");
-        b.append("#define SF_TINFO ").append(tInfo).append("\n#define SF_TSEED ").append(tSeed).append('\n').append(SEED64);
-        b.append("__constant int SX_GRAD[48] = {1,1,0, -1,1,0, 1,-1,0, -1,-1,0, 1,0,1, -1,0,1, 1,0,-1, -1,0,-1, 0,1,1, 0,-1,1, 0,1,-1, 0,-1,-1, 1,1,0, 0,-1,1, -1,1,0, 0,-1,-1};\n");
-        b.append(LCG).append(climate());
-        return b.toString();
-    }
-
-    /**
      * The surface source, appended to the dimension's program after the noise tables, {@code Ctx} and the Xoroshiro helpers. It holds
      * the rules, the helpers they read, and the kernels {@code k_sunpack}, {@code k_sbuild}, {@code k_spack} and {@code k_sheights}.
      */

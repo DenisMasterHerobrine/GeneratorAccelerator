@@ -1133,61 +1133,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** The SURFACE step on the GPU ({@code gpu.surface}), or null with the reason in {@link #surfaceOff}. */
     public dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec surfaceSpec;
     public volatile dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches surfaces;
-    /** The GPU's copy of chunks for decoration ({@code gpu.decor}, an option), or null. Set on the GPU thread once the decoration program is built. */
-    public volatile dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor decor;
-    /** GPU decoration's own program (0 until built), and why it is not on. */
-    private long decorProgram;
-    private volatile String decorOff = "not asked for";
-    private double decorBuildMs;
-
-    /**
-     * Sets up GPU decoration (an option). Decoration has its own program, built after this dimension's program. That build is long,
-     * and the noise and surface do not wait for it. The decoration objects come next and are handed to the GPU thread. Chunks whose
-     * surfaces were made before then decorate on the CPU.
-     */
-    public void prepareDecoration() {
-        if (!dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ENABLED) {
-            return;
-        }
-        if (surfaces == null || surfaceSpec == null) {
-            decorOff = "the surface is on the CPU";
-            return;
-        }
-        decorOff = "building its program";
-        try {
-            int wins = surfaceSpec.windowInts;
-            int voidAir = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.StateIds.voidAir(surfaceSpec.states);
-            String src = ClEmitter.decorPrelude() + surfaceSpec.decorHelpers() + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.Resident.source(height, wins)
-                + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.kernelSource(height, minY, wins, 256L * height, voidAir);
-            String dump = System.getProperty("generatoraccelerator2.gpu.dumpSource");
-            if (dump != null) {
-                java.nio.file.Files.createDirectories(java.nio.file.Path.of(dump));
-                java.nio.file.Files.writeString(java.nio.file.Path.of(dump).resolve("decor-" + Integer.toHexString(src.hashCode()) + ".cl"), src);
-            }
-            long t0 = System.nanoTime();
-            long prog = ProgramCache.build(device, src, "-cl-std=CL1.2 -cl-fp32-correctly-rounded-divide-sqrt" + buildDefines, new StringBuilder());
-            decorBuildMs = (System.nanoTime() - t0) / 1e6;
-            var d = new dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor(surfaceSpec.states, minY, height, device::wake);
-            d.resident = new dev.denismasterherobrine.generatoraccelerator2.gpu.decor.Resident(cl, device.context, device.queue, device.residentQueue, device.hostQueue, prog, height,
-                wins, (long) (device.info.globalMemory() * GpuConfig.vramShare() / 2));
-            d.resident.onEvict = d::evicted;
-            d.prepare(cl, device.context, device.queue, device.decorQueues, device.hostQueue, prog, surfaceGenerator, biomeList, surfaces.table());
-            device.submit(() -> {
-                if (state == State.FAILED || surfaces == null) {
-                    d.close();
-                    cl.releaseProgram(prog);
-                    return;
-                }
-                decorProgram = prog;
-                decor = d;
-                surfaces.resident = d.resident;
-                decorOff = null;
-            });
-        } catch (Throwable e) {
-            decorOff = "its program failed: " + e;
-            GpuDevice.LOGGER.warn("decoration off for {}", name, e);
-        }
-    }
     public volatile String surfaceOff = "not set up";
     private net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator surfaceGenerator;
     private long worldSeed;
@@ -1550,9 +1495,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
     }
 
-    /** GPU thread time in the surface batches' pump. */
-    public static final java.util.concurrent.atomic.LongAdder SURFACE_PUMP_NS = new java.util.concurrent.atomic.LongAdder();
-
     @Override
     public long pump(long now) {
         if (state == State.FAILED) {
@@ -1653,12 +1595,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             cl.flush(device.sideQueue);
         }
         if (surfaces != null) {
-            long t0 = System.nanoTime();
             wait = Math.min(wait, surfaces.pump(now));
-            SURFACE_PUMP_NS.add(System.nanoTime() - t0);
-        }
-        if (decor != null) {
-            decor.pump(cl, device.queue);
         }
         if (PROFILE) {
             collectProfile();
@@ -2929,14 +2866,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             surfaces.close();
             surfaces = null;
         }
-        if (decor != null) {
-            decor.close();
-            decor = null;
-        }
-        if (decorProgram != 0) {
-            cl.releaseProgram(decorProgram);
-            decorProgram = 0;
-        }
         try {
             cl.finish(device.queue);
             cl.finish(device.sideQueue);
@@ -3016,9 +2945,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
                 + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
                 + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(java.util.Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")
-                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions)
-                + (!dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ENABLED ? ""
-                    : decorOff == null ? String.format(java.util.Locale.ROOT, "; decoration on (its program built in %.1f s)", decorBuildMs / 1e3) : "; decoration off (" + decorOff + ")");
+                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions);
         };
     }
 

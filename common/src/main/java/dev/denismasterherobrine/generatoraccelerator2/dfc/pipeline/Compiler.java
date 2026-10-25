@@ -193,10 +193,22 @@ public final class Compiler {
             }
         }
 
+        // Sky corners: only the chunk's own final density is classified, and only a position-pure column can be computed in parts
+        dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds sky = null;
+        if (column != null && column.statefulMarkers.isEmpty() && !column.readsBeardifier && cells.size() == 1 && cells.get(0).marker == null
+            && cells.get(0).bounds != null && cells.get(0).statefulMarkers.isEmpty()) {
+            var result = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.of(column.rootMarkers, cells.get(0).bounds,
+                builder.specs(), builder.blendedSpecs());
+            sky = result.bounds();
+            if (sky == null) {
+                LOGGER.info("sky corners: {} -> every corner computed", result.reason());
+            }
+        }
+
         BorderColumnCache borderCache = column != null && DfcConfig.borderColumnCache() ? new BorderColumnCache(8192) : null;
         long nanos = System.nanoTime() - t0;
         ProgramSet set = new ProgramSet(routerRoots, samplerRoots, builder.specs(), builder.blendedSpecs(), interpreter, column, List.copyOf(cells),
-            chunkSampler, globalSampler, surfaceLevels, borderCache, report, builder.internedNodeCount(), nanos, List.copyOf(externs));
+            chunkSampler, globalSampler, surfaceLevels, borderCache, report, builder.internedNodeCount(), nanos, List.copyOf(externs), sky);
 
         report.mergeInto(CoverageReport.global());
         LOGGER.info("lowered {} router + {} sampler roots -> {} nodes, {} noise specs, {} blended; column: {} roots, {} externs; {} cell programs ({} ms)",

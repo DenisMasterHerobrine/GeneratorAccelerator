@@ -18,4 +18,7 @@ public interface NoiseInterpolatorAccessor {
     @Accessor("noise101") double ga2$noise101();
     @Accessor("noise011") double ga2$noise011();
     @Accessor("noise111") double ga2$noise111();
+
+    /** Loads the cell's eight corners from the slices, as {@code NoiseChunk.selectCellYZ} does. */
+    @org.spongepowered.asm.mixin.gen.Invoker("selectCellYZ") void ga2$selectCellYZ(int cellY, int cellZ);
 }

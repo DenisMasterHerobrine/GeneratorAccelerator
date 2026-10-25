@@ -47,13 +47,6 @@ public final class GpuDevice {
      * was mostly idle.
      */
     public final long[] regionQueues;
-    /** Queues for GPU decoration's placement kernels ({@code gpu.decoration}), with one batch in flight on each. */
-    public final long[] decorQueues;
-    /**
-     * The GPU's copies of chunks for decoration ({@code gpu.decor.Resident}). Runs the logged writes' scatters and the decoration
-     * batches' gathers, in order. A decoration batch then does not wait behind noise and surface work on the main queue.
-     */
-    public final long residentQueue;
     public final String binding;
     private final Thread thread;
     private final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
@@ -67,27 +60,19 @@ public final class GpuDevice {
         this.info = info;
         this.binding = binding;
         this.context = cl.createContext(info.platform(), info.device());
-        this.queue = cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), false);
+        this.queue = cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"));
         // -Dgeneratoraccelerator2.gpu.sideQueue=false uses one queue for everything (for comparisons).
         this.sideQueue = Boolean.parseBoolean(System.getProperty("generatoraccelerator2.gpu.sideQueue", "true"))
-            ? cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), false) : queue;
-        this.hostQueue = cl.createQueue(context, info.device(), false, false);
+            ? cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile")) : queue;
+        this.hostQueue = cl.createQueue(context, info.device(), false);
         this.regionQueue = Boolean.parseBoolean(System.getProperty("generatoraccelerator2.gpu.regionQueue", "true"))
-            ? cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), false) : queue;
+            ? cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile")) : queue;
         int nRegion = regionQueue == queue ? 1 : Math.max(1, Integer.getInteger("generatoraccelerator2.gpu.regionQueues", 3));
         this.regionQueues = new long[nRegion];
         this.regionQueues[0] = regionQueue;
         for (int i = 1; i < nRegion; i++) {
-            regionQueues[i] = cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), false);
+            regionQueues[i] = cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"));
         }
-        // The decoration kernels run long. On their own queues, the noise and surface batches do not wait behind them.
-        this.decorQueues = new long[Integer.getInteger("generatoraccelerator2.gpu.decorQueues", 8)];
-        for (int i = 0; i < decorQueues.length; i++) {
-            // Low priority where the device supports it. The noise and surface batches go first.
-            decorQueues[i] = cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), true);
-        }
-        this.residentQueue = Boolean.parseBoolean(System.getProperty("generatoraccelerator2.gpu.residentQueue", "true"))
-            ? cl.createQueue(context, info.device(), Boolean.getBoolean("generatoraccelerator2.gpu.profile"), false) : queue;
         this.thread = new Thread(this::loop, "GA2 GPU");
         this.thread.setDaemon(true);
         cl.setWaker(this::wake);
@@ -140,11 +125,7 @@ public final class GpuDevice {
             all.add(queue);
             all.add(sideQueue);
             all.add(hostQueue);
-            all.add(residentQueue);
             for (long q : regionQueues) {
-                all.add(q);
-            }
-            for (long q : decorQueues) {
                 all.add(q);
             }
             for (long q : all) {

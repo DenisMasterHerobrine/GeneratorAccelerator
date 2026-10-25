@@ -20,8 +20,13 @@ public abstract class StructureStartMixin {
     @WrapMethod(method = "placeInChunk")
     private void ga2$onePlacementAtATime(WorldGenLevel level, StructureManager structures, ChunkGenerator generator, RandomSource random, BoundingBox box,
                                          ChunkPos chunk, Operation<Void> original) {
-        synchronized (this) {
-            original.call(level, structures, generator, random, box, chunk);
+        long t0 = dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.structureStart();
+        try {
+            synchronized (this) {
+                original.call(level, structures, generator, random, box, chunk);
+            }
+        } finally {
+            dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.structureEnd(t0);
         }
     }
 }

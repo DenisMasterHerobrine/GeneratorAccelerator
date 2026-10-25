@@ -66,6 +66,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     @Unique private boolean ga2$readsAllowed;
     @Unique private Holder<Biome>[] ga2$zoomBiomes;
     @Unique private boolean ga2$zoomBiomesDone;
+    @Unique private net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext;
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$init(CallbackInfo ci) {
@@ -115,6 +116,16 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
             reads = this.ga2$reads = new RegionReads(this, this.ga2$centerX, this.ga2$centerZ, this.ga2$chunks.radius());
         }
         return reads;
+    }
+
+    @Override
+    public net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext(net.minecraft.world.level.chunk.ChunkGenerator generator) {
+        net.minecraft.world.level.levelgen.placement.PlacementContext c = this.ga2$placementContext;
+        if (c == null || c.generator() != generator) {
+            c = this.ga2$placementContext = new net.minecraft.world.level.levelgen.placement.PlacementContext((WorldGenRegion) (Object) this, generator,
+                java.util.Optional.empty());
+        }
+        return c;
     }
 
     @Override

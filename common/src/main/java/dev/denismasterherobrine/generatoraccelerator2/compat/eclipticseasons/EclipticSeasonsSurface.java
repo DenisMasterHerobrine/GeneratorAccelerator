@@ -57,6 +57,12 @@ public final class EclipticSeasonsSurface {
                     Shared s = shared(f);
                     init.invoke(f.system, f.randomState, f.biomeManager, f.biomes, f.legacy, f.context, f.chunk, f.noiseChunk, f.rule, f.ci, s.map, s.count, s.signal);
                 }
+
+                /** It only makes the map and resets the count and the signal. Where it sits before GA2's callback, vanilla ran it for its own references. */
+                @Override
+                public boolean setsUpShared() {
+                    return true;
+                }
             },
             new Hook(EclipticSeasonsMixins.COLUMN, ColumnHooks.Place.TOP) {
                 @Override

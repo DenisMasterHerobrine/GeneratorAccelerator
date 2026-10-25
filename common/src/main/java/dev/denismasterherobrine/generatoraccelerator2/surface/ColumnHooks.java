@@ -164,6 +164,15 @@ public final class ColumnHooks {
         default boolean record() {
             return false;
         }
+
+        /**
+         * True for a {@link Place#START} hook that only sets up the values other hooks share ({@link Frame#shared}). It runs in every
+         * build, also where its handler sits before GA2's callback: vanilla's call then set up vanilla's own references, not the
+         * ones GA2 hands the other hooks.
+         */
+        default boolean setsUpShared() {
+            return false;
+        }
     }
 
     /** Whether {@code mixin}'s code is set up (its handlers found). */
@@ -303,7 +312,10 @@ public final class ColumnHooks {
                         position = Math.min(position, c.at());
                     }
                 }
-                if (position == Integer.MAX_VALUE) {
+                if (position == Integer.MAX_VALUE && h.place() == Place.START && h.setsUpShared()) {
+                    // its call sits before GA2's callback (or nowhere). GA2's references still need it, ahead of everything
+                    position = Integer.MIN_VALUE;
+                } else if (position == Integer.MAX_VALUE) {
                     // the mixin does not call this handler from buildSurface (an older or newer version of it): nothing to run
                     continue;
                 }

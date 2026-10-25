@@ -117,9 +117,11 @@ public final class OreFast {
 
     /** Exact {@code OreFeature.place}: the three random draws, the ocean-floor gate over the blob's columns (worldgen heightmap, read through the cursor), then {@link #doPlace}. */
     public static boolean place(net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx, Ga2Region region) {
-        RandomSource random = ctx.random();
-        BlockPos origin = ctx.origin();
-        OreConfiguration config = (OreConfiguration) ctx.config();
+        return place(ctx.random(), ctx.origin(), (OreConfiguration) ctx.config(), region);
+    }
+
+    /** {@link #place(net.minecraft.world.level.levelgen.feature.FeaturePlaceContext, Ga2Region)} without the context ({@code Fast.place}). */
+    public static boolean place(RandomSource random, BlockPos origin, OreConfiguration config, Ga2Region region) {
         float f = random.nextFloat() * (float) Math.PI;
         float f1 = (float) config.size / 8.0F;
         int i = Mth.ceil(((float) config.size / 16.0F * 2.0F + 1.0F) / 2.0F);

@@ -19,8 +19,8 @@ public interface ClApi {
 
     long createContext(long platform, long device);
 
-    /** Creates an in-order queue. {@code lowPriority} requests the low priority of {@code cl_khr_priority_hints} where supported. */
-    long createQueue(long context, long device, boolean profiling, boolean lowPriority);
+    /** Creates an in-order queue. */
+    long createQueue(long context, long device, boolean profiling);
 
     /** Builds a program from source. The build log goes to {@code log}. Throws with the log when the build fails. */
     long buildProgram(long context, long device, String source, String options, StringBuilder log);

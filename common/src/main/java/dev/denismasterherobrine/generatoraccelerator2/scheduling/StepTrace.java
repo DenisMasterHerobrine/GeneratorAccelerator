@@ -16,7 +16,7 @@ public final class StepTrace {
     public static final boolean ENABLED = Boolean.getBoolean("generatoraccelerator2.stepTrace");
     private static final int N = 16;
     private static final LongAdder[] GAP = adders(), RUN = adders(), COUNT = adders(), GAPPED = adders();
-    /** Per chunk (scrambled key, see {@code Resident.key}): when its last step ended, and when its first step began. */
+    /** Per chunk (scrambled key): when its last step ended, and when its first step began. */
     private static final ConcurrentHashMap<Long, long[]> CHUNKS = new ConcurrentHashMap<>();
     private static final LongAdder LIFE = new LongAdder(), LIVES = new LongAdder();
 

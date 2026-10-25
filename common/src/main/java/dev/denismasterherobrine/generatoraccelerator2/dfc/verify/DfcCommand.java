@@ -77,6 +77,11 @@ public final class DfcCommand {
             + dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.NoiseBounds.OCTAVES_WIDE.sum()
             + (dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.TIGHT ? "" : " (off: -Dgeneratoraccelerator2.dfc.noiseBounds=false)");
         source.sendSuccess(() -> Component.literal(tight), false);
+        String sky = "sky corners: " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.SKY_PLANS.sum() + " chunks planned, "
+            + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.SKY_CORNERS_SKIPPED.sum() + " corners left out, "
+            + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.SKY_CORNERS_COMPLETED.sum() + " filled later for the aquifer"
+            + (dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.ENABLED ? "" : " (off: -Dgeneratoraccelerator2.dfc.skyCorners=false)");
+        source.sendSuccess(() -> Component.literal(sky), false);
         java.lang.management.CompilationMXBean jit = java.lang.management.ManagementFactory.getCompilationMXBean();
         String classes = "generated classes defined: " + dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.HiddenClassLoader.DEFINED.sum()
             + " (surface rules per biome shared " + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PROGRAMS_SHARED.sum()

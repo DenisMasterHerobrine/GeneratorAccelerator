@@ -24,7 +24,10 @@ public final class FabricApiMixins {
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.NOISE_SECTION_WRITES, SECTION_AIR, Set.of("modifyAirCheck"),
-            "Fabric API's air check still applies. GA2 counts blocks in chunk sections with the same check."));
+            "Fabric API's air check still applies. GA2 counts blocks in chunk sections with the same check."),
+        // GA2's body for the method counts with the same test, so it takes the method's place with Fabric API's change in it
+        new KnownMixins.Entry(MOD_ID, HookTargets.SECTION_WRITE, SECTION_AIR, Set.of("modifyAirCheck"),
+            "Fabric API's air check still applies. GA2's block writes count blocks with the same check."));
 
     /** Nothing to set up. GA2's section writes count blocks with the same test. */
     public static void register() {

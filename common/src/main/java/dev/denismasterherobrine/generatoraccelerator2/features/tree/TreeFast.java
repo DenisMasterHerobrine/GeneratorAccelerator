@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.tree;
 
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
@@ -8,6 +7,8 @@ import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.OptionalInt;
@@ -76,8 +77,24 @@ public final class TreeFast {
         FeatureStats.fast(TreeFeature.class);
         Set<BlockPos> roots = Sets.newHashSet();
         Set<BlockPos> logs = Sets.newHashSet();
-        Set<BlockPos> leaves = Sets.newHashSet();
+        // decorators see the leaves in their set's order. Without them the leaves only answer isSet and the bounding box, so they
+        // are kept as packed positions in the thread's set: no position and no map node per leaf. Beehives alone read the
+        // leaves only when their chance succeeds (TreeBees)
+        boolean setLeaves = !config.decorators.isEmpty() && !TreeBees.handles(config.decorators);
+        Set<BlockPos> leaves = setLeaves ? Sets.newHashSet() : null;
+        LongOpenHashSet leafKeys = setLeaves ? null : LeafKeys.take();
         Set<BlockPos> decorations = Sets.newHashSet();
+        try {
+            return place(level, random, origin, config, cursor, region, roots, logs, leaves, leafKeys, decorations);
+        } finally {
+            if (leafKeys != null) {
+                LeafKeys.give(leafKeys);
+            }
+        }
+    }
+
+    private static boolean place(WorldGenLevel level, RandomSource random, BlockPos origin, TreeConfiguration config, SectionCursor cursor, Ga2Region region,
+                                 Set<BlockPos> roots, Set<BlockPos> logs, Set<BlockPos> leaves, LongOpenHashSet leafKeys, Set<BlockPos> decorations) {
         BiConsumer<BlockPos, BlockState> rootSetter = (pos, state) -> {
             roots.add(pos.immutable());
             RegionWriter.setBlock(region, pos, state);
@@ -89,13 +106,17 @@ public final class TreeFast {
         FoliagePlacer.FoliageSetter foliageSetter = new FoliagePlacer.FoliageSetter() {
             @Override
             public void set(BlockPos pos, BlockState state) {
-                leaves.add(pos.immutable());
+                if (leaves != null) {
+                    leaves.add(pos.immutable());
+                } else {
+                    leafKeys.add(pos.asLong());
+                }
                 RegionWriter.setBlock(region, pos, state);
             }
 
             @Override
             public boolean isSet(BlockPos pos) {
-                return leaves.contains(pos);
+                return leaves != null ? leaves.contains(pos) : leafKeys.contains(pos.asLong());
             }
         };
         BiConsumer<BlockPos, BlockState> decorationSetter = (pos, state) -> {
@@ -103,18 +124,65 @@ public final class TreeFast {
             RegionWriter.setBlock(region, pos, state);
         };
         boolean placed = doPlace(level, cursor, random, origin, rootSetter, logSetter, foliageSetter, config);
-        if (placed && (!logs.isEmpty() || !leaves.isEmpty())) {
-            if (!config.decorators.isEmpty()) {
+        if (placed && (!logs.isEmpty() || (leaves != null ? !leaves.isEmpty() : !leafKeys.isEmpty()))) {
+            if (leaves != null) {
                 TreeDecorator.Context context = new TreeDecorator.Context(level, decorationSetter, random, logs, leaves, roots);
                 config.decorators.forEach(decorator -> decorator.place(context));
+            } else if (!config.decorators.isEmpty()) {
+                TreeBees.place(config.decorators, level, decorationSetter, random, logs, leafKeys, roots);
             }
-            return BoundingBox.encapsulatingPositions(Iterables.concat(roots, logs, leaves, decorations)).map(box -> {
-                DiscreteVoxelShape shape = updateLeaves(cursor, region, box, logs, decorations, roots);
-                updateShapeAtEdge(cursor, region, level, shape, box.minX(), box.minY(), box.minZ());
-                return true;
-            }).orElse(false);
+            BoundingBox box = encapsulate(roots, logs, leaves, leafKeys, decorations);
+            if (box == null) {
+                return false;
+            }
+            DiscreteVoxelShape shape = updateLeaves(cursor, region, box, logs, decorations, roots);
+            updateShapeAtEdge(cursor, region, level, shape, box.minX(), box.minY(), box.minZ());
+            return true;
         }
         return false;
+    }
+
+    /** {@code BoundingBox.encapsulatingPositions} of the four sets (the leaves packed or not), or null for none. Order does not matter. */
+    private static BoundingBox encapsulate(Set<BlockPos> roots, Set<BlockPos> logs, Set<BlockPos> leaves, LongOpenHashSet leafKeys, Set<BlockPos> decorations) {
+        BoundingBox box = add(add(add(null, roots), logs), decorations);
+        if (leaves != null) {
+            box = add(box, leaves);
+        }
+        if (leafKeys != null && !leafKeys.isEmpty()) {
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            for (LongIterator it = leafKeys.iterator(); it.hasNext(); ) {
+                pos.set(it.nextLong());
+                box = box == null ? new BoundingBox(pos) : box.encapsulate(pos);
+            }
+        }
+        return box;
+    }
+
+    private static BoundingBox add(BoundingBox box, Set<BlockPos> set) {
+        for (BlockPos pos : set) {
+            box = box == null ? new BoundingBox(pos) : box.encapsulate(pos);
+        }
+        return box;
+    }
+
+    /** The thread's packed leaf set, lent to one tree at a time. A tree placed while another holds it gets one of its own. */
+    private static final class LeafKeys {
+        private static final ThreadLocal<LongOpenHashSet[]> MINE = ThreadLocal.withInitial(() -> new LongOpenHashSet[1]);
+
+        static LongOpenHashSet take() {
+            LongOpenHashSet[] slot = MINE.get();
+            LongOpenHashSet set = slot[0];
+            if (set == null) {
+                return new LongOpenHashSet();
+            }
+            slot[0] = null;
+            return set;
+        }
+
+        static void give(LongOpenHashSet set) {
+            set.clear();
+            MINE.get()[0] = set;
+        }
     }
 
     /**
@@ -126,6 +194,7 @@ public final class TreeFast {
      */
     private static void updateShapeAtEdge(SectionCursor cursor, Ga2Region region, WorldGenLevel level, DiscreteVoxelShape shape, int ox, int oy, int oz) {
         int sx = shape.getXSize(), sy = shape.getYSize(), sz = shape.getZSize();
+        LeafUpdates.Edge edge = LeafUpdates.allowed() ? LeafUpdates.Edge.start() : null;
         BlockPos.MutableBlockPos inside = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos outside = new BlockPos.MutableBlockPos();
         for (int x = 0; x < sx; x++) {
@@ -134,10 +203,10 @@ public final class TreeFast {
                 for (int z = 0; z <= sz; z++) {
                     boolean full = z != sz && shape.isFull(x, y, z);
                     if (!prev && full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.NORTH, ox + x, oy + y, oz + z);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.NORTH, ox + x, oy + y, oz + z);
                     }
                     if (prev && !full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.SOUTH, ox + x, oy + y, oz + z - 1);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.SOUTH, ox + x, oy + y, oz + z - 1);
                     }
                     prev = full;
                 }
@@ -149,10 +218,10 @@ public final class TreeFast {
                 for (int y = 0; y <= sy; y++) {
                     boolean full = y != sy && shape.isFull(x, y, z);
                     if (!prev && full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.DOWN, ox + x, oy + y, oz + z);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.DOWN, ox + x, oy + y, oz + z);
                     }
                     if (prev && !full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.UP, ox + x, oy + y - 1, oz + z);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.UP, ox + x, oy + y - 1, oz + z);
                     }
                     prev = full;
                 }
@@ -164,10 +233,10 @@ public final class TreeFast {
                 for (int x = 0; x <= sx; x++) {
                     boolean full = x != sx && shape.isFull(x, y, z);
                     if (!prev && full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.WEST, ox + x, oy + y, oz + z);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.WEST, ox + x, oy + y, oz + z);
                     }
                     if (prev && !full) {
-                        edgeFace(cursor, region, level, inside, outside, Direction.EAST, ox + x - 1, oy + y, oz + z);
+                        edgeFace(edge, cursor, region, level, inside, outside, Direction.EAST, ox + x - 1, oy + y, oz + z);
                     }
                     prev = full;
                 }
@@ -176,17 +245,18 @@ public final class TreeFast {
     }
 
     /** {@code updateShapeAtEdge}'s face consumer at block {@code (x, y, z)} facing {@code d}. */
-    private static void edgeFace(SectionCursor cursor, Ga2Region region, WorldGenLevel level, BlockPos.MutableBlockPos inside, BlockPos.MutableBlockPos outside,
-                                 Direction d, int x, int y, int z) {
+    private static void edgeFace(LeafUpdates.Edge edge, SectionCursor cursor, Ga2Region region, WorldGenLevel level, BlockPos.MutableBlockPos inside,
+                                 BlockPos.MutableBlockPos outside,                                 Direction d, int x, int y, int z) {
         inside.set(x, y, z);
         outside.set(x + d.getStepX(), y + d.getStepY(), z + d.getStepZ());
         BlockState state = cursor.read(x, y, z);
         BlockState neighbour = cursor.read(outside.getX(), outside.getY(), outside.getZ());
-        BlockState updated = state.updateShape(d, neighbour, level, inside, outside);
+        BlockState updated = edge != null ? edge.update(state, d, neighbour, level, inside, outside) : state.updateShape(d, neighbour, level, inside, outside);
         if (state != updated) {
             RegionWriter.setBlock(region, inside, updated);
         }
-        BlockState neighbourUpdated = neighbour.updateShape(d.getOpposite(), updated, level, outside, inside);
+        BlockState neighbourUpdated = edge != null ? edge.update(neighbour, d.getOpposite(), updated, level, outside, inside)
+            : neighbour.updateShape(d.getOpposite(), updated, level, outside, inside);
         if (neighbour != neighbourUpdated) {
             RegionWriter.setBlock(region, outside, neighbourUpdated);
         }
@@ -272,8 +342,10 @@ public final class TreeFast {
         if (!LeafSets.ENABLED || !levels.begin(box, logs)) {
             return updateLeavesWithSets(cursor, region, box, logs, shape);
         }
+        boolean rules = LeafUpdates.allowed();
         int minX = box.minX(), minY = box.minY(), minZ = box.minZ();
         int k1 = 0;
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         while (true) {
             while (k1 >= 7 || !levels.isEmpty(k1)) {
                 if (k1 >= 7) {
@@ -284,15 +356,16 @@ public final class TreeFast {
                 if (box.isInside(x, y, z)) {
                     if (k1 != 0) {
                         BlockState state = cursor.read(x, y, z);
-                        RegionWriter.setBlock(region, new BlockPos(x, y, z), state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)));
+                        // the writer keeps no position (ServerLevel.onBlockStateChange copies its own)
+                        RegionWriter.setBlock(region, at.set(x, y, z), state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)));
                     }
                     shape.fill(x - minX, y - minY, z - minZ);
                     for (Direction direction : DIRECTIONS) {
                         int nx = x + direction.getStepX(), ny = y + direction.getStepY(), nz = z + direction.getStepZ();
                         if (box.isInside(nx, ny, nz) && !shape.isFull(nx - minX, ny - minY, nz - minZ)) {
-                            OptionalInt distance = LeavesBlock.getOptionalDistanceAt(cursor.read(nx, ny, nz));
-                            if (!distance.isEmpty()) {
-                                int j1 = Math.min(distance.getAsInt(), k1 + 1);
+                            int distance = distance(cursor.read(nx, ny, nz), rules);
+                            if (distance >= 0) {
+                                int j1 = Math.min(distance, k1 + 1);
                                 if (j1 < 7) {
                                     levels.add(j1, nx, ny, nz);
                                     k1 = Math.min(k1, j1);
@@ -306,8 +379,18 @@ public final class TreeFast {
         }
     }
 
+    /** {@code LeavesBlock.getOptionalDistanceAt(state)}, -1 for none. Remembered per state while the leaves' rules are vanilla's. */
+    private static int distance(BlockState state, boolean rules) {
+        if (rules) {
+            return LeafUpdates.distance(state);
+        }
+        OptionalInt d = LeavesBlock.getOptionalDistanceAt(state);
+        return d.isEmpty() ? -1 : d.getAsInt();
+    }
+
     /** {@link #updateLeaves} with vanilla's own sets (the decorations and roots already filled). */
     private static DiscreteVoxelShape updateLeavesWithSets(SectionCursor cursor, Ga2Region region, BoundingBox box, Set<BlockPos> logs, DiscreteVoxelShape shape) {
+        boolean rules = LeafUpdates.allowed();
         List<Set<BlockPos>> levels = Lists.newArrayList();
         for (int j = 0; j < 7; j++) {
             levels.add(Sets.newHashSet());
@@ -336,10 +419,9 @@ public final class TreeFast {
                             int ly = neighbour.getY() - box.minY();
                             int lz = neighbour.getZ() - box.minZ();
                             if (!shape.isFull(lx, ly, lz)) {
-                                BlockState neighbourState = cursor.read(neighbour);
-                                OptionalInt distance = LeavesBlock.getOptionalDistanceAt(neighbourState);
-                                if (!distance.isEmpty()) {
-                                    int j1 = Math.min(distance.getAsInt(), k1 + 1);
+                                int distance = distance(cursor.read(neighbour), rules);
+                                if (distance >= 0) {
+                                    int j1 = Math.min(distance, k1 + 1);
                                     if (j1 < 7) {
                                         levels.get(j1).add(neighbour.immutable());
                                         k1 = Math.min(k1, j1);

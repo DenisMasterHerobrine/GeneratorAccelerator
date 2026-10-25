@@ -9,6 +9,7 @@ import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -20,5 +21,19 @@ public abstract class PlacedFeatureMixin {
         if (FeatureHooks.enabled() && FeaturesCompat.placementPipelineAllowed()) {
             cir.setReturnValue(PlacementPipeline.place((PlacedFeature) (Object) this, ctx, random, pos));
         }
+    }
+
+    /** A nested placement takes the region's context ({@code Ga2Region.ga2$placementContext}) instead of a new one for each call. */
+    @WrapOperation(method = "place(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkGenerator;Lnet/minecraft/util/RandomSource;"
+        + "Lnet/minecraft/core/BlockPos;)Z", at = @At(value = "NEW", target = "net/minecraft/world/level/levelgen/placement/PlacementContext"))
+    private PlacementContext ga2$regionContext(net.minecraft.world.level.WorldGenLevel level, net.minecraft.world.level.chunk.ChunkGenerator generator,
+                                               java.util.Optional<PlacedFeature> top, com.llamalad7.mixinextras.injector.wrapoperation.Operation<PlacementContext> original) {
+        if (level instanceof dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region region && top.isEmpty() && FeatureHooks.enabled()) {
+            PlacementContext c = region.ga2$placementContext(generator);
+            if (c != null) {
+                return c;
+            }
+        }
+        return original.call(level, generator, top);
     }
 }

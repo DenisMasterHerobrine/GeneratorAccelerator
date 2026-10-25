@@ -35,9 +35,61 @@ import org.junit.jupiter.api.Test;
 /**
  * Region file writes through {@link FastRegionWrite} put the same bytes on disk as vanilla's stream chain: real chunk
  * tags of a dev-run world (when one is around) and synthetic tags of every type, with non-ASCII, NUL and over-long
- * strings. Compared as the encoded buffer and as whole region files (header timestamps aside).
+ * strings. Compared as the encoded buffer and as whole region files (header timestamps aside), at vanilla's level. At GA2's
+ * default level, vanilla's own region file reads every chunk back as the same tag.
  */
 public class FastRegionWriteTest {
+    /** Vanilla's bytes come from its default level, 6. */
+    @org.junit.jupiter.api.BeforeEach
+    void vanillaLevel() {
+        FastRegionWrite.LEVEL = 6;
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void configLevel() {
+        FastRegionWrite.LEVEL = 0;
+    }
+
+    /**
+     * Written at level 1 (GA2's default) and read by vanilla's {@code RegionFile}, as a world is read after GA2 is removed: every
+     * chunk is the same tag, in the deflate format. A chunk past a region file's 1 MB limit goes to vanilla's external file.
+     */
+    @Test
+    void fastLevelReadsBackInVanilla(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
+        FastRegionWrite.LEVEL = 1;
+        List<CompoundTag> tags = new ArrayList<>(synthetic());
+        Path region = RegionChunks.defaultRegion();
+        if (region != null) {
+            tags.addAll(RegionChunks.readTags(region, 300));
+        }
+        // incompressible, so it stays past the limit at any level
+        byte[] noise = new byte[2 << 20];
+        new Random(11).nextBytes(noise);
+        CompoundTag huge = new CompoundTag();
+        huge.put("noise", new ByteArrayTag(noise));
+        tags.add(huge);
+        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
+            net.minecraft.resources.ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+        try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
+            for (int i = 0; i < tags.size(); i++) {
+                ByteBuffer buffer = FastRegionWrite.encode(tags.get(i), RegionFileVersion.VERSION_DEFLATE.getId());
+                org.junit.jupiter.api.Assertions.assertEquals(RegionFileVersion.VERSION_DEFLATE.getId(), buffer.get(4), "format of tag " + i);
+                ((RegionFileAccessor) file).ga2$write(new ChunkPos(i % 32, i / 32), buffer);
+            }
+        }
+        assertTrue(Files.list(dir).anyMatch(p -> p.toString().endsWith(".mcc")), "the huge chunk went to an external file");
+        try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
+            for (int i = 0; i < tags.size(); i++) {
+                try (java.io.DataInputStream in = file.getChunkDataInputStream(new ChunkPos(i % 32, i / 32))) {
+                    org.junit.jupiter.api.Assertions.assertNotNull(in, "chunk " + i);
+                    // as NBT bytes: a NaN tag never equals itself
+                    assertArrayEquals(nbt(tags.get(i)), nbt(NbtIo.read(in)), "tag " + i);
+                }
+            }
+        }
+        assertTrue(tags.size() >= 21, "tags compared: " + tags.size());
+    }
+
     @Test
     void sameBytesAsVanilla() throws IOException {
         List<CompoundTag> tags = new ArrayList<>(synthetic());
@@ -116,6 +168,12 @@ public class FastRegionWriteTest {
         byte[] result = bytes.toByteArray();
         ByteBuffer.wrap(result).putInt(0, result.length - 5 + 1);
         return result;
+    }
+
+    private static byte[] nbt(CompoundTag tag) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(8096);
+        NbtIo.write(tag, new DataOutputStream(bytes));
+        return bytes.toByteArray();
     }
 
     private static byte[] fast(CompoundTag tag) throws IOException {

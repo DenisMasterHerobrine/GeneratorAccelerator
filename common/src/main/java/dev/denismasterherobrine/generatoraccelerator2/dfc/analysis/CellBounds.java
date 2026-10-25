@@ -268,6 +268,73 @@ public final class CellBounds {
         return cls;
     }
 
+    /** While {@link #classifyIntervals} runs: each interpolated root's bounds, instead of the corners. */
+    private double[] rootLo;
+    private double[] rootHi;
+
+    /**
+     * {@link #classify}'s first pass over the box {@code [x0, x0 + w) x [y0, y1] x [z0, z0 + w)}, with each interpolated root
+     * {@link #interpolatedRoots} names within {@code [rootLo[r], rootHi[r]]} instead of within eight corners. No old-chunk
+     * blending. The second pass and its statistics are left out.
+     */
+    public int classifyIntervals(double[] rootLo, double[] rootHi, int x0, int y0, int z0, int w, int y1) {
+        this.x0 = x0;
+        this.x1 = x0 + w - 1;
+        this.y0 = y0;
+        this.y1 = y1;
+        this.z0 = z0;
+        this.z1 = z0 + w - 1;
+        this.blenderEmpty = true;
+        this.tight = false;
+        this.rootLo = rootLo;
+        this.rootHi = rootHi;
+        try {
+            return pass();
+        } finally {
+            this.rootLo = null;
+            this.rootHi = null;
+        }
+    }
+
+    /** The interpolated roots (their indexes) whose corners the first pass reads. */
+    public int[] interpolatedRoots() {
+        java.util.TreeSet<Integer> out = new java.util.TreeSet<>();
+        collectRoots(root, out, new IdentityHashMap<>());
+        return out.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /** The interpolated markers {@link #eval} reaches when not {@link #tight}, as it reaches them. */
+    private void collectRoots(Node n, java.util.Set<Integer> out, Map<Node, Boolean> seen) {
+        if (seen.put(n, Boolean.TRUE) != null) {
+            return;
+        }
+        switch (n) {
+            case Node.Ap2 a -> {
+                collectRoots(a.a(), out, seen);
+                collectRoots(a.b(), out, seen);
+            }
+            case Node.MulOrAdd m -> collectRoots(m.input(), out, seen);
+            case Node.Mapped m -> collectRoots(m.input(), out, seen);
+            case Node.Clamp c -> collectRoots(c.input(), out, seen);
+            case Node.RangeChoice r -> {
+                collectRoots(r.input(), out, seen);
+                collectRoots(r.inRange(), out, seen);
+                collectRoots(r.outRange(), out, seen);
+            }
+            case Node.BlendDensity b -> collectRoots(b.input(), out, seen);
+            case Node.Marker m -> {
+                Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
+                if (r != null) {
+                    out.add(r);
+                } else if (!(m.type() == Node.MarkerType.CACHE_2D && m.child() instanceof Node.Const)) {
+                    collectRoots(m.child(), out, seen);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
     private int pass() {
         if (!eval(root)) {
             lastLo = Double.NaN;
@@ -432,7 +499,9 @@ public final class CellBounds {
             case Node.Beardifier x -> set(0.0, 0.0);
             case Node.Marker m -> {
                 Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
-                if (r != null) {
+                if (r != null && rootLo != null) {
+                    set(rootLo[r], rootHi[r]);
+                } else if (r != null) {
                     int b = r * 8;
                     double mn = corners[b];
                     double mx = mn;

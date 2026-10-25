@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.features;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureHooks;
+import dev.denismasterherobrine.generatoraccelerator2.features.fast.RawPlace;
 import dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.WorldGenRegion;
@@ -12,6 +13,7 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.configurations.FeatureConfiguration;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 
 /**
  * Some modded features share state between placements in their code ({@link ModdedFeatures}). During decoration on a
@@ -27,11 +29,11 @@ public abstract class FeatureSharedStateMixin {
                                     Operation<Boolean> original) {
         ModdedFeatures.Profile profile = level instanceof WorldGenRegion && FeatureHooks.enabled() ? ModdedFeatures.of(this.getClass()) : null;
         if (profile == null) {
-            return original.call(config, level, generator, random, origin);
+            return ga2$place(config, level, generator, random, origin, original);
         }
         ModdedFeatures.placed(profile);
         if (profile.lock() == null) {
-            return original.call(config, level, generator, random, origin);
+            return ga2$place(config, level, generator, random, origin, original);
         }
         // State written once from the world's seed. Runs in parallel once a locked placement has built and published it.
         if (profile.init() != null && profile.init().ready(this, level)) {
@@ -44,5 +46,13 @@ public abstract class FeatureSharedStateMixin {
             }
             return placed;
         }
+    }
+
+    /** The commonest features through their fast paths without the context vanilla makes for the call ({@link RawPlace}), else vanilla's. */
+    @Unique
+    private boolean ga2$place(FeatureConfiguration config, WorldGenLevel level, ChunkGenerator generator, RandomSource random, BlockPos origin,
+                             Operation<Boolean> original) {
+        Boolean placed = RawPlace.place((Feature<?>) (Object) this, config, level, random, origin);
+        return placed != null ? placed : original.call(config, level, generator, random, origin);
     }
 }

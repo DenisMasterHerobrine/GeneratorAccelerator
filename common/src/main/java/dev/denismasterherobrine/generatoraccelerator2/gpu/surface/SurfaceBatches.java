@@ -42,21 +42,12 @@ public final class SurfaceBatches {
     static final boolean PROFILE = Boolean.getBoolean("generatoraccelerator2.gpu.profile");
     public static final String[] KERNELS = { "sunpack", "sbuild", "spack", "sheights" };
     public static final LongAdder[] DEVICE_NANOS = { new LongAdder(), new LongAdder(), new LongAdder(), new LongAdder() };
-    /** Where each chunk's built blocks are kept for decoration ({@code gpu.decor}), or null. */
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.decor.Resident resident;
-
-    /** The surface's int table on the device (biome predicates, temperatures, simplex noise permutations). Decoration reads it too. */
-    public long table() {
-        return table;
-    }
-
     private static final int CAP = 32;
     /** An all-air section's storage (never written). */
     private static final long[] ZERO_SECTION = new long[256];
     /**
      * {@code -Dgeneratoraccelerator2.gpu.surfaceSlots=N}: the maximum number of batches in flight (default 4). A SURFACE step waits for
-     * its chunk's batch. So time a request spends queued behind full slots adds to every chunk's path. With GPU decoration, a surface
-     * batch also shares the device with long kernels.
+     * its chunk's batch. So time a request spends queued behind full slots adds to every chunk's path.
      */
     private static final int MAX_SLOTS = Math.max(1, Integer.getInteger("generatoraccelerator2.gpu.surfaceSlots", 4));
 
@@ -232,9 +223,8 @@ public final class SurfaceBatches {
                 s.hWin.putShort(v);
             }
             int[] cp = q.cpar();
-            for (int k = 0; k < cp.length; k++) {
-                // cpar[6] is free. It holds the slot for the GPU's copy of the chunk for decoration.
-                s.hCpar.putInt(k == 6 && resident != null ? resident.take(q.pos()) : cp[k]);
+            for (int v : cp) {
+                s.hCpar.putInt(v);
             }
             s.hFlag.putInt(0);
         }
@@ -285,9 +275,6 @@ public final class SurfaceBatches {
         cl.argInt(kHeights, 1, n);
         cl.argMem(kHeights, 2, s.stops);
         kernel(kernels, 3, cl.launch(queue, kHeights, (long) n * 256, 64));
-        if (resident != null) {
-            resident.copyBatch(n, s.blk, s.win, s.cpar);
-        }
         rel(cl.read(queue, s.flag, false, 0, s.hFlag.clear().limit(n * 4)));
         rel(cl.read(queue, s.sstore, false, 0, s.hSstore.clear().limit(n * nsec * 512 * 8)));
         rel(cl.read(queue, s.smeta, false, 0, s.hSmeta.clear().limit(n * nsec * SurfaceSpec.SECTION_META * 4)));

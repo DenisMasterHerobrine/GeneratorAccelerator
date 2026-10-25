@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.placement;
 
+import dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesCompat;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
@@ -76,7 +77,7 @@ public final class PlacementPipeline {
 
     /** What {@link Run#walk} does at a modifier: one of the transcriptions, or the modifier's own methods ({@code OTHER}). */
     private static final byte OTHER = 0, COUNT = 1, IN_SQUARE = 2, HEIGHTMAP = 3, HEIGHT_RANGE = 4, BIOME = 5, RARITY = 6, PREDICATE = 7,
-        WATER_DEPTH = 8, SURFACE_RELATIVE = 9, NOISE_THRESHOLD = 10, NOISE_COUNT = 11, RANDOM_OFFSET = 12;
+        WATER_DEPTH = 8, SURFACE_RELATIVE = 9, NOISE_THRESHOLD = 10, NOISE_COUNT = 11, RANDOM_OFFSET = 12, SCAN = 13;
 
     private static byte kind(PlacementModifier m) {
         Class<?> cls = m.getClass();
@@ -108,38 +109,22 @@ public final class PlacementPipeline {
             return NOISE_COUNT;
         } else if (cls == RandomOffsetPlacement.class) {
             return RANDOM_OFFSET;
+        } else if (cls == net.minecraft.world.level.levelgen.placement.EnvironmentScanPlacement.class && m instanceof ScanPlacement) {
+            return SCAN;
         }
         return OTHER;
     }
 
-    /** {@code -Dgeneratoraccelerator2.oreTiming=true}: the time ore features take in decoration (placed or committed), for comparisons. */
-    private static final boolean ORE_TIMING = Boolean.getBoolean("generatoraccelerator2.oreTiming");
-    public static final java.util.concurrent.atomic.LongAdder ORE_NS = new java.util.concurrent.atomic.LongAdder();
-
     public static boolean place(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
-        // the GPU may have placed it already (gpu.decoration). The GPU's result is written when nothing it read changed since.
-        dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob job = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.CURRENT.get();
-        boolean ore = ORE_TIMING && placed.feature().value().feature() == net.minecraft.world.level.levelgen.feature.Feature.ORE;
-        long t0 = ore ? System.nanoTime() : 0L;
+        // the decoration census counts top-level placements only. Nested ones run while an outer run is taken
+        if (!FeatureCensus.on || RUNS.get().depth != 0) {
+            return pipeline(placed, ctx, random, origin);
+        }
+        FeatureCensus.featureStart(placed);
         try {
-            if (job != null) {
-                Boolean gpu = job.place(placed, ctx, random, origin, () -> placeCpu(placed, ctx, random, origin));
-                if (gpu != null) {
-                    return gpu;
-                }
-                // what the CPU's placement costs, against what the GPU's results cost (features no cheaper there leave the jobs)
-                long tc = System.nanoTime();
-                try {
-                    return placeCpu(placed, ctx, random, origin);
-                } finally {
-                    job.placedOnCpu(placed, ctx, System.nanoTime() - tc);
-                }
-            }
-            return placeCpu(placed, ctx, random, origin);
+            return pipeline(placed, ctx, random, origin);
         } finally {
-            if (ore) {
-                ORE_NS.add(System.nanoTime() - t0);
-            }
+            FeatureCensus.featureEnd();
         }
     }
 
@@ -167,7 +152,7 @@ public final class PlacementPipeline {
     private static final ThreadLocal<Runs> RUNS = ThreadLocal.withInitial(Runs::new);
 
     /** The pipeline itself. */
-    public static boolean placeCpu(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
+    public static boolean pipeline(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
         Runs runs = RUNS.get();
         Run run = runs.take();
         try {
@@ -384,6 +369,12 @@ public final class PlacementPipeline {
                 int ny = y + p.ySpread.sample(random);
                 int nz = z + p.xzSpread.sample(random);
                 walk(i + 1, nx, ny, nz, null);
+            } else if (kind == SCAN) {
+                // vanilla's scan hands on its own mutable position (Stream.of(mutable)). Here without the stream
+                BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos(x, y, z);
+                if (((ScanPlacement) m).ga2$scan(ctx.getLevel(), at)) {
+                    walk(i + 1, at.getX(), at.getY(), at.getZ(), at);
+                }
             } else {
                 if (pos == null) {
                     pos = new BlockPos(x, y, z);

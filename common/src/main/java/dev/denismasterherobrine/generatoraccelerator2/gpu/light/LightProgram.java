@@ -157,7 +157,7 @@ final class LightProgram {
         this.cl = device.cl;
         StringBuilder log = new StringBuilder();
         this.program = cl.buildProgram(device.context, device.info.device(), SOURCE, options, log);
-        this.queue = cl.createQueue(device.context, device.info.device(), false, false);
+        this.queue = cl.createQueue(device.context, device.info.device(), false);
         this.kUnpack = cl.createKernel(program, "k_unpack");
         this.kInit = cl.createKernel(program, "k_init");
         this.kEmit = cl.createKernel(program, "k_emit");

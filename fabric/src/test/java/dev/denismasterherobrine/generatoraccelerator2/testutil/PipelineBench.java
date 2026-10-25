@@ -25,7 +25,7 @@ public class PipelineBench {
     void biomesAndNoise() {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         int rounds = Integer.getInteger("ga2.bench.rounds", 12);
-        String[] setups = { "all on", "memo off", "lazy interpolation off", "column heightmaps off", "fast fill off", "sampler columns off" };
+        String[] setups = { "all on", "memo off", "lazy interpolation off", "column heightmaps off", "fast fill off", "sampler columns off", "sky corners off" };
         List<List<long[]>> times = new ArrayList<>();
         for (int s = 0; s < setups.length; s++) {
             times.add(new ArrayList<>());
@@ -74,6 +74,7 @@ public class PipelineBench {
         FillHeights.ENABLED = setup != 3;
         dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.ENABLED = setup != 4;
         dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler.COLUMNS = setup != 5;
+        dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.ENABLED = setup != 6;
     }
 
     /** @return nanoseconds spent in BIOMES and NOISE over a SIDE x SIDE grid of fresh chunks */

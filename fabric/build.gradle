@@ -85,6 +85,12 @@ test {
         }
         systemProperty 'fabric.classPathGroups', own*.absolutePath.join(File.pathSeparator)
     }
+    // a flight recording of the test JVM (-Dga2.jfr=<file>)
+    if (System.getProperty('ga2.jfr')) {
+        jvmArgs "-XX:StartFlightRecording=filename=${System.getProperty('ga2.jfr')},settings=profile,method-profiling=max,allocation-profiling=maximum", '-XX:FlightRecorderOptions:stackdepth=256'
+    }
     maxHeapSize = '4G'
+    // tests seed the JDK's shared shuffle random (Collections.r), which vanilla's beehive decorator draws from
+    jvmArgs '--add-opens', 'java.base/java.util=ALL-UNNAMED'
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full'; showStandardStreams = true }
 }

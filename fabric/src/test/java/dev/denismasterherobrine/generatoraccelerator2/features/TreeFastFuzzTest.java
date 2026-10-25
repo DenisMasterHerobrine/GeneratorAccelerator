@@ -27,16 +27,32 @@ public class TreeFastFuzzTest {
 
     @Test
     void treesMatchVanilla() {
+        compareTrees(false, 12);
+    }
+
+    /**
+     * Trees with beehive decorators (forest trees at 0.2%, meadow trees always), whose leaves the fast path keeps packed until a
+     * decorator's chance succeeds ({@code TreeBees}). Vanilla shuffles nest candidates with the JDK's shared random, so each run
+     * seeds that random the same way first.
+     */
+    @Test
+    void beeTreesMatchVanilla() {
+        long before = dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees.TREES.sum();
+        compareTrees(true, 6);
+        assertTrue(dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees.TREES.sum() > before, "the beehive path placed trees");
+    }
+
+    private static void compareTrees(boolean bees, int minimum) {
         HarnessWorld.Registries2 r = HarnessWorld.registries();
         List<FeatureRun.ConfiguredCase> trees = new ArrayList<>();
         for (FeatureRun.ConfiguredCase c : FeatureRun.configuredCases(r)) {
             if (c.originKind() == 0 && c.kind() == HarnessWorld.Kind.OVERWORLD && c.feature().value().feature() == Feature.TREE
-                && !FeatureRun.hasBeehiveDecorator(c.feature().value())) {
+                && FeatureRun.hasBeehiveDecorator(c.feature().value()) == bees) {
                 trees.add(c);
             }
         }
         trees.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
-        assertTrue(trees.size() >= 12, "too few tree features: " + trees.size());
+        assertTrue(trees.size() >= minimum, "too few tree features: " + trees.size());
         List<String> failures = new ArrayList<>();
         int compared = 0;
         int placed = 0;
@@ -60,9 +76,21 @@ public class TreeFastFuzzTest {
                 }
             }
         }
-        System.out.println("TreeFastFuzzTest: " + compared + " trials compared over " + trees.size() + " trees, " + placed + " placed a last tree");
+        System.out.println("TreeFastFuzzTest: " + (bees ? "bee trees, " : "") + compared + " trials compared over " + trees.size() + " trees, " + placed
+            + " placed a last tree");
         assertTrue(placed > compared / 4, "too few trials placed anything: " + placed + " of " + compared);
         assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
+    }
+
+    /** Seeds the random {@code Collections.shuffle(List)} uses, which vanilla's beehive decorator shuffles its candidates with. */
+    private static void seedShuffle(long seed) {
+        try {
+            java.lang.reflect.Field f = java.util.Collections.class.getDeclaredField("r");
+            f.setAccessible(true);
+            f.set(null, new java.util.Random(seed));
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            throw new IllegalStateException("cannot seed Collections.shuffle (the test JVM needs --add-opens java.base/java.util)", e);
+        }
     }
 
     /** Three placements of one tree at trial {@code t}'s surface origins, a few blocks apart. */
@@ -78,6 +106,7 @@ public class TreeFastFuzzTest {
             terrainSeed, HarnessWorld.randomState(r, c.kind(), terrainSeed), r.access, false);
         WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(0L));
         random.setSeed(terrainSeed * 31 + t * 0x9E3779B97F4A7C15L + c.name().hashCode());
+        seedShuffle(terrainSeed + t);
         boolean[] placed = new boolean[1];
         Throwable[] error = new Throwable[1];
         Runnable body = () -> {

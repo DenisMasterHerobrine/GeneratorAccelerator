@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
+import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor;
 import java.util.List;
@@ -55,33 +57,42 @@ public final class SmallFeatures {
         int bottom = y - config.halfHeight() - 1;
         int radius = config.radius().sample(random);
         BlockPos.MutableBlockPos column = new BlockPos.MutableBlockPos();
-        for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-radius, 0, -radius), origin.offset(radius, 0, radius))) {
-            int dx = pos.getX() - origin.getX();
-            int dz = pos.getZ() - origin.getZ();
-            if (dx * dx + dz * dz <= radius * radius) {
-                column.set(pos);
-                boolean any = false;
-                for (int by = top; by > bottom; by--) {
-                    column.setY(by);
-                    if (config.target().test(level, column)) {
-                        BlockState state = config.stateProvider().getState(level, random, column);
-                        RegionWriter.setBlock(region, column, state);
-                        Fast.markAboveForPostProcessing(cursor, column);
-                        any = true;
+        // the target is tested at every block of the disk's columns. Its program reads by coordinates: no offset position per test
+        Object target = TARGETS.computeIfAbsent(config.target(), PredicatePrograms::programFor);
+        // BlockPos.betweenClosed's order over one layer: x fastest, then z
+        for (int dz = -radius; dz <= radius; dz++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                if (dx * dx + dz * dz <= radius * radius) {
+                    column.set(origin.getX() + dx, y, origin.getZ() + dz);
+                    boolean any = false;
+                    for (int by = top; by > bottom; by--) {
+                        column.setY(by);
+                        if (PredicatePrograms.test(target, config.target(), level, column)) {
+                            BlockState state = config.stateProvider().getState(level, random, column);
+                            RegionWriter.setBlock(region, column, state);
+                            Fast.markAboveForPostProcessing(cursor, column);
+                            any = true;
+                        }
                     }
+                    placed |= any;
                 }
-                placed |= any;
             }
         }
         FeatureStats.fast(DiskFeature.class);
         return placed;
     }
 
+    /** Each disk target's program ({@link PredicatePrograms#programFor}), by predicate. */
+    private static final java.util.concurrent.ConcurrentMap<net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate, Object> TARGETS =
+        new com.google.common.collect.MapMaker().weakKeys().makeMap();
+
     /** Exact {@code SpringFeature.place}. */
     public static boolean spring(FeaturePlaceContext<?> ctx, Ga2Region region) {
-        SpringConfiguration config = (SpringConfiguration) ctx.config();
-        WorldGenLevel level = ctx.level();
-        BlockPos pos = ctx.origin();
+        return spring((SpringConfiguration) ctx.config(), ctx.level(), ctx.origin(), region);
+    }
+
+    /** {@link #spring(FeaturePlaceContext, Ga2Region)} without the context ({@code Fast.place}). */
+    static boolean spring(SpringConfiguration config, WorldGenLevel level, BlockPos pos, Ga2Region region) {
         SectionCursor cursor = SectionCursor.mine(SectionCursor.SPRING, region);
         int x = pos.getX();
         int y = pos.getY();
@@ -144,6 +155,14 @@ public final class SmallFeatures {
         SectionCursor cursor = SectionCursor.mine(SectionCursor.SNOW, region);
         BlockPos.MutableBlockPos top = new BlockPos.MutableBlockPos();
         BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
+        // another mod's snow test may snow where vanilla's temperature says no
+        boolean warmSkip = FeatureWraps.snow == null;
+        int maxY = level.getMaxBuildHeight();
+        if (warmSkip && WarmBiomes.everyBiome(region, origin.getX(), origin.getZ(), level.getMinBuildHeight(), maxY)) {
+            // every biome a column's lookup can answer is too warm to freeze or snow, so no column changes
+            FeatureStats.fast(SnowAndFreezeFeature.class);
+            return true;
+        }
         for (int i = 0; i < 16; i++) {
             for (int j = 0; j < 16; j++) {
                 int x = origin.getX() + i;
@@ -152,6 +171,10 @@ public final class SmallFeatures {
                 top.set(x, y, z);
                 below.set(top).move(Direction.DOWN, 1);
                 Biome biome = level.getBiome(top).value();
+                if (warmSkip && WarmBiomes.alwaysWarm(biome, maxY)) {
+                    // both of vanilla's tests are false for such a biome
+                    continue;
+                }
                 if (biome.shouldFreeze(level, below, false)) {
                     FeatureWraps.setIce(feature, level, region, below);
                 }
@@ -239,16 +262,24 @@ public final class SmallFeatures {
 
     /** Exact {@code SimpleBlockFeature.place}. */
     public static boolean simpleBlock(net.minecraft.world.level.levelgen.feature.Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
-        SimpleBlockConfiguration config = (SimpleBlockConfiguration) ctx.config();
-        WorldGenLevel level = ctx.level();
-        BlockPos pos = ctx.origin();
+        return simpleBlock(feature, ctx, (SimpleBlockConfiguration) ctx.config(), ctx.level(), ctx.random(), ctx.origin(), region);
+    }
+
+    /**
+     * {@link #simpleBlock(net.minecraft.world.level.levelgen.feature.Feature, FeaturePlaceContext, Ga2Region)} with the context made only
+     * for another mod's callback ({@code ctx} null: {@code Fast.place}, which comes here only without such a callback).
+     */
+    static boolean simpleBlock(net.minecraft.world.level.levelgen.feature.Feature<?> feature, @javax.annotation.Nullable FeaturePlaceContext<?> ctx,
+                               SimpleBlockConfiguration config, WorldGenLevel level, RandomSource random, BlockPos pos, Ga2Region region) {
         FeatureStats.fast(SimpleBlockFeature.class);
-        BlockState state = config.toPlace().getState(ctx.random(), pos);
+        BlockState state = config.toPlace().getState(random, pos);
         boolean survives = state.canSurvive(level, pos);
         // other mods' callbacks right after that call, whatever it answered
-        Boolean decided = FeatureWraps.simpleBlockAfterSurvive(feature, ctx, state, pos, level);
-        if (decided != null) {
-            return decided;
+        if (ctx != null) {
+            Boolean decided = FeatureWraps.simpleBlockAfterSurvive(feature, ctx, state, pos, level);
+            if (decided != null) {
+                return decided;
+            }
         }
         if (!survives) {
             return false;
@@ -272,30 +303,34 @@ public final class SmallFeatures {
      * direction lists are still drawn once per direction tried, as vanilla does.
      */
     public static boolean multiface(FeaturePlaceContext<?> ctx, Ga2Region region) {
-        WorldGenLevel level = ctx.level();
-        BlockPos origin = ctx.origin();
-        RandomSource random = ctx.random();
-        MultifaceGrowthConfiguration config = (MultifaceGrowthConfiguration) ctx.config();
+        return multiface((MultifaceGrowthConfiguration) ctx.config(), ctx.level(), ctx.random(), ctx.origin(), region);
+    }
+
+    /** {@link #multiface(FeaturePlaceContext, Ga2Region)} without the context ({@code Fast.place}). */
+    static boolean multiface(MultifaceGrowthConfiguration config, WorldGenLevel level, RandomSource random, BlockPos origin, Ga2Region region) {
         SectionCursor cursor = SectionCursor.mine(SectionCursor.MULTIFACE, region);
         FeatureStats.fast(MultifaceGrowthFeature.class);
         if (!isAirOrWater(cursor.read(origin))) {
             return false;
         }
-        List<Direction> directions = config.getShuffledDirections(random);
-        if (placeGrowthIfPossible(cursor, level, origin, cursor.read(origin), config, random, directions)) {
+        MultifaceScratch s = MULTIFACE_SCRATCH.get();
+        Direction[] directions = s.directions;
+        int n = shuffledDirections(config, random, null, directions);
+        if (placeGrowthIfPossible(cursor, level, origin, cursor.read(origin), config, random, directions, n, s.neighbour)) {
             return true;
         }
-        BlockPos.MutableBlockPos pos = origin.mutable();
-        for (Direction direction : directions) {
+        BlockPos.MutableBlockPos pos = s.pos.set(origin);
+        for (int d = 0; d < n; d++) {
+            Direction direction = directions[d];
             pos.set(origin);
-            List<Direction> others = config.getShuffledDirectionsExcept(random, direction.getOpposite());
+            int m = shuffledDirections(config, random, direction.getOpposite(), s.others);
             if (config.searchRange > 0) {
                 pos.setWithOffset(origin, direction);
                 BlockState state = cursor.read(pos);
                 if (!isAirOrWater(state) && !state.is(config.placeBlock)) {
                     continue;
                 }
-                if (placeGrowthIfPossible(cursor, level, pos, state, config, random, others)) {
+                if (placeGrowthIfPossible(cursor, level, pos, state, config, random, s.others, m, s.neighbour)) {
                     return true;
                 }
             }
@@ -303,11 +338,51 @@ public final class SmallFeatures {
         return false;
     }
 
-    /** Exact {@code MultifaceGrowthFeature.placeGrowthIfPossible}. */
+    /** A multiface placement's direction lists and positions, one per thread (a placement places no other one). */
+    private static final class MultifaceScratch {
+        final Direction[] directions = new Direction[6];
+        final Direction[] others = new Direction[6];
+        final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        final BlockPos.MutableBlockPos neighbour = new BlockPos.MutableBlockPos();
+    }
+
+    private static final ThreadLocal<MultifaceScratch> MULTIFACE_SCRATCH = ThreadLocal.withInitial(MultifaceScratch::new);
+    private static final FeatureTargets.Hook MULTIFACE_DIRECTIONS = FeatureTargets.hook("multifaceDirections");
+
+    /**
+     * {@code config.getShuffledDirections(random)} ({@code except} null) or {@code getShuffledDirectionsExcept(random, except)} into
+     * {@code out}: the valid directions in their order without {@code except}, then {@code Util.shuffle}'s swaps with the same draws.
+     * Returns how many. A configuration class another mod changes is asked itself.
+     */
+    private static int shuffledDirections(MultifaceGrowthConfiguration config, RandomSource random, @javax.annotation.Nullable Direction except, Direction[] out) {
+        int n = 0;
+        if (!MULTIFACE_DIRECTIONS.allowed()) {
+            for (Direction d : except == null ? config.getShuffledDirections(random) : config.getShuffledDirectionsExcept(random, except)) {
+                out[n++] = d;
+            }
+            return n;
+        }
+        it.unimi.dsi.fastutil.objects.ObjectArrayList<Direction> valid = config.validDirections;
+        for (int i = 0, size = valid.size(); i < size; i++) {
+            Direction d = valid.get(i);
+            if (d != except) {
+                out[n++] = d;
+            }
+        }
+        for (int j = n; j > 1; j--) {
+            int k = random.nextInt(j);
+            Direction t = out[j - 1];
+            out[j - 1] = out[k];
+            out[k] = t;
+        }
+        return n;
+    }
+
+    /** Exact {@code MultifaceGrowthFeature.placeGrowthIfPossible} over the first {@code n} of {@code directions}. */
     private static boolean placeGrowthIfPossible(SectionCursor cursor, WorldGenLevel level, BlockPos pos, BlockState state, MultifaceGrowthConfiguration config,
-                                                 RandomSource random, List<Direction> directions) {
-        BlockPos.MutableBlockPos neighbour = pos.mutable();
-        for (Direction direction : directions) {
+                                                 RandomSource random, Direction[] directions, int n, BlockPos.MutableBlockPos neighbour) {
+        for (int d = 0; d < n; d++) {
+            Direction direction = directions[d];
             BlockState neighbourState = cursor.read(neighbour.setWithOffset(pos, direction));
             if (neighbourState.is(config.canBePlacedOn)) {
                 BlockState placement = config.placeBlock.getStateForPlacement(state, level, pos, direction);

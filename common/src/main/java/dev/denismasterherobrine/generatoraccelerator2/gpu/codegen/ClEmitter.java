@@ -3935,11 +3935,6 @@ public final class ClEmitter {
         return src;
     }
 
-    /** The start of a program of its own that uses this prelude's helpers (GPU decoration's): fp64, no contraction, jfloor, Xoroshiro. */
-    public static String decorPrelude() {
-        return "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n#pragma OPENCL FP_CONTRACT OFF\n" + JFLOOR + XO;
-    }
-
     /**
      * {@code Beardifier.compute}: the pieces in list order, then the junctions, each contribution as vanilla computes it. The beard
      * kernel is vanilla's own table ({@code Math.pow} is not reproducible on a GPU). Pieces: minX, minY, minZ, maxX, maxY, maxZ,

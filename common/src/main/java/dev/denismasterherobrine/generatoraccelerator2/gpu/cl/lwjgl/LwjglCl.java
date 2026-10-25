@@ -14,7 +14,6 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.opencl.CL11;
 import org.lwjgl.opencl.CL12;
 import org.lwjgl.opencl.CLEventCallback;
-import org.lwjgl.opencl.CL20;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
@@ -23,8 +22,6 @@ import org.lwjgl.system.MemoryUtil;
  * cannot see the bindings. Constructed reflectively through the public no-argument constructor.
  */
 public final class LwjglCl implements ClApi {
-    private static final int CL_QUEUE_PRIORITY_KHR = 0x1096;
-    private static final long CL_QUEUE_PRIORITY_LOW_KHR = 1 << 2;
     private static final int CL_DEVICE_HOST_UNIFIED_MEMORY = 0x1035;
 
     public LwjglCl() {}
@@ -83,30 +80,13 @@ public final class LwjglCl implements ClApi {
     }
 
     @Override
-    public long createQueue(long context, long device, boolean profiling, boolean lowPriority) {
+    public long createQueue(long context, long device, boolean profiling) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer err = stack.mallocInt(1);
             long props = profiling ? CL_QUEUE_PROFILING_ENABLE : 0;
-            if (lowPriority && deviceString(device, CL_DEVICE_EXTENSIONS).contains("cl_khr_priority_hints") && majorVersion(device) >= 2) {
-                LongBuffer p = stack.mallocLong(5).put(CL20.CL_QUEUE_PROPERTIES).put(props).put(CL_QUEUE_PRIORITY_KHR).put(CL_QUEUE_PRIORITY_LOW_KHR).put(0).flip();
-                long queue = CL20.clCreateCommandQueueWithProperties(context, device, p, err);
-                if (err.get(0) == CL_SUCCESS) {
-                    return queue;
-                }
-            }
             long queue = clCreateCommandQueue(context, device, props, err);
             check(err.get(0), "clCreateCommandQueue");
             return queue;
-        }
-    }
-
-    private static int majorVersion(long device) {
-        // "OpenCL <major>.<minor> <vendor specific>"
-        String v = deviceString(device, CL_DEVICE_VERSION).trim();
-        try {
-            return Integer.parseInt(v.substring(7, v.indexOf('.', 7)));
-        } catch (RuntimeException e) {
-            return 1;
         }
     }
 

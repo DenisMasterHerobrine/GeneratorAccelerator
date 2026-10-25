@@ -29,4 +29,11 @@ public interface Ga2Aquifer {
 
     /** Whether GA2's fast path answers this aquifer, i.e. no other mod changes its methods. */
     boolean ga2$fast();
+
+    /**
+     * The global fluid picker, when {@link #ga2$cellAir} is false for every cell where the picker gives lava or no air, and that
+     * picker's fluids depend on y alone (vanilla's). Null otherwise.
+     */
+    @javax.annotation.Nullable
+    net.minecraft.world.level.levelgen.Aquifer.FluidPicker ga2$skyPicker();
 }

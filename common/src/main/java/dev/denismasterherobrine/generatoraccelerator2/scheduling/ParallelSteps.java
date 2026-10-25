@@ -294,21 +294,10 @@ public final class ParallelSteps {
             FEATURES_LOCK_WAIT.since(scheduled);
             granted.run();
         };
-        // the GPU places the chunk's features first (gpu.decoration). The request waits for the GPU's answer (or a short while),
-        // holding no lock and no thread. The decoration then uses what the GPU placed
-        boolean gpu = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.wantsAsk(chunk);
-        if (gpu) {
-            request.hold();
-        }
         if (locks.acquireOrPark(request, dispatch)) {
             dispatch.run();
-        } else if (!gpu) {
+        } else {
             FEATURES_WAITED.increment();
-            // while the request waits, the GPU may place the chunk's features. The decoration uses them if they arrive in time
-            dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.prefetch(ctx, step, cache, chunk);
-        }
-        if (gpu && !dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ask(ctx, step, cache, chunk, () -> locks.ready(request))) {
-            locks.ready(request);
         }
         return result;
     }

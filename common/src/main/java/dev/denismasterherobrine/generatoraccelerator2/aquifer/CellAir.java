@@ -92,6 +92,19 @@ public final class CellAir {
     }
 
     /**
+     * A picker whose air and lava rule out a cell for {@link #of}'s test before anything else, with fluids of y alone, or null.
+     * The noise fill plans its sky corners with it ({@code dfc.runtime.ChunkBinding#planSky}).
+     */
+    @Nullable
+    public static Aquifer.FluidPicker skyPicker(Aquifer aquifer) {
+        if (aquifer instanceof Ga2Aquifer fast) {
+            return fast.ga2$skyPicker();
+        }
+        Aquifer.FluidPicker picker = disabledPicker(aquifer);
+        return picker != null && vanillaPicker(picker) ? picker : null;
+    }
+
+    /**
      * The picker of the aquifer from {@code Aquifer.createDisabled}, or null for any other aquifer. The anonymous class keeps
      * the picker in its one captured field. That field's name differs between the development and the shipped game, so the
      * field is found by type.

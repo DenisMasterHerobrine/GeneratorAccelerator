@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.features.predicate;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.features.placement.ScanPlacement;
 import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.WorldGenLevel;
@@ -16,17 +17,62 @@ import org.spongepowered.asm.mixin.injection.At;
 
 /** {@code environment_scan} tests its two predicates at every step through {@link PredicatePrograms}. The programs are kept in scan fields. */
 @Mixin(value = EnvironmentScanPlacement.class, priority = 5000)
-public abstract class EnvironmentScanPredicateMixin {
+public abstract class EnvironmentScanPredicateMixin implements ScanPlacement {
     @Unique
     private static final FeatureTargets.Hook GA2$CALLS = FeatureTargets.hook(FeatureTargets.PREDICATE_CALLS);
 
     @Shadow @Final private BlockPredicate targetCondition;
     @Shadow @Final private BlockPredicate allowedSearchCondition;
+    @Shadow @Final private net.minecraft.core.Direction directionOfSearch;
+    @Shadow @Final private int maxSteps;
 
     @Unique
     private Object ga2$targetProgram;
     @Unique
     private Object ga2$allowedProgram;
+
+    /** {@code getPositions} without its stream. Its tests go through the programs as the wrapped calls below do. */
+    @Override
+    public boolean ga2$scan(WorldGenLevel level, BlockPos.MutableBlockPos pos) {
+        if (!this.ga2$test(this.allowedSearchCondition, level, pos)) {
+            return false;
+        }
+        for (int i = 0; i < this.maxSteps; i++) {
+            if (this.ga2$test(this.targetCondition, level, pos)) {
+                return true;
+            }
+            pos.move(this.directionOfSearch);
+            if (level.isOutsideBuildHeight(pos.getY())) {
+                return false;
+            }
+            if (!this.ga2$test(this.allowedSearchCondition, level, pos)) {
+                break;
+            }
+        }
+        return this.ga2$test(this.targetCondition, level, pos);
+    }
+
+    @Unique
+    private boolean ga2$test(BlockPredicate predicate, WorldGenLevel level, BlockPos pos) {
+        if (!GA2$CALLS.allowed()) {
+            return predicate.test(level, pos);
+        }
+        Object program;
+        if (predicate == this.targetCondition) {
+            program = this.ga2$targetProgram;
+            if (program == null) {
+                program = PredicatePrograms.programFor(predicate);
+                this.ga2$targetProgram = program;
+            }
+        } else {
+            program = this.ga2$allowedProgram;
+            if (program == null) {
+                program = PredicatePrograms.programFor(predicate);
+                this.ga2$allowedProgram = program;
+            }
+        }
+        return PredicatePrograms.test(program, predicate, level, pos);
+    }
 
     @WrapOperation(method = "getPositions", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/blockpredicates/BlockPredicate;test(Ljava/lang/Object;Ljava/lang/Object;)Z"))

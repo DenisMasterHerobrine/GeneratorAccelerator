@@ -55,6 +55,8 @@ final class PredicateCodegen {
     private static final String IS_SOLID = Names.runtimeMethod(MOJ_STATE, "isSolid", "()Z");
     private static final String CAN_BE_REPLACED = Names.runtimeMethod(MOJ_STATE, "canBeReplaced", "()Z");
     private static final String REF_SET = "it/unimi/dsi/fastutil/objects/ReferenceOpenHashSet";
+    private static final String DIRECTION = Names.runtimeClass("net/minecraft/core/Direction");
+    private static final String STURDY_DESC = "(L" + LEVEL + ";L" + POS + ";IIIL" + DIRECTION + ";)Z";
     private static final String TEST_DESC = "(L" + LEVEL + ";L" + POS + ";L" + READS + ";)Z";
     private static final String READ_DESC = "(L" + LEVEL + ";L" + POS + ";L" + READS + ";III)L" + STATE + ";";
 
@@ -207,6 +209,16 @@ final class PredicateCodegen {
                 this.mv.visitVarInsn(Opcodes.ALOAD, 2);
                 this.mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, PREDICATE, "test", "(Ljava/lang/Object;Ljava/lang/Object;)Z", true);
                 forget();
+                this.mv.visitJumpInsn(Opcodes.IFEQ, no);
+            } else if (n instanceof PredicatePrograms.Sturdy s) {
+                // reads the world as a leaf does, and writes nothing: the remembered reads stay
+                this.mv.visitVarInsn(Opcodes.ALOAD, 1);
+                this.mv.visitVarInsn(Opcodes.ALOAD, 2);
+                pushInt(this.mv, s.dx);
+                pushInt(this.mv, s.dy);
+                pushInt(this.mv, s.dz);
+                constant(s.direction, DIRECTION);
+                this.mv.visitMethodInsn(Opcodes.INVOKESTATIC, PROGRAMS, "sturdy", STURDY_DESC, false);
                 this.mv.visitJumpInsn(Opcodes.IFEQ, no);
             } else if (n instanceof PredicatePrograms.Leaf leaf) {
                 state(leaf);

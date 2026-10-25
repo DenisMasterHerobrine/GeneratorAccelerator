@@ -226,22 +226,13 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
             LATE.increment();
             // A late surface means the GPU is busy elsewhere. The governor counts it with the late blocks and biomes.
             job.wg.answered(true);
-            if (job.wg.decor != null) {
-                job.wg.decor.drop(chunk.getPos());
-            }
             return false;
         } catch (Exception e) {
             GpuSteps.GPU_ERRORS.increment();
-            if (job.wg.decor != null) {
-                job.wg.decor.drop(chunk.getPos());
-            }
             return false;
         }
         if (r == null || r.cpu()) {
             CPU.increment();
-            if (job.wg.decor != null) {
-                job.wg.decor.drop(chunk.getPos());
-            }
             return false;
         }
         Runnable compare = GpuVerify.surfaceBefore(chunk, cpuSurface);
@@ -249,16 +240,9 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         records.run();
         if (!Apply.surface(job.wg, chunk, r)) {
             CPU.increment();
-            if (job.wg.decor != null) {
-                job.wg.decor.drop(chunk.getPos());
-            }
             return false;
         }
         APPLIED.increment();
-        if (job.wg.decor != null) {
-            // The GPU keeps the blocks it built. Every later write is logged and sent.
-            job.wg.decor.track(chunk);
-        }
         if (compare != null) {
             compare.run();
         }

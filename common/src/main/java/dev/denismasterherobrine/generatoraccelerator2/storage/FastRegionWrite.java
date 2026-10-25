@@ -15,16 +15,28 @@ import net.minecraft.nbt.NbtIo;
  * {@code DataOutputStream -> BufferedOutputStream -> DeflaterOutputStream -> RegionFile.ChunkBuffer}. That chain takes a
  * lock for every value written: the buffered stream's internal lock and the data stream's synchronized writes. It also
  * sets up a new zlib stream per chunk. This class writes the same NBT bytes into a plain array. It compresses them with a
- * reused {@link Deflater} at the same default settings. zlib's output does not depend on how its input is split. The same
- * [length, version, data] buffer then goes to {@code RegionFile.write}. Only for the deflate format, which is the default.
+ * reused {@link Deflater} at the configured level ({@code storage.toml} {@code compressionLevel}, 1 by default). At 6,
+ * vanilla's default, the output is vanilla's bytes: zlib's output does not depend on how its input is split. The stream is
+ * zlib's at every level, so any reader of deflate chunks reads it, vanilla's included. The [length, version, data] buffer
+ * then goes to {@code RegionFile.write}. Only for the deflate format, which is the default.
  *
- * <p>{@code -Dgeneratoraccelerator2.fastRegionWrite=false} turns it off.
+ * <p>{@code -Dgeneratoraccelerator2.fastRegionWrite=false} turns it off. {@code -Dgeneratoraccelerator2.compressionLevel=N}
+ * overrides the config's level.
  */
 public final class FastRegionWrite {
     private FastRegionWrite() {}
 
     /** Not final so the exactness test can compare both ways. */
     public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.fastRegionWrite"));
+
+    /** The level the config's yields to, 0 for none. Not final so the exactness test can ask for vanilla's level. */
+    public static int LEVEL = Integer.getInteger("generatoraccelerator2.compressionLevel", 0);
+
+    /** The zlib level chunks are written at, 1 to 9. */
+    public static int level() {
+        int level = LEVEL > 0 ? LEVEL : StorageConfig.compressionLevel();
+        return Math.max(Deflater.BEST_SPEED, Math.min(Deflater.BEST_COMPRESSION, level));
+    }
 
     private static final ThreadLocal<Buffers> BUFFERS = ThreadLocal.withInitial(Buffers::new);
 
@@ -38,7 +50,7 @@ public final class FastRegionWrite {
         b.shrink();
         b.nbt.reset();
         NbtIo.write(tag, b.nbt);
-        Deflater deflater = b.deflater;
+        Deflater deflater = b.deflater(level());
         deflater.reset();
         deflater.setInput(b.nbt.buf, 0, b.nbt.count);
         deflater.finish();
@@ -64,8 +76,21 @@ public final class FastRegionWrite {
         /** Larger arrays are dropped before the next chunk, so one huge chunk does not stay in memory once per thread. */
         static final int KEEP = 1 << 20;
         final Bytes nbt = new Bytes(1 << 16);
-        final Deflater deflater = new Deflater();
+        Deflater deflater;
+        int level;
         byte[] out = new byte[1 << 15];
+
+        /** The thread's compressor at {@code level}, made again when the level changed. */
+        Deflater deflater(int level) {
+            if (this.deflater == null || this.level != level) {
+                if (this.deflater != null) {
+                    this.deflater.end();
+                }
+                this.deflater = new Deflater(level);
+                this.level = level;
+            }
+            return this.deflater;
+        }
 
         /** Called before encoding. By then the last result, which wraps {@code out}, has been written. */
         void shrink() {

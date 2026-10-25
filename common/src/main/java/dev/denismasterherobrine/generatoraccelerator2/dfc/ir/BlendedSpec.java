@@ -56,6 +56,29 @@ public final class BlendedSpec {
         return new Column(this);
     }
 
+    /**
+     * A bound of {@link #compute}'s magnitude, far below vanilla's {@code maxValue} (which bounds the sums before their scaling).
+     * An octave of {@code ImprovedNoise.noise} is a convex combination of its corners' gradient terms, and a gradient's components
+     * are -1, 0 or 1. Over the two corners of an axis the fade weights put at most 0.5 on the x and z distances, and at most 1 on
+     * the y distance, which the "broken" y keeps in [0, 1). So an octave stays within 2. Each limit sum then stays within 2 times
+     * its octaves' weights, and the result lies between the two sums, scaled down by 512 and 128. Widened for the roundings.
+     */
+    public double bound() {
+        double min = 0.0;
+        double max = 0.0;
+        double weight = 1.0;
+        for (int j = 0; j < 16; j++) {
+            if (minPerm[j] != null) {
+                min += 2.0 * weight;
+            }
+            if (maxPerm[j] != null) {
+                max += 2.0 * weight;
+            }
+            weight *= 2.0;
+        }
+        return Math.max(min, max) / 512.0 / 128.0 * (1.0 + 1e-6);
+    }
+
     /** Per-column state for {@link #compute}: x/z halves of all 40 octaves once per column, y half per corner. */
     public static final class Column {
         private final BlendedSpec s;

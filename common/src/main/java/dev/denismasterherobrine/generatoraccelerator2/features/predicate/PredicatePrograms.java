@@ -209,6 +209,9 @@ public final class PredicatePrograms {
                 default -> {
                 }
             }
+            if (p instanceof net.minecraft.world.level.levelgen.blockpredicates.HasSturdyFacePredicate h) {
+                return new Sturdy(h.offset.getX(), h.offset.getY(), h.offset.getZ(), h.direction);
+            }
             if (p instanceof StateTestingPredicate && own(StateTestingPredicate.class)) {
                 Vec3i offset = ((StateTesting) p).ga2$offset();
                 Leaf leaf = leaf(p, name.substring(PKG.length()), offset);
@@ -429,6 +432,35 @@ public final class PredicatePrograms {
             }
             return answer;
         }
+    }
+
+    /** {@code has_sturdy_face}: the state at the offset and its face, read through the thread's position instead of a new one. */
+    static final class Sturdy extends Node {
+        final int dx, dy, dz;
+        final net.minecraft.core.Direction direction;
+
+        Sturdy(int dx, int dy, int dz, net.minecraft.core.Direction direction) {
+            this.dx = dx;
+            this.dy = dy;
+            this.dz = dz;
+            this.direction = direction;
+        }
+
+        @Override
+        boolean test(WorldGenLevel level, BlockPos origin, @Nullable RegionReads reads, @Nullable Memo memo) {
+            return sturdy(level, origin, this.dx, this.dy, this.dz, this.direction);
+        }
+    }
+
+    private static final ThreadLocal<BlockPos.MutableBlockPos> STURDY_AT = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+
+    /**
+     * {@code HasSturdyFacePredicate.test}: {@code level.getBlockState(p).isFaceSturdy(level, p, direction)} at {@code origin} plus the
+     * offset. The face test keeps no position, so the thread's mutable one stands in for vanilla's new one.
+     */
+    public static boolean sturdy(WorldGenLevel level, BlockPos origin, int dx, int dy, int dz, net.minecraft.core.Direction direction) {
+        BlockPos.MutableBlockPos at = STURDY_AT.get().set(origin.getX() + dx, origin.getY() + dy, origin.getZ() + dz);
+        return level.getBlockState(at).isFaceSturdy(level, at, direction);
     }
 
     abstract static class Leaf extends Node {

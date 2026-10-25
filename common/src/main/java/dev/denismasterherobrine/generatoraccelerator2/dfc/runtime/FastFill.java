@@ -153,7 +153,6 @@ public final class FastFill {
         dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer fastAquifer =
             aquifer instanceof dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer a && a.ga2$fast() ? a : null;
         boolean steps = HookTargets.allowed(HookTargets.NOISE_FILL_STEPS);
-        noisechunk.initializeForFirstCellX();
         BlockPos.MutableBlockPos blockpos$mutableblockpos = new BlockPos.MutableBlockPos();
         int k = ((NoiseChunkAccessor) noisechunk).ga2$cellWidth();
         int l = ((NoiseChunkAccessor) noisechunk).ga2$cellHeight();
@@ -174,7 +173,12 @@ public final class FastFill {
         int blocksPerCell = k * k * l;
         if (skipper != null) {
             binding.classifyCells(cellValues, skipper);
+            if (VERIFY_EVERY == 0) {
+                // before the first slice: the plan decides which corners its columns compute
+                binding.planSky(i, j, CellAir.skyPicker(aquifer));
+            }
         }
+        noisechunk.initializeForFirstCellX();
         // block ids per section, packed once at the end (SectionWriter). The heightmaps then come from the column tops
         SectionWriter writer = columns && !voidTerrain ? SectionWriter.begin(chunk) : null;
         short defaultId = writer != null ? writer.id(defaultBlock) : 0;

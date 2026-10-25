@@ -21,8 +21,22 @@ import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
 public final class FillHarness {
     private FillHarness() {}
 
-    /** Same picker as {@code NoiseBasedChunkGenerator.createFluidPicker}. */
+    /**
+     * The picker {@code NoiseBasedChunkGenerator.createFluidPicker} makes, its own lambda, so GA2 recognizes it as the game does
+     * ({@code CellAir.vanillaPicker}). A transcription of it when the method cannot be called.
+     */
     public static Aquifer.FluidPicker vanillaPicker(NoiseGeneratorSettings settings) {
+        try {
+            java.lang.reflect.Method m = net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator.class.getDeclaredMethod("createFluidPicker", NoiseGeneratorSettings.class);
+            m.setAccessible(true);
+            return (Aquifer.FluidPicker) m.invoke(null, settings);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return copiedPicker(settings);
+        }
+    }
+
+    /** {@code NoiseBasedChunkGenerator.createFluidPicker}'s rule in a lambda of this class. */
+    public static Aquifer.FluidPicker copiedPicker(NoiseGeneratorSettings settings) {
         Aquifer.FluidStatus lava = new Aquifer.FluidStatus(-54, Blocks.LAVA.defaultBlockState());
         int sea = settings.seaLevel();
         Aquifer.FluidStatus water = new Aquifer.FluidStatus(sea, settings.defaultFluid());

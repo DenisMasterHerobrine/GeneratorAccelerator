@@ -395,6 +395,12 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     }
 
     @Override
+    public Aquifer.FluidPicker ga2$skyPicker() {
+        // cellAir asks the picker before anything else. Below a liquid altitude it says no without asking it
+        return this.ga2$mode != AquiferFastPath.OFF && !LiquidRegions.active() && CellAir.vanillaPicker(this.globalFluidPicker) ? this.globalFluidPicker : null;
+    }
+
+    @Override
     public boolean ga2$cellAir(int x0, int y0, int z0, int w, int h) {
         if (this.ga2$mode == AquiferFastPath.OFF || !CellAir.noLava(this.globalFluidPicker, x0, y0, z0, w, h)) {
             return false;

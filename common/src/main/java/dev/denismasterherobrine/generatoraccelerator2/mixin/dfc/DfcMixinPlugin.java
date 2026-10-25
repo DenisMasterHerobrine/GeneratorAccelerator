@@ -132,17 +132,25 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("MonsterRoomFeatureMixin", new FeatureHook("monsterRoom", List.of("place(" + FEATURE_CTX + ")Z"))),
         Map.entry("SimpleBlockFeatureMixin", new FeatureHook("simpleBlock", List.of("place(" + FEATURE_CTX + ")Z"))),
         Map.entry("SculkPatchFeatureMixin", new FeatureHook("sculk", List.of("place(" + FEATURE_CTX + ")Z", "canSpreadFrom"))),
-        // the patches and selectors GPU decoration places itself (gpu.decor.DecorSpec)
-        Map.entry("GpuDecorInspectMixin", new FeatureHook("gpuDecorComposites", List.of("place"), MergedMethods.Mode.BYPASS)),
-        Map.entry("GpuDecorLeavesInspectMixin", new FeatureHook("gpuDecorLeaves", List.of("place"), MergedMethods.Mode.BYPASS)),
-        Map.entry("GpuHugeMushroomInspectMixin", new FeatureHook("gpuHugeMushroom", List.of("place", "makeCap", "placeTrunk", "getTreeHeight", "isValidPosition",
-            "getTreeRadiusForHeight"), MergedMethods.Mode.BYPASS)),
-        Map.entry("GpuClimateInspectMixin", new FeatureHook("gpuClimate", List.of("shouldFreeze", "shouldSnow", "getTemperature", "getHeightAdjustedTemperature",
+        // the leaf rules and the shape update the tree passes answer themselves (features.tree.LeafUpdates)
+        Map.entry("TreeLeavesInspectMixin", new FeatureHook("treeLeaves", List.of("updateShape", "getDistanceAt", "getOptionalDistanceAt"),
+            MergedMethods.Mode.BYPASS)),
+        // the set each decoration step collects its feature indexes into (features.StepFeatureSet)
+        Map.entry("DecorationStepSetMixin", new FeatureHook("decorationSteps", List.of(
+            "applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"),
+            List.of(), MergedMethods.Mode.WRAP, List.of("IntArraySet"))),
+        // the beehive decorator the tree transcription places itself, with the leaves packed (features.tree.TreeBees)
+        Map.entry("TreeBeesInspectMixin", new FeatureHook("treeBees", List.of("place"), MergedMethods.Mode.BYPASS)),
+        // the entry the commonest features skip their context at (features.fast.RawPlace)
+        Map.entry("FeatureSharedStateMixin", new FeatureHook("featureEntry", List.of("place(Lnet/minecraft/world/level/levelgen/feature/configurations/FeatureConfiguration;"
+            + "Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkGenerator;Lnet/minecraft/util/RandomSource;Lnet/minecraft/core/BlockPos;)Z"),
+            MergedMethods.Mode.BYPASS)),
+        // the direction lists the multiface fast path draws itself (features.fast.SmallFeatures.multiface)
+        Map.entry("MultifaceDirectionsInspectMixin", new FeatureHook("multifaceDirections", List.of("getShuffledDirections", "getShuffledDirectionsExcept"),
+            MergedMethods.Mode.BYPASS)),
+        // the biome climate methods the snow and freeze fast path skips for warm biomes (features.fast.WarmBiomes)
+        Map.entry("ClimateInspectMixin", new FeatureHook("climate", List.of("shouldFreeze", "shouldSnow", "getTemperature", "getHeightAdjustedTemperature",
             "warmEnoughToRain", "coldEnoughToSnow", "getBaseTemperature"), MergedMethods.Mode.BYPASS)),
-        Map.entry("GpuMultifaceInspectMixin", new FeatureHook("gpuMultiface", List.of("getStateForPlacement", "isValidStateForPlacement", "canAttachTo", "hasFace",
-            "isFaceSupported", "isWaterloggable", "getSpreader", "spreadFromFaceTowardRandomDirection", "spreadFromFaceTowardDirection",
-            "getSpreadFromFaceTowardDirection", "spreadToFace", "stateCanBeReplaced", "canSpreadInto", "placeBlock", "getSpreadTypes",
-            "isOtherBlockValidAsSource", "isAcceptableNeighbour", "getPropertyForFace"), MergedMethods.Mode.BYPASS)),
         // the sculk spreader, behaviours and vein spreaders SculkFast transcribes, and the region's no-op calls it skips
         Map.entry("SculkClassesInspectMixin", new FeatureHook("sculk", SCULK_METHODS, MergedMethods.Mode.BYPASS)),
         Map.entry("SculkInterfacesInspectMixin", new FeatureHook("sculk", SCULK_METHODS, MergedMethods.Mode.BYPASS)),
@@ -551,9 +559,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     }
 
     /**
-     * GA2 mixins apply, with three exceptions. The GPU decoration write log ({@code SectionDeltaMixin},
-     * {@code GpuLevelChunkMixin}, {@code BlockStateIdMixin}) applies only with {@code generatoraccelerator2.gpu.decoration}
-     * on. The mailbox, main thread executor and unload mixins stay out under C2ME or Moonrise, whose chunk systems
+     * GA2 mixins apply, with two exceptions. The mailbox, main thread executor and unload mixins stay out under C2ME or Moonrise, whose chunk systems
      * schedule that work themselves. With takeover off, the DFC's NoiseChunk and climate hooks step aside for the mods
      * known to patch that code. Otherwise, overlapping mixins of other performance mods are cancelled instead
      * (compat/Takeover through MixinSquared).
@@ -563,11 +569,6 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".StructureTemplatePlaceMixin") || mixinClassName.endsWith(".StructureTemplatePlaceNeoMixin")) {
             // the loader's own processBlockInfos call: vanilla's five arguments on Fabric, NeoForge's six
             return mixinClassName.endsWith("Neo" + "Mixin") == dev.denismasterherobrine.generatoraccelerator2.platform.Platform.isNeoForge();
-        }
-        if ((mixinClassName.endsWith(".SectionDeltaMixin") || mixinClassName.endsWith(".GpuLevelChunkMixin") || mixinClassName.endsWith(".BlockStateIdMixin"))
-            && !Boolean.getBoolean("generatoraccelerator2.gpu.decoration")) {
-            // GPU decoration's write log costs every block write. Applied only when the option is on.
-            return false;
         }
         if ((mixinClassName.endsWith(".ChunkMapMailboxMixin") || mixinClassName.endsWith(".MainThreadExecutorMixin")
             || mixinClassName.endsWith(".ChunkMapUnloadMixin"))
@@ -661,9 +662,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         if (methods.isEmpty() || !mixinClassName.startsWith(OWN_MIXIN_PACKAGE)) {
             return;
         }
-        List<String> changedBy = Coremods.withNames(targetClass.name, methods,
-            MergedMethods.foreignChanges(targetClass, methods, List.of(), MergedMethods.Mode.BYPASS, OWN_MIXIN_PACKAGE));
         List<FeatureHook> hooks = STEP_HOOKS.getOrDefault(simpleName, List.of());
+        List<String> changedBy = Coremods.withNames(targetClass.name, methods,
+            unhandled(MergedMethods.foreignCalls(targetClass, methods, List.of(), MergedMethods.Mode.BYPASS, List.of(), OWN_MIXIN_PACKAGE), hooks));
         boolean forced = !hooks.isEmpty() && Boolean.getBoolean(HookTargets.forceProperty(hooks.get(0).name()));
         if (!late) {
             LOGGER.warn("{}: fast {} off (late mixin inspection unavailable)",
@@ -674,6 +675,32 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             LOGGER.info("{}: {} shared with {} -> GA2 versions not applied",
                 dev.denismasterherobrine.generatoraccelerator2.platform.Names.mojangClass(targetClass.name), methods, changedBy);
         }
+    }
+
+    /**
+     * The mixins among {@code changes} whose changes no known entry of {@code hooks} handles. A handled change is one GA2's
+     * replacement reproduces (Fabric API's air test in the section write), so it does not keep the replacement out.
+     */
+    private static List<String> unhandled(List<MergedMethods.Change> changes, List<FeatureHook> hooks) {
+        Map<String, List<String>> byMixin = new java.util.LinkedHashMap<>();
+        for (MergedMethods.Change c : changes) {
+            int paren = c.method().indexOf('(');
+            byMixin.computeIfAbsent(c.mixin(), k -> new java.util.ArrayList<>()).add(paren < 0 ? c.method() : c.method().substring(0, paren));
+        }
+        List<String> out = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<String>> e : byMixin.entrySet()) {
+            boolean known = false;
+            for (FeatureHook h : hooks) {
+                if (dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(h.name(), e.getKey(), e.getValue()) != null) {
+                    known = true;
+                    break;
+                }
+            }
+            if (!known) {
+                out.add(e.getKey());
+            }
+        }
+        return out;
     }
 
     private static void inspect(ClassNode targetClass, String mixinClassName, boolean late) {

@@ -39,6 +39,7 @@ public final class LateOverwrites {
 
     /** Per GA2 mixin (simple name): the vanilla methods it replaces (name and descriptor). The replacement is {@code ga2$<name>}. */
     private static final Map<String, List<String>> METHODS = Map.ofEntries(
+        Map.entry("XoroshiroReseedMixin", List.of("setSeed(J)V")),
         Map.entry("SectionWriteMixin", List.of("setBlockState(III" + BLOCK_STATE + "Z)" + BLOCK_STATE)),
         Map.entry("ProtoChunkReadsInspectMixin", List.of("getBlockState(Lnet/minecraft/core/BlockPos;)" + BLOCK_STATE,
             "getFluidState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/material/FluidState;")),

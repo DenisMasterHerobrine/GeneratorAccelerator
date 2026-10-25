@@ -37,7 +37,9 @@ public record ProgramSet(
     int internedNodes,
     long compileNanos,
     /** Other mods' samplers the programs call by index. {@link ExternSamplers} holds them weakly, so this set keeps them. */
-    List<ExternSamplers.Sampler> externSamplers
+    List<ExternSamplers.Sampler> externSamplers,
+    /** Bounds of the interpolated roots over a column's upper corners, for the noise fill's sky corners, or null. */
+    @Nullable dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds sky
 ) {
     public Node root(String name) {
         Node n = routerRoots.get(name);

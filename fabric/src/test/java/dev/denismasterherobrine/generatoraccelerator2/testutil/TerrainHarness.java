@@ -78,7 +78,7 @@ public final class TerrainHarness {
         /** The level's biome zoom seed ({@code BiomeManager.obfuscateSeed(seed)}). */
         public final long zoomSeed;
 
-        World(Preset preset, long seed) {
+        public World(Preset preset, long seed) {
             this.preset = preset;
             this.seed = seed;
             this.registries = HarnessWorld.registries();

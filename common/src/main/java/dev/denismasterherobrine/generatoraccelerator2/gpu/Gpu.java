@@ -268,7 +268,6 @@ public final class Gpu {
             }
             LOGGER.info("on: {}; {}", wg.status(), test);
             wg.prepareSurface();
-            wg.prepareDecoration();
         } catch (ClEmitter.Unsupported e) {
             GpuRuntime.fail(wg, e.getMessage());
             d.submit(() -> GpuRuntime.release(wg));
@@ -396,47 +395,6 @@ public final class Gpu {
             out.add(sd.toString());
         }
         out.add("  decorations wait for their locks " + dev.denismasterherobrine.generatoraccelerator2.scheduling.ParallelSteps.FEATURES_LOCK_WAIT.describe());
-        out.add("  " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.workerStatus());
-        if (dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.ENABLED) {
-            out.add(String.format(java.util.Locale.ROOT, "  GPU copy for decoration: %,d chunks kept, %,d sections sent whole, %,d blocks sent, %,d let go early; checked %,d (%,d differ)",
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.TRACKED.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.DELTAS.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.BLOCKS_SENT.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.Resident.EVICTED.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.VERIFIED.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.DIFFERING.sum()));
-            out.add(String.format(java.util.Locale.ROOT,
-                "  features on the GPU: %,d chunks asked, %,d features written (%,d blocks), %,d read changed blocks, %,d left to the CPU by the GPU, %,d late, %,d seeds; "
-                    + "ready after %s; checked %,d (%,d differ, %,d features taken off the GPU)",
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.JOBS.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.USED.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.WRITES.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.CHANGED.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.GPU_CPU.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.LATE.sum() + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.NOT_READY.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.SEED.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.READY.describe(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.VERIFIED.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.DIFFER.sum(),
-                dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.REJECTED.sum()));
-            out.add("  " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.holdStatus());
-            out.add("  " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.speculationStatus());
-            out.add("  features left out of jobs (their GPU results kept reading changed blocks): " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.WASTEFUL.sum()
-                + "; " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.conflictStatus());
-            out.add("  " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.threadStatus());
-            out.add("  " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.batchTimeStatus());
-            out.add("  decoration batches: " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.batchStatus() + "; asking took " + dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.SUBMIT.describe());
-            List<GpuWorldgen> decors;
-            synchronized (WORLDS) {
-                decors = new ArrayList<>(WORLDS.values());
-            }
-            for (GpuWorldgen w : decors) {
-                if (w.decor != null && !w.decor.featureStatus().isEmpty()) {
-                    out.add("  GPU features (written/not used (changed before, by the decoration, heightmap or light)):" + w.decor.featureStatus());
-                    String gone = w.decor.spec() == null ? "" : dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob.rejectedStatus(w.decor.spec());
-                    if (!gone.isEmpty()) {
-                        out.add("  taken off the GPU by probation: " + gone);
-                    }
-                }
-            }
-            String phases = dev.denismasterherobrine.generatoraccelerator2.gpu.decor.GpuDecor.phaseStatus();
-            if (!phases.isEmpty()) {
-                out.add("  ore kernel " + phases);
-            }
-        }
         long batches = GpuWorldgen.BATCHES.sum();
         if (batches > 0) {
             out.add(String.format(java.util.Locale.ROOT, "  latency: biomes %s (written in %s); noise %s (queued %s, batch %s of %.1f chunks; written in %s, NoiseChunk %s); regions %s",

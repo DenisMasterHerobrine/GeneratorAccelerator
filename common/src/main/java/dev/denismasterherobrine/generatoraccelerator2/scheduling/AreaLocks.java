@@ -97,18 +97,10 @@ public final class AreaLocks {
         /** The chunk holder's queue level when the request was made (lower runs first). */
         final int level;
         Runnable onLateGrant;
-        /** False while the step waits for something before it may run (a GPU result). Parked, passed over, until {@link AreaLocks#ready}. */
-        volatile boolean ready = true;
         /** Arrival order (monitor), whether parked now, and the last release that retried it. */
         long seq;
         boolean parked;
         int visit;
-
-        /** Holds the request back until {@link AreaLocks#ready} (call before {@link AreaLocks#acquireOrPark}). */
-        public Request hold() {
-            ready = false;
-            return this;
-        }
 
         Request(long[] read, long[] write, boolean decoration, int level) {
             this.read = read;
@@ -200,24 +192,6 @@ public final class AreaLocks {
         }
     }
 
-    /**
-     * What a held request ({@link Request#hold}) waited for is available. The request is granted now when its keys are free, and its
-     * step is then dispatched on this thread. Otherwise a later release grants it.
-     */
-    public void ready(Request request) {
-        boolean granted = false;
-        synchronized (this) {
-            request.ready = true;
-            if (request.parked && take(request)) {
-                unpark(request);
-                granted = true;
-            }
-        }
-        if (granted) {
-            request.onLateGrant.run();
-        }
-    }
-
     /** Releases {@code request}'s keys and dispatches every parked request that can now run. */
     public void release(Request request) {
         List<Request> granted = null;
@@ -283,9 +257,6 @@ public final class AreaLocks {
 
     /** Takes the request's chunks if no holder writes a chunk it reads and none reads a chunk it writes (caller holds the monitor). */
     private boolean take(Request request) {
-        if (!request.ready) {
-            return false;
-        }
         for (long key : request.read) {
             if (writeHeld.contains(key)) {
                 return false;

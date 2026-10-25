@@ -17,30 +17,6 @@ public abstract class GpuProtoChunkMixin implements Ga2GpuChunk {
     private volatile GpuTerrain ga2$gpuTerrain;
     @Unique
     private volatile dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob ga2$gpuSurface;
-    @Unique
-    private volatile dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DeltaLog ga2$deltaLog;
-    @Unique
-    private volatile dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob ga2$decorJob;
-
-    @Override
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob ga2$decorJob() {
-        return ga2$decorJob;
-    }
-
-    @Override
-    public void ga2$setDecorJob(dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DecorJob job) {
-        this.ga2$decorJob = job;
-    }
-
-    @Override
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DeltaLog ga2$deltaLog() {
-        return ga2$deltaLog;
-    }
-
-    @Override
-    public void ga2$setDeltaLog(dev.denismasterherobrine.generatoraccelerator2.gpu.decor.DeltaLog log) {
-        this.ga2$deltaLog = log;
-    }
 
     @Override
     public dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob ga2$gpuSurface() {

@@ -17,13 +17,37 @@ public final class FeaturesCommand {
         return Commands.literal("features")
             .then(Commands.literal("stats").executes(ctx -> stats(ctx.getSource())))
             .then(Commands.literal("report").executes(ctx -> report(ctx.getSource())))
-            .then(Commands.literal("mods").executes(ctx -> mods(ctx.getSource())));
+            .then(Commands.literal("mods").executes(ctx -> mods(ctx.getSource())))
+            .then(Commands.literal("census")
+                .executes(ctx -> census(ctx.getSource(), null))
+                .then(Commands.literal("on").executes(ctx -> census(ctx.getSource(), Boolean.TRUE)))
+                .then(Commands.literal("off").executes(ctx -> census(ctx.getSource(), Boolean.FALSE)))
+                .then(Commands.literal("reset").executes(ctx -> {
+                    FeatureCensus.reset();
+                    send(ctx.getSource(), FeatureCensus.status());
+                    return 1;
+                }))
+                .then(Commands.literal("report").executes(ctx -> {
+                    CommandSourceStack source = ctx.getSource();
+                    send(source, FeatureCensus.status() + ", report follows");
+                    FeatureCensus.report(line -> send(source, line));
+                    return 1;
+                })));
+    }
+
+    /** {@code /ga2 features census [on|off]}: the decoration census ({@link FeatureCensus}). */
+    private static int census(CommandSourceStack source, Boolean on) {
+        if (on != null) {
+            FeatureCensus.on = on;
+        }
+        send(source, FeatureCensus.status());
+        return 1;
     }
 
     private static int stats(CommandSourceStack source) {
         send(source, "regions " + FeatureStats.REGIONS.sum() + ", placements through the pipeline " + FeatureStats.PLACEMENTS_FAST.sum()
             + " (other modifiers: " + FeatureStats.PLACEMENTS_GENERIC_FILTERS.sum() + " filters and " + FeatureStats.PLACEMENTS_GENERIC_REPEATS.sum()
-            + " repeats without their streams, " + FeatureStats.PLACEMENTS_GENERIC_MODIFIERS.sum() + " through their own streams)");
+            + " repeats without their streams, " + FeatureStats.PLACEMENTS_GENERIC_MODIFIERS.sum() + " through their own streams))");
         if (FeatureStats.DETAILED) {
             send(source, "chunk cache hits " + FeatureStats.CHUNK_CACHE_HITS.sum() + ", misses " + FeatureStats.CHUNK_CACHE_MISSES.sum()
                 + "; fast writes " + FeatureStats.WRITES_FAST.sum() + ", delegated " + FeatureStats.WRITES_DELEGATED.sum()

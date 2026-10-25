@@ -85,17 +85,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     private final List<PoiChange> poiChanges = new ArrayList<>();
     private final RegionChunks regionChunks;
     private final boolean cacheHeightmaps;
-    private final LevelLightEngine lightEngine = new LevelLightEngine(new net.minecraft.world.level.chunk.LightChunkGetter() {
-        @Override
-        public net.minecraft.world.level.chunk.LightChunk getChunkForLighting(int x, int z) {
-            return null;
-        }
-
-        @Override
-        public net.minecraft.world.level.BlockGetter getLevel() {
-            return HarnessLevel.this;
-        }
-    }, false, false);
+    private final LevelLightEngine lightEngine;
     /** Game time 0: scheduled tick times only need to agree between the two runs. */
     private static final LevelData LEVEL_DATA = new LevelData() {
         @Override public BlockPos getSpawnPos() { return BlockPos.ZERO; }
@@ -127,6 +117,18 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         this.registryAccess = registryAccess;
         this.cacheHeightmaps = cacheHeightmaps;
         this.regionChunks = cacheHeightmaps ? new RegionChunks(new ChunkPos(centerX, centerZ), HarnessWorld.FEATURE_DEPENDENCIES) : null;
+        // no chunk has light data yet. The sky storage then answers 15 where the dimension has a sky, and block light is 0
+        this.lightEngine = new LevelLightEngine(new net.minecraft.world.level.chunk.LightChunkGetter() {
+            @Override
+            public net.minecraft.world.level.chunk.LightChunk getChunkForLighting(int x, int z) {
+                return null;
+            }
+
+            @Override
+            public net.minecraft.world.level.BlockGetter getLevel() {
+                return HarnessLevel.this;
+            }
+        }, false, dimension.hasSkyLight());
     }
 
     public List<PoiChange> poiChanges() {
@@ -421,7 +423,10 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         throw new UnsupportedOperationException("getChunkSource");
     }
 
-    /** Dark everywhere: during FEATURES the centre chunk has not been lit yet, so vanilla reads 0 from its engine too. */
+    /**
+     * As the server's engine answers chunks that have not been lit yet (during FEATURES none of them is): sky light 15 where the
+     * dimension has a sky, block light 0.
+     */
     @Override
     public LevelLightEngine getLightEngine() {
         return lightEngine;
@@ -466,6 +471,19 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     }
 
     private dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads reads;
+    private net.minecraft.world.level.levelgen.placement.PlacementContext placementContext;
+
+    /** As the region keeps it: one context for its nested placements. */
+    @Override
+    public net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext(net.minecraft.world.level.chunk.ChunkGenerator generator) {
+        if (placementContext == null || placementContext.generator() != generator) {
+            placementContext = new net.minecraft.world.level.levelgen.placement.PlacementContext(this, generator, Optional.empty());
+        }
+        return placementContext;
+    }
+
+    /** 0 not decided yet, 1 reads in place, 2 not. */
+    private int readsAllowed;
 
     /**
      * With the region cache, as in the game. The harness stands in for the region, and the tests never load the region's
@@ -473,8 +491,12 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
      */
     @Override
     public dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads ga2$reads() {
-        if (regionChunks == null || !FeatureHooks.enabled() || !FeaturesConfig.regionReads()
-            || !dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.REGION_READS)) {
+        // decided at the first read, as the region decides it once (a level is used on the thread that made it)
+        if (readsAllowed == 0) {
+            readsAllowed = regionChunks != null && FeatureHooks.enabled() && FeaturesConfig.regionReads()
+                && dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.REGION_READS) ? 1 : 2;
+        }
+        if (readsAllowed != 1) {
             return null;
         }
         if (reads == null) {
@@ -519,8 +541,53 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     }
 
     @Override
+    /**
+     * The zoom a real region answers biome lookups from (the region cache's, so the vanilla runs, with hooks off, keep vanilla's
+     * lookup). Without it every lookup took vanilla's eight-point fiddle and chunk lookups, and the harness spent an eighth of its
+     * decoration time there.
+     */
     public dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom ga2$zoom() {
-        return null; // the harness level has no biome manager. Biome lookups go through its own getBiome
+        dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom z = zoom;
+        if (z == null) {
+            if (regionChunks == null || !FeatureHooks.enabled() || !FeaturesConfig.biomeZoom()
+                || !dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks.zoomAllowed()) {
+                return null;
+            }
+            z = zoom = dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom.forRegion(biomeManager, centerX << 4, centerZ << 4, getMinBuildHeight(),
+                getMaxBuildHeight(), this);
+        }
+        return z.owner() == this ? z : null;
+    }
+
+    private dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom zoom;
+    private Holder<Biome>[] zoomBiomes;
+
+    /** As the region answers it: every biome in the palettes of the 3x3 chunks' sections (the biome filter's shortcut). */
+    @Override
+    @SuppressWarnings("unchecked")
+    public Holder<Biome>[] ga2$zoomBiomes() {
+        if (zoomBiomes == null) {
+            List<Holder<Biome>> found = new ArrayList<>(4);
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    for (net.minecraft.world.level.chunk.LevelChunkSection section : getChunk(centerX + dx, centerZ + dz).getSections()) {
+                        if (!(section.getBiomes() instanceof net.minecraft.world.level.chunk.PalettedContainer<Holder<Biome>> container)
+                            || container.data.palette() instanceof net.minecraft.world.level.chunk.GlobalPalette) {
+                            return null;
+                        }
+                        net.minecraft.world.level.chunk.Palette<Holder<Biome>> palette = container.data.palette();
+                        for (int i = 0; i < palette.getSize(); i++) {
+                            Holder<Biome> b = palette.valueFor(i);
+                            if (!found.contains(b)) {
+                                found.add(b);
+                            }
+                        }
+                    }
+                }
+            }
+            zoomBiomes = found.toArray(new Holder[0]);
+        }
+        return zoomBiomes;
     }
 
     @Override

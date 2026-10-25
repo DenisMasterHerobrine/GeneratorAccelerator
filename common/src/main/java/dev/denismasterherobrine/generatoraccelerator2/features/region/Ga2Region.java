@@ -63,6 +63,16 @@ public interface Ga2Region {
         return null;
     }
 
+    /**
+     * The context {@code PlacedFeature.place} makes for each nested placement ({@code new PlacementContext(this, generator,
+     * Optional.empty())}), made once for the region and handed out again (it holds only those three and changes nothing). Null
+     * when the region keeps none.
+     */
+    @javax.annotation.Nullable
+    default net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext(net.minecraft.world.level.chunk.ChunkGenerator generator) {
+        return null;
+    }
+
     /** The region's block and fluid reads ({@link RegionReads}), or null when they go the vanilla way. */
     @javax.annotation.Nullable
     default RegionReads ga2$reads() {

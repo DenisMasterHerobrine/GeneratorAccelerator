@@ -33,13 +33,15 @@ public abstract class PalettedContainerMixin<T> {
             consumer.accept(palette.valueFor(0));
             ci.cancel();
         } else if (size <= 64) {
-            dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds seen = dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds.get();
-            data.storage().getAll(seen);
-            int n = seen.count;
-            // Copied because a consumer may itself query a container, which would reuse this thread's instance.
-            int[] order = java.util.Arrays.copyOf(seen.order, n);
-            for (int i = 0; i < n; i++) {
-                consumer.accept(palette.valueFor(order[i]));
+            // a consumer that itself queries a container takes the next level's instance
+            dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds seen = dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds.take();
+            try {
+                data.storage().getAll(seen);
+                for (int i = 0, n = seen.count; i < n; i++) {
+                    consumer.accept(palette.valueFor(seen.order[i]));
+                }
+            } finally {
+                dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds.give();
             }
             ci.cancel();
         }
