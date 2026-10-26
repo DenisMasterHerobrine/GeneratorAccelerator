@@ -156,6 +156,7 @@ public final class ChunkLoadStats {
             a.reset();
         }
         GRAPH_TRAVEL_MAX.set(0);
+        dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.resetCounts();
         UNLOADED.clear();
         since = System.nanoTime();
     }
@@ -174,6 +175,10 @@ public final class ChunkLoadStats {
         out.add("chunks read from disk on the server thread: " + DISK_LOAD.describe() + "; unloaded " + String.format(Locale.ROOT, "%,d", UNLOADS.sum())
             + ", read back within " + RELOAD_WINDOW_MS / 1000 + " s of their unload " + String.format(Locale.ROOT, "%,d", RELOADS.sum())
             + (RELOADS.sum() > 0 ? String.format(Locale.ROOT, " (%.1f s after it on average)", RELOAD_AGE_MS.sum() / 1000.0 / RELOADS.sum()) : ""));
+        String holds = dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.report();
+        if (holds != null) {
+            out.add(holds);
+        }
         out.add("points of interest: read with the chunk " + String.format(Locale.ROOT, "%,d", POI_PREFETCHED.sum()) + " (used "
             + String.format(Locale.ROOT, "%,d", POI_PREFETCH_USED.sum()) + "); read on the server thread " + String.format(Locale.ROOT, "%,d", POI_READS.sum())
             + ", of them waited for the disk " + POI_WAIT.describe());

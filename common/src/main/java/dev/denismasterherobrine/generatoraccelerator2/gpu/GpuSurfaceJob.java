@@ -7,7 +7,6 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.StructureManagerLevelAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.WorldGenRegion;
@@ -30,8 +29,8 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
 
     /**
      * The SURFACE step's wait for the answer, without blocking a thread. {@code ParallelSteps.surface} runs the step when this future
-     * completes. It completes when the answer is in or {@link #WAIT_MS} has passed. Returns null when the chunk has no answer to wait
-     * for, or the answer is already in.
+     * completes. It completes when the answer is in or {@link #WAIT_MS} has passed, not counting the time the whole JVM stood still
+     * ({@link GpuWorldgen#deadline}). Returns null when the chunk has no answer to wait for, or the answer is already in.
      */
     public static CompletableFuture<Void> whenReady(ChunkAccess chunk) {
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
@@ -39,10 +38,14 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         if (job == null || job.future.isDone()) {
             return null;
         }
-        return job.future.copy().completeOnTimeout(null, WAIT_MS, TimeUnit.MILLISECONDS).handle((r, e) -> {
+        CompletableFuture<Void> ready = new CompletableFuture<>();
+        Runnable over = () -> {
             job.waited.set(true);
-            return null;
-        });
+            ready.complete(null);
+        };
+        job.future.whenComplete((r, e) -> over.run());
+        GpuWorldgen.deadline(job.future, WAIT_MS, over);
+        return ready;
     }
 
     /** Conditions under which every chunk builds its surface on the CPU for now (another mod's code would act in it). */

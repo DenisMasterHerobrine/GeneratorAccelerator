@@ -17,16 +17,19 @@ import java.util.concurrent.locks.LockSupport;
 public final class QuietWait {
     private QuietWait() {}
 
-    /** {@code future.get(timeoutMs, MILLISECONDS)}, with the same exceptions, parked without compensation. */
+    /**
+     * {@code future.get(timeoutMs, MILLISECONDS)}, with the same exceptions, parked without compensation. The time the whole JVM
+     * stood still meanwhile does not count toward the timeout ({@link JvmStalls}).
+     */
     public static <T> T get(CompletableFuture<T> future, long timeoutMs) throws InterruptedException, ExecutionException, TimeoutException {
         if (!future.isDone()) {
             Thread waiter = Thread.currentThread();
             // An unpark after the wait is over is harmless. Parks may always return early.
             future.whenComplete((r, e) -> LockSupport.unpark(waiter));
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+            JvmStalls.Wait wait = new JvmStalls.Wait(TimeUnit.MILLISECONDS.toNanos(timeoutMs));
             while (!future.isDone()) {
-                long left = deadline - System.nanoTime();
-                if (left <= 0) {
+                long left = wait.left();
+                if (left == 0) {
                     throw new TimeoutException();
                 }
                 LockSupport.parkNanos(future, left);

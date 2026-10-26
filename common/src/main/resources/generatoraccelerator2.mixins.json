@@ -226,6 +226,9 @@
     "chunkload.PlayerChunkSenderMixin",
     "chunkload.ChunkPacketDataMixin",
     "chunkload.SectionVersionMixin",
+    "chunkload.ChunkMapUpdatingInvoker",
+    "chunkload.ServerChunkCacheHoldsMixin",
+    "chunkload.ChunkMapKeptSaveMixin",
     "fluid.PostProcessFluidMixin",
     "fluid.FluidTickInspectMixin"
   ],

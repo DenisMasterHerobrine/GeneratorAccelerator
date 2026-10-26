@@ -11,6 +11,7 @@ import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.BeardKernelAcces
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.GpuBiomeSourceInspectMixin;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.JvmStalls;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -317,6 +318,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         this.name = name;
         this.settings = settings;
         this.randomState = randomState;
+        this.governor = new Governor(name, PAUSE_NS);
     }
 
     public State state() {
@@ -1024,28 +1026,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private static final long PAUSE_NS = Long.getLong("generatoraccelerator2.gpu.pauseSeconds", 30L) * 1_000_000_000L;
     /** Answers given to the CPU because they were late, and the times a dimension stopped asking for a while. */
     public static final LongAdder LATE_ANSWERS = new LongAdder(), PAUSES = new LongAdder();
-    private final java.util.concurrent.atomic.AtomicInteger windowAsked = new java.util.concurrent.atomic.AtomicInteger();
-    private final java.util.concurrent.atomic.AtomicInteger windowLate = new java.util.concurrent.atomic.AtomicInteger();
-    private volatile long pausedUntil;
-    private volatile boolean paused;
+    private final Governor governor;
 
     /** False while late answers keep this dimension's chunks on the CPU ({@link #timed}). */
     public boolean asking() {
-        if (!paused) {
-            return true;
-        }
-        if (System.nanoTime() - pausedUntil < 0) {
-            return false;
-        }
-        paused = false;
-        return true;
+        return governor.asking();
     }
 
     /**
      * Returns {@code answer}, or null when the GPU has not given it within {@link #ANSWER_MS} of now. On null, the CPU does the chunk.
-     * If more than 4 of a window of 64 answers are late, this dimension stops asking for {@link #PAUSE_NS}. Such a GPU is slower than
-     * the CPU it was meant to relieve, and more asks only add load. Counting starts after the asks are made, so the CPU's own queues
-     * do not count.
+     * The time the whole JVM stood still meanwhile is not counted ({@link #deadline}). If more than 4 of a window of 64 answers are
+     * late, this dimension stops asking for {@link #PAUSE_NS}. Such a GPU is slower than the CPU it was meant to relieve, and more
+     * asks only add load. Counting starts after the asks are made, so the CPU's own queues do not count.
      */
     public <T> CompletableFuture<T> timed(CompletableFuture<T> answer) {
         if (answer.isDone()) {
@@ -1053,14 +1045,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             return answer;
         }
         CompletableFuture<T> out = new CompletableFuture<>();
-        java.util.concurrent.ScheduledFuture<?> deadline = DEADLINES.schedule(() -> {
+        deadline(answer, ANSWER_MS, () -> {
             if (out.complete(null)) {
                 answered(true);
             }
-        }, ANSWER_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+        });
         answer.whenComplete((r, e) -> {
-            // cancel the deadline as soon as the answer comes. That also releases the deadline's hold on the answer.
-            deadline.cancel(false);
             boolean won = e != null ? out.completeExceptionally(e) : out.complete(r);
             if (won) {
                 answered(false);
@@ -1069,7 +1059,50 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         return out;
     }
 
-    /** Every dimension's answer deadlines ({@link #timed}), on one daemon thread. A cancelled deadline leaves the queue at once. */
+    /**
+     * Runs {@code late} once {@code ms} have passed without {@code answer}. The time the whole JVM stood still meanwhile (a collector
+     * pause) does not count ({@link JvmStalls}). The answer cancels the deadline as soon as it comes. That also releases the
+     * deadline's hold on the answer.
+     */
+    public static void deadline(CompletableFuture<?> answer, long ms, Runnable late) {
+        Deadline d = new Deadline(answer, late, new JvmStalls.Wait(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(ms)));
+        d.task = DEADLINES.schedule(d, ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+        answer.whenComplete((r, e) -> d.task.cancel(false));
+    }
+
+    /** One deadline of {@link #deadline}. It runs on {@link #DEADLINES}, so one run at a time. */
+    private static final class Deadline implements Runnable {
+        private final CompletableFuture<?> answer;
+        private final Runnable late;
+        private final JvmStalls.Wait wait;
+        private volatile java.util.concurrent.ScheduledFuture<?> task;
+
+        Deadline(CompletableFuture<?> answer, Runnable late, JvmStalls.Wait wait) {
+            this.answer = answer;
+            this.late = late;
+            this.wait = wait;
+        }
+
+        @Override
+        public void run() {
+            if (answer.isDone()) {
+                return;
+            }
+            long left = wait.left();
+            if (left == 0) {
+                late.run();
+                return;
+            }
+            // the JVM stood still during the wait: the answer gets that time once more
+            task = DEADLINES.schedule(this, left, java.util.concurrent.TimeUnit.NANOSECONDS);
+            if (answer.isDone()) {
+                // the answer came during this run and cancelled the earlier task
+                task.cancel(false);
+            }
+        }
+    }
+
+    /** Every dimension's answer deadlines ({@link #deadline}), on one daemon thread. A cancelled deadline leaves the queue at once. */
     private static final java.util.concurrent.ScheduledThreadPoolExecutor DEADLINES = deadlines();
 
     private static java.util.concurrent.ScheduledThreadPoolExecutor deadlines() {
@@ -1084,19 +1117,57 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     /** Counts one answer for the governor ({@link #timed}). A late surface counts too. */
     public void answered(boolean late) {
-        if (late) {
-            LATE_ANSWERS.increment();
-            windowLate.incrementAndGet();
+        governor.answered(late);
+    }
+
+    /**
+     * One dimension's count of late answers ({@link #timed}). Answers that come while the dimension does not ask are to asks from
+     * before the pause. They are not counted, so the window starts empty when the dimension asks again.
+     */
+    static final class Governor {
+        private final String name;
+        private final long pauseNs;
+        private final java.util.concurrent.atomic.AtomicInteger windowAsked = new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicInteger windowLate = new java.util.concurrent.atomic.AtomicInteger();
+        private volatile long pausedUntil;
+        private volatile boolean paused;
+
+        Governor(String name, long pauseNs) {
+            this.name = name;
+            this.pauseNs = pauseNs;
         }
-        if (windowAsked.incrementAndGet() >= 64) {
-            int lateOnes = windowLate.getAndSet(0);
-            windowAsked.set(0);
-            if (lateOnes > 4 && !paused) {
-                pausedUntil = System.nanoTime() + PAUSE_NS;
-                paused = true;
-                PAUSES.increment();
-                GpuDevice.LOGGER.info("{}/64 recent chunks of {} answered after >{} ms -> CPU for {} s",
-                    lateOnes, name, ANSWER_MS, PAUSE_NS / 1_000_000_000L);
+
+        boolean asking() {
+            if (!paused) {
+                return true;
+            }
+            if (System.nanoTime() - pausedUntil < 0) {
+                return false;
+            }
+            paused = false;
+            return true;
+        }
+
+        void answered(boolean late) {
+            if (late) {
+                LATE_ANSWERS.increment();
+            }
+            if (paused) {
+                return;
+            }
+            if (late) {
+                windowLate.incrementAndGet();
+            }
+            if (windowAsked.incrementAndGet() >= 64) {
+                int lateOnes = windowLate.getAndSet(0);
+                windowAsked.set(0);
+                if (lateOnes > 4) {
+                    pausedUntil = System.nanoTime() + pauseNs;
+                    paused = true;
+                    PAUSES.increment();
+                    GpuDevice.LOGGER.info("{}/64 recent chunks of {} answered after >{} ms -> CPU for {} s",
+                        lateOnes, name, ANSWER_MS, pauseNs / 1_000_000_000L);
+                }
             }
         }
     }
@@ -1161,7 +1232,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 it.remove();
                 long now = System.nanoTime();
                 r.doneAt = now;
-                long took = now - r.launched;
+                // Time the whole JVM stood still is not the GPU's. Just after a stall the watch may not have counted it, and the
+                // region's time then says nothing.
+                if (!JvmStalls.current()) {
+                    continue;
+                }
+                long took = now - r.launched - (JvmStalls.total() - r.stallsAtLaunch);
                 int limit = regionLimit();
                 if (took > REGION_WAIT_NS) {
                     regionLimit = Math.max(1, limit / 2);
@@ -1309,6 +1385,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         final List<BiomeReq> waiting = new ArrayList<>();
         int users;
         long launched;
+        /** {@link JvmStalls#total} at the launch. */
+        long stallsAtLaunch;
         /** When the region's work was seen done (0 before). */
         long doneAt;
         /** When a request last used the region ({@link #evict}). */
@@ -1971,6 +2049,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      */
     private void launchRegion(Region r) {
         r.launched = System.nanoTime();
+        r.stallsAtLaunch = JvmStalls.total();
         ClEmitter g = gen;
         int w = side, h = side, nchunks = w * h;
         int per = 16 / cellWidth;
@@ -2439,19 +2518,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         return new Climate.TargetPoint(v0, v1, v2, v3, v4, v5);
     }
 
-    private void launchBatch(Region r, Slot s, List<NoiseReq> reqs) {
-        ClEmitter g = gen;
-        int n = reqs.size();
-        int w = side, h = side;
-        int per = 16 / cellWidth;
-        int nqx = 4 * w + 1, nqz = 4 * h + 1, ncx = per * w + 1, ncz = per * h + 1, ncy = height / cellHeight + 1, nbz = 16 * h;
-        int bx0 = r.cx0 * 16, bz0 = r.cz0 * 16, qx0 = bx0 >> 2, qz0 = bz0 >> 2;
-        int pieces = 0, junctions = 0;
+    /**
+     * The batch's pieces (vanilla's and other mods' entries, which go into {@code entries} and {@code adaptations}) in the high
+     * half, its junctions in the low half. Adds each request's queue time.
+     */
+    private static long beardSizes(List<NoiseReq> reqs, int[][] entries, dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations) {
         long now = System.nanoTime();
-        BATCH_CHUNKS.add(n);
-        // other mods' pieces follow the chunk's vanilla pieces in the piece buffer, 8 ints each, over the batch's adaptation table
-        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table();
-        int[][] entries = new int[n][];
+        int pieces = 0, junctions = 0;
         int qi = 0;
         for (NoiseReq q : reqs) {
             QUEUE_LAT.add(now - q.since);
@@ -2463,13 +2536,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
             qi++;
         }
-        s.ensure(Math.max(1, pieces), Math.max(1, junctions), Math.max(1, adaptations.ints()));
+        return (long) pieces << 32 | junctions & 0xFFFFFFFFL;
+    }
+
+    /** Each request's chunk index, beard index, pieces and junctions into the slot's upload buffers. */
+    private void packBeards(Region r, Slot s, List<NoiseReq> reqs, int[][] entries) {
+        int h = side;
         s.lstHost.clear();
         s.bidxHost.clear();
         s.bpHost.clear();
         s.bjHost.clear();
         int p = 0, jn = 0;
-        qi = 0;
+        int qi = 0;
         for (NoiseReq q : reqs) {
             s.lstHost.putInt((q.pos.x - r.cx0) * h + (q.pos.z - r.cz0));
             int np = q.beard.pieces().length / 8, nj = q.beard.junctions().length / 3;
@@ -2490,6 +2568,43 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             p += np + ne;
             jn += nj;
         }
+    }
+
+    /** Each request's liquid table (Better Caves' regions) into the slot's upload buffer. */
+    private static void packLiquids(Slot s, List<NoiseReq> reqs) {
+        s.lqHost.clear();
+        for (NoiseReq req : reqs) {
+            int[] table = req.beard.liquids();
+            if (table == null) {
+                s.lqHost.putInt(LiquidRegions.GPU_NONE);
+                for (int i = 1; i < LiquidRegions.GPU_STRIDE; i++) {
+                    s.lqHost.putInt(0);
+                }
+            } else {
+                for (int v : table) {
+                    s.lqHost.putInt(v);
+                }
+            }
+        }
+    }
+
+    private void launchBatch(Region r, Slot s, List<NoiseReq> reqs) {
+        ClEmitter g = gen;
+        int n = reqs.size();
+        int w = side, h = side;
+        int per = 16 / cellWidth;
+        int nqx = 4 * w + 1, nqz = 4 * h + 1, ncx = per * w + 1, ncz = per * h + 1, ncy = height / cellHeight + 1, nbz = 16 * h;
+        int bx0 = r.cx0 * 16, bz0 = r.cz0 * 16, qx0 = bx0 >> 2, qz0 = bz0 >> 2;
+        BATCH_CHUNKS.add(n);
+        // other mods' pieces follow the chunk's vanilla pieces in the piece buffer, 8 ints each, over the batch's adaptation table
+        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table();
+        int[][] entries = new int[n][];
+        // The loops over the requests are methods of their own. A batch is launched rarely, so the JIT compiles its loops while
+        // they run. The compile then holds one loop, not the whole launch.
+        long sizes = beardSizes(reqs, entries, adaptations);
+        int pieces = (int) (sizes >>> 32), junctions = (int) sizes;
+        s.ensure(Math.max(1, pieces), Math.max(1, junctions), Math.max(1, adaptations.ints()));
+        packBeards(r, s, reqs, entries);
         s.ekHost.clear();
         if (adaptations.ints() == 0) {
             s.ekHost.putInt(0);
@@ -2504,26 +2619,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         rel(cl.write(q, s.bidx, false, 0, s.bidxHost.flip()));
         rel(cl.write(q, s.ek, false, 0, s.ekHost.flip()));
         if (liquidRegions) {
-            s.lqHost.clear();
-            for (NoiseReq req : reqs) {
-                int[] table = req.beard.liquids();
-                if (table == null) {
-                    s.lqHost.putInt(LiquidRegions.GPU_NONE);
-                    for (int i = 1; i < LiquidRegions.GPU_STRIDE; i++) {
-                        s.lqHost.putInt(0);
-                    }
-                } else {
-                    for (int v : table) {
-                        s.lqHost.putInt(v);
-                    }
-                }
-            }
+            packLiquids(s, reqs);
             rel(cl.write(q, s.lq, false, 0, s.lqHost.flip()));
         }
-        if (p > 0) {
+        if (pieces > 0) {
             rel(cl.write(q, s.bp, false, 0, s.bpHost.flip()));
         }
-        if (jn > 0) {
+        if (junctions > 0) {
             rel(cl.write(q, s.bj, false, 0, s.bjHost.flip()));
         }
         if (certified) {

@@ -209,37 +209,12 @@ public final class SurfaceBatches {
         return waiting >= CAP;
     }
 
+    // launch and finish keep their loops in methods of their own (pack, decode). A batch is launched and finished rarely, so the
+    // JIT compiles their loops while they run. The compile then holds one loop, not the whole launch or finish.
+
     private void launch(Slot s, List<Request> reqs) {
         int n = reqs.size();
-        s.hStore.clear();
-        s.hMeta.clear();
-        s.hTops.clear();
-        s.hWin.clear();
-        s.hCpar.clear();
-        s.hFlag.clear();
-        // Write the sections in bulk through a view. The buffer's own position is updated below.
-        java.nio.LongBuffer store = s.hStore.asLongBuffer();
-        for (Request q : reqs) {
-            for (int sec = 0; sec < nsec; sec++) {
-                long[] w = q.storage()[sec];
-                store.put(w != null ? w : ZERO_SECTION);
-            }
-            for (int v : q.meta()) {
-                s.hMeta.putInt(v);
-            }
-            for (int v : q.tops()) {
-                s.hTops.putInt(v);
-            }
-            for (short v : q.window()) {
-                s.hWin.putShort(v);
-            }
-            int[] cp = q.cpar();
-            for (int v : cp) {
-                s.hCpar.putInt(v);
-            }
-            s.hFlag.putInt(0);
-        }
-        s.hStore.position(store.position() << 3);
+        pack(s, reqs);
         if (spin != null) {
             spin.accept(n);
         }
@@ -299,6 +274,39 @@ public final class SurfaceBatches {
         BATCHES.increment();
     }
 
+    /** The requests into the slot's upload buffers. */
+    private void pack(Slot s, List<Request> reqs) {
+        s.hStore.clear();
+        s.hMeta.clear();
+        s.hTops.clear();
+        s.hWin.clear();
+        s.hCpar.clear();
+        s.hFlag.clear();
+        // Write the sections in bulk through a view. The buffer's own position is updated below.
+        java.nio.LongBuffer store = s.hStore.asLongBuffer();
+        for (Request q : reqs) {
+            for (int sec = 0; sec < nsec; sec++) {
+                long[] w = q.storage()[sec];
+                store.put(w != null ? w : ZERO_SECTION);
+            }
+            for (int v : q.meta()) {
+                s.hMeta.putInt(v);
+            }
+            for (int v : q.tops()) {
+                s.hTops.putInt(v);
+            }
+            for (short v : q.window()) {
+                s.hWin.putShort(v);
+            }
+            int[] cp = q.cpar();
+            for (int v : cp) {
+                s.hCpar.putInt(v);
+            }
+            s.hFlag.putInt(0);
+        }
+        s.hStore.position(store.position() << 3);
+    }
+
     private void rel(long event) {
         cl.releaseEvent(event);
     }
@@ -328,57 +336,62 @@ public final class SurfaceBatches {
         var me = s.hSmeta.clear().asIntBuffer();
         var mk = s.hSmarks.clear().asLongBuffer();
         var tp = s.hStops.clear().asIntBuffer();
-        int sm = SurfaceSpec.SECTION_META;
         List<Result> results = new ArrayList<>(b.reqs.size());
         for (int i = 0; i < b.reqs.size(); i++) {
-            boolean cpu = fl.get(i) != 0;
-            int[][] pal = new int[nsec][];
-            int[][] cnt = new int[nsec][];
-            int[] bits = new int[nsec];
-            long[][] store = new long[nsec][];
-            long[][] marks = new long[nsec][];
-            for (int sec = 0; sec < nsec && !cpu; sec++) {
-                int base = (i * nsec + sec) * sm;
-                int size = me.get(base);
-                if (size == 0) {
-                    continue;
-                }
-                if (size < 0) {
-                    cpu = true;
-                    break;
-                }
-                int bt = me.get(base + 1);
-                bits[sec] = bt;
-                pal[sec] = new int[size];
-                cnt[sec] = new int[size];
-                for (int p = 0; p < size; p++) {
-                    pal[sec][p] = me.get(base + 2 + p);
-                    cnt[sec][p] = me.get(base + 2 + 256 + p);
-                }
-                int vpl = 64 / bt;
-                int words = (4096 + vpl - 1) / vpl;
-                store[sec] = new long[words];
-                st.get((i * nsec + sec) * 512, store[sec]);
-                long[] m = new long[64];
-                mk.get((i * nsec + sec) * 64, m);
-                boolean any = false;
-                for (long w : m) {
-                    any |= w != 0;
-                }
-                marks[sec] = any ? m : null;
-            }
-            int[] heights = new int[512];
-            tp.get(i * 512, heights);
-            if (cpu) {
-                TO_CPU.increment();
-            }
-            results.add(new Result(cpu, pal, cnt, bits, store, marks, heights));
+            results.add(decode(fl, st, me, mk, tp, i));
         }
         free.add(s);
         for (int i = 0; i < b.reqs.size(); i++) {
             CHUNKS.increment();
             b.reqs.get(i).future.complete(results.get(i));
         }
+    }
+
+    /** Request {@code i}'s answer from the read-back buffers. */
+    private Result decode(java.nio.IntBuffer fl, java.nio.LongBuffer st, java.nio.IntBuffer me, java.nio.LongBuffer mk, java.nio.IntBuffer tp, int i) {
+        int sm = SurfaceSpec.SECTION_META;
+        boolean cpu = fl.get(i) != 0;
+        int[][] pal = new int[nsec][];
+        int[][] cnt = new int[nsec][];
+        int[] bits = new int[nsec];
+        long[][] store = new long[nsec][];
+        long[][] marks = new long[nsec][];
+        for (int sec = 0; sec < nsec && !cpu; sec++) {
+            int base = (i * nsec + sec) * sm;
+            int size = me.get(base);
+            if (size == 0) {
+                continue;
+            }
+            if (size < 0) {
+                cpu = true;
+                break;
+            }
+            int bt = me.get(base + 1);
+            bits[sec] = bt;
+            pal[sec] = new int[size];
+            cnt[sec] = new int[size];
+            for (int p = 0; p < size; p++) {
+                pal[sec][p] = me.get(base + 2 + p);
+                cnt[sec][p] = me.get(base + 2 + 256 + p);
+            }
+            int vpl = 64 / bt;
+            int words = (4096 + vpl - 1) / vpl;
+            store[sec] = new long[words];
+            st.get((i * nsec + sec) * 512, store[sec]);
+            long[] m = new long[64];
+            mk.get((i * nsec + sec) * 64, m);
+            boolean any = false;
+            for (long w : m) {
+                any |= w != 0;
+            }
+            marks[sec] = any ? m : null;
+        }
+        int[] heights = new int[512];
+        tp.get(i * 512, heights);
+        if (cpu) {
+            TO_CPU.increment();
+        }
+        return new Result(cpu, pal, cnt, bits, store, marks, heights);
     }
 
     /** Fails every request queued or in flight. Used when the GPU path is off. */

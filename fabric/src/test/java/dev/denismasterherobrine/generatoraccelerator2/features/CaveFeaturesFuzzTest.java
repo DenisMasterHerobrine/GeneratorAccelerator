@@ -69,6 +69,90 @@ public class CaveFeaturesFuzzTest {
         assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
     }
 
+    /**
+     * The monster room fast path against vanilla. A room needs a solid floor and ceiling and 1 to 5 openings in its walls, which
+     * plain stone and the harness's caves rarely give. Each trial carves corridors through the room's spot at floor height first:
+     * one along x (2 openings), one along z too (4), or a third beside the first (6, too many). Both runs carve the same.
+     */
+    @Test
+    void monsterRoomsMatchVanilla() {
+        HarnessWorld.Registries2 r = HarnessWorld.registries();
+        List<FeatureRun.ConfiguredCase> cases = new ArrayList<>();
+        for (FeatureRun.ConfiguredCase c : FeatureRun.configuredCases(r)) {
+            if (c.originKind() == 0 && c.kind() == HarnessWorld.Kind.OVERWORLD && c.feature().value().feature() == Feature.MONSTER_ROOM) {
+                cases.add(c);
+            }
+        }
+        cases.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        assertTrue(!cases.isEmpty(), "no monster room case");
+        List<String> failures = new ArrayList<>();
+        int compared = 0;
+        int placed = 0;
+        for (FeatureRun.ConfiguredCase c : cases) {
+            for (int t = 0; t < TRIALS; t++) {
+                FeatureRun.Result ref = room(r, c, t, true);
+                if (ref.error() != null) {
+                    failures.add(c.name() + " trial " + t + ": vanilla threw " + ref.error());
+                    break;
+                }
+                FeatureRun.Result fast = room(r, c, t, false);
+                List<String> diff = FeatureRun.diff(ref, fast);
+                if (fast.error() != null || !diff.isEmpty()) {
+                    failures.add(c.name() + " trial " + t + ": " + (fast.error() != null ? fast.error().toString() : String.join("\n    ", diff)));
+                }
+                compared++;
+                if (ref.placed()) {
+                    placed++;
+                }
+            }
+        }
+        System.out.println("CaveFeaturesFuzzTest: " + compared + " monster room trials, " + placed + " placed");
+        assertTrue(placed > compared / 4, "too few rooms placed: " + placed + " of " + compared);
+        assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
+    }
+
+    private static FeatureRun.Result room(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, int t, boolean vanilla) {
+        long terrainSeed = 20261026L;
+        LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
+        ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
+        NoiseBasedChunkGenerator generator = HarnessWorld.generator(r, c.kind());
+        HarnessLevel level = new HarnessLevel(chunks, HarnessWorld.RADIUS, FeatureRun.CENTER_X, FeatureRun.CENTER_Z, heights, HarnessWorld.dimension(r, c.kind()),
+            terrainSeed, HarnessWorld.randomState(r, c.kind(), terrainSeed), r.access, false);
+        int x = FeatureRun.CENTER_X * 16 + 4 + (t * 7) % 8;
+        int z = FeatureRun.CENTER_Z * 16 + 4 + (t * 11 + 3) % 8;
+        BlockPos origin = new BlockPos(x, -45 + (t * 13) % 30, z);
+        net.minecraft.world.level.block.state.BlockState air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        int corridors = 1 + t % 3;
+        for (int d = -6; d <= 6; d++) {
+            for (int dy = 0; dy <= 1; dy++) {
+                level.setBlock(origin.offset(d, dy, 0), air, 2);
+                if (corridors >= 2) {
+                    level.setBlock(origin.offset(0, dy, d), air, 2);
+                }
+                if (corridors >= 3) {
+                    level.setBlock(origin.offset(d, dy, 2), air, 2);
+                }
+            }
+        }
+        WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(0L));
+        random.setSeed(terrainSeed * 31 + t * 0x9E3779B97F4A7C15L + c.name().hashCode());
+        boolean[] placed = new boolean[1];
+        Throwable[] error = new Throwable[1];
+        Runnable body = () -> {
+            try {
+                placed[0] = c.feature().value().place(level, generator, random, origin);
+            } catch (Throwable e) {
+                error[0] = e;
+            }
+        };
+        if (vanilla) {
+            FeatureHooks.runVanilla(body);
+        } else {
+            body.run();
+        }
+        return new FeatureRun.Result(placed[0], random.getCount(), random.nextLong(), level.nextSubTickCount(), level.poiChanges(), chunks, level, error[0]);
+    }
+
     private static long fast(String feature) {
         java.util.concurrent.atomic.LongAdder a = FeatureStats.fastByFeature().get(feature);
         return a == null ? 0 : a.sum();

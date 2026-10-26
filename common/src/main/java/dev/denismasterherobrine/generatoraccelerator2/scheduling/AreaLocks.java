@@ -212,40 +212,8 @@ public final class AreaLocks {
                 initializations--;
             }
             if (parkedCount > 0) {
-                // only requests that read a chunk this request wrote, or write a chunk it read, can have become grantable. They are
-                // retried in order of urgency, then arrival
-                int stamp = ++visitStamp;
-                ArrayList<Request> candidates = null;
-                for (int s = 0; s < 2; s++) {
-                    long[] keys = s == 0 ? request.write : request.read;
-                    Long2ObjectOpenHashMap<ArrayList<Request>> index = s == 0 ? waitingRead : waitingWrite;
-                    for (long key : keys) {
-                        ArrayList<Request> list = index.get(key);
-                        if (list != null) {
-                            for (Request p : list) {
-                                if (p.visit != stamp) {
-                                    p.visit = stamp;
-                                    if (candidates == null) {
-                                        candidates = new ArrayList<>();
-                                    }
-                                    candidates.add(p);
-                                }
-                            }
-                        }
-                    }
-                }
-                if (candidates != null) {
-                    candidates.sort((a, b) -> a.level != b.level ? Integer.compare(a.level, b.level) : Long.compare(a.seq, b.seq));
-                    for (Request p : candidates) {
-                        if (p.parked && take(p)) {
-                            unpark(p);
-                            if (granted == null) {
-                                granted = new ArrayList<>();
-                            }
-                            granted.add(p);
-                        }
-                    }
-                }
+                // a method of its own, so the JIT keeps the common release small
+                granted = retryParked(request);
             }
         }
         if (granted != null) {
@@ -253,6 +221,49 @@ public final class AreaLocks {
                 p.onLateGrant.run();
             }
         }
+    }
+
+    /**
+     * The parked requests {@code request}'s release lets through, now holding their chunks, or null. Only requests that read a chunk
+     * this request wrote, or write a chunk it read, can have become grantable. They are retried in order of urgency, then arrival.
+     * Under this object's lock.
+     */
+    private List<Request> retryParked(Request request) {
+        int stamp = ++visitStamp;
+        ArrayList<Request> candidates = null;
+        for (int s = 0; s < 2; s++) {
+            long[] keys = s == 0 ? request.write : request.read;
+            Long2ObjectOpenHashMap<ArrayList<Request>> index = s == 0 ? waitingRead : waitingWrite;
+            for (long key : keys) {
+                ArrayList<Request> list = index.get(key);
+                if (list != null) {
+                    for (Request p : list) {
+                        if (p.visit != stamp) {
+                            p.visit = stamp;
+                            if (candidates == null) {
+                                candidates = new ArrayList<>();
+                            }
+                            candidates.add(p);
+                        }
+                    }
+                }
+            }
+        }
+        if (candidates == null) {
+            return null;
+        }
+        List<Request> granted = null;
+        candidates.sort((a, b) -> a.level != b.level ? Integer.compare(a.level, b.level) : Long.compare(a.seq, b.seq));
+        for (Request p : candidates) {
+            if (p.parked && take(p)) {
+                unpark(p);
+                if (granted == null) {
+                    granted = new ArrayList<>();
+                }
+                granted.add(p);
+            }
+        }
+        return granted;
     }
 
     /** Takes the request's chunks if no holder writes a chunk it reads and none reads a chunk it writes (caller holds the monitor). */

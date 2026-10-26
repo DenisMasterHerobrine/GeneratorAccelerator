@@ -153,6 +153,7 @@ public final class GeneratorAccelerator {
         PregenBench.onServerStopped();
         RepeatedWarnings.serverStopped();
         dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats.serverStopped();
+        dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.serverStopped();
         dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast.forgetSeeds();
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();

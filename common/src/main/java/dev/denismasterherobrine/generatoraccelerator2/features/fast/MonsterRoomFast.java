@@ -43,19 +43,38 @@ public final class MonsterRoomFast {
         int halfZ = random.nextInt(2) + 2;
         int minZ = -halfZ - 1;
         int maxZ = halfZ + 1;
-        int openings = 0;
         int ox = origin.getX();
         int oy = origin.getY();
         int oz = origin.getZ();
+        int openings = openings(cursor, ox, oy, oz, minX, maxX, minZ, maxZ);
+        if (openings < 1 || openings > 5) {
+            return false;
+        }
+        // each loop is a method of its own: the JIT compiles each once, instead of the whole placement at every loop
+        carve(cursor, region, random, predicate, ox, oy, oz, minX, maxX, minZ, maxZ);
+        chests(cursor, level, random, predicate, ox, oy, oz, halfX, halfZ);
+        Fast.safeSetBlock(cursor, origin, Blocks.SPAWNER.defaultBlockState(), predicate);
+        if (level.getBlockEntity(origin) instanceof SpawnerBlockEntity spawner) {
+            spawner.setEntityId(FeatureWraps.spawnerMob(feature, PlatformHooks.randomMonsterRoomMob(random), origin, random, level),
+                random);
+        } else {
+            LOGGER.error("failed to fetch mob spawner entity at ({}, {}, {})", origin.getX(), origin.getY(), origin.getZ());
+        }
+        return true;
+    }
+
+    /** The openings in the room's walls at floor height, or -1 when a floor or ceiling block is not solid. */
+    private static int openings(SectionCursor cursor, int ox, int oy, int oz, int minX, int maxX, int minZ, int maxZ) {
+        int openings = 0;
         for (int dx = minX; dx <= maxX; dx++) {
             for (int dy = -1; dy <= 4; dy++) {
                 for (int dz = minZ; dz <= maxZ; dz++) {
                     boolean solid = cursor.read(ox + dx, oy + dy, oz + dz).isSolid();
                     if (dy == -1 && !solid) {
-                        return false;
+                        return -1;
                     }
                     if (dy == 4 && !solid) {
-                        return false;
+                        return -1;
                     }
                     if ((dx == minX || dx == maxX || dz == minZ || dz == maxZ) && dy == 0 && cursor.read(ox + dx, oy + dy, oz + dz).isAir()
                         && cursor.read(ox + dx, oy + dy + 1, oz + dz).isAir()) {
@@ -64,9 +83,12 @@ public final class MonsterRoomFast {
                 }
             }
         }
-        if (openings < 1 || openings > 5) {
-            return false;
-        }
+        return openings;
+    }
+
+    /** The walls in cobblestone (mossy on the floor), the inside in air. */
+    private static void carve(SectionCursor cursor, Ga2Region region, RandomSource random, Predicate<BlockState> predicate, int ox, int oy, int oz, int minX,
+                              int maxX, int minZ, int maxZ) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int minBuild = region.ga2$minY();
         for (int dx = minX; dx <= maxX; dx++) {
@@ -78,11 +100,9 @@ public final class MonsterRoomFast {
                         if (pos.getY() >= minBuild && !cursor.read(pos.getX(), pos.getY() - 1, pos.getZ()).isSolid()) {
                             RegionWriter.setBlock(region, pos, AIR);
                         } else if (state.isSolid() && !state.is(Blocks.CHEST)) {
-                            if (dy == -1 && random.nextInt(4) != 0) {
-                                Fast.safeSetBlock(cursor, pos, Blocks.MOSSY_COBBLESTONE.defaultBlockState(), predicate);
-                            } else {
-                                Fast.safeSetBlock(cursor, pos, Blocks.COBBLESTONE.defaultBlockState(), predicate);
-                            }
+                            // one write site for both stones (the floor's draw as vanilla's)
+                            BlockState wall = dy == -1 && random.nextInt(4) != 0 ? Blocks.MOSSY_COBBLESTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();
+                            Fast.safeSetBlock(cursor, pos, wall, predicate);
                         }
                     } else if (!state.is(Blocks.CHEST) && !state.is(Blocks.SPAWNER)) {
                         Fast.safeSetBlock(cursor, pos, AIR, predicate);
@@ -90,6 +110,11 @@ public final class MonsterRoomFast {
                 }
             }
         }
+    }
+
+    /** Up to two chests, each on a floor block with exactly one solid side, three tries each. */
+    private static void chests(SectionCursor cursor, WorldGenLevel level, RandomSource random, Predicate<BlockState> predicate, int ox, int oy, int oz, int halfX,
+                               int halfZ) {
         for (int chest = 0; chest < 2; chest++) {
             for (int attempt = 0; attempt < 3; attempt++) {
                 int cx = ox + random.nextInt(halfX * 2 + 1) - halfX;
@@ -110,13 +135,5 @@ public final class MonsterRoomFast {
                 }
             }
         }
-        Fast.safeSetBlock(cursor, origin, Blocks.SPAWNER.defaultBlockState(), predicate);
-        if (level.getBlockEntity(origin) instanceof SpawnerBlockEntity spawner) {
-            spawner.setEntityId(FeatureWraps.spawnerMob(feature, PlatformHooks.randomMonsterRoomMob(random), origin, random, level),
-                random);
-        } else {
-            LOGGER.error("failed to fetch mob spawner entity at ({}, {}, {})", origin.getX(), origin.getY(), origin.getZ());
-        }
-        return true;
     }
 }

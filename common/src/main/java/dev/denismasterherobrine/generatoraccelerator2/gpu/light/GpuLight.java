@@ -325,7 +325,11 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         return result;
     }
 
-    /** The batch on the GPU. Returns the entries processed, or -1 when the light thread must propagate it itself. */
+    /**
+     * The batch on the GPU. Returns the entries processed, or -1 when the light thread must propagate it itself. Each of its loops
+     * is a method of its own. A batch runs each loop many times, and the JIT then compiles each loop once on its own, instead of
+     * the whole batch again from every loop.
+     */
     private static int run(LightProgram p, LightEngineAccessor e, boolean sky, Scratch s, long[] entries, int count) {
         long tPrep = System.nanoTime();
         LayerLightSectionStorageAccessor storage = (LayerLightSectionStorageAccessor) e.ga2pl$storage();
@@ -333,45 +337,14 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         Long2ObjectOpenHashMap<DataLayer> map = ((DataLayerStorageMapAccessor) updating).ga2pl$map();
         BlockGetter level = e.ga2pl$chunkSource().getLevel();
 
-        // the sections the batch can reach: its entries' sections and their neighbours
-        Long2IntOpenHashMap slotOf = s.slotOf;
-        LongArrayList keys = s.keys;
-        slotOf.clear();
-        keys.clear();
-        s.seedSections.clear();
-        long lastSection = Long.MAX_VALUE;
-        for (int i = 0; i < count; i++) {
-            long section = SectionPos.blockToSection(entries[2 * i]);
-            if (section == lastSection) {
-                continue;
-            }
-            lastSection = section;
-            if (!s.seedSections.add(section)) {
-                continue;
-            }
-            int sx = SectionPos.x(section), sy = SectionPos.y(section), sz = SectionPos.z(section);
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        long k = SectionPos.asLong(sx + dx, sy + dy, sz + dz);
-                        if (!slotOf.containsKey(k)) {
-                            slotOf.put(k, keys.size());
-                            keys.add(k);
-                        }
-                    }
-                }
-            }
-            if (keys.size() > MAX_SLOTS) {
-                LARGE.increment();
-                return -1;
-            }
+        if (!slots(s, entries, count)) {
+            LARGE.increment();
+            return -1;
         }
-        int slots = keys.size();
+        int slots = s.keys.size();
         long tSlots = System.nanoTime();
         PREP_PARTS[0].add(tSlots - tPrep);
 
-        // per section: stored or not, the levels (straight into the upload buffer), the neighbours, and for the sky the
-        // empty-section hazard
         if (s.storing.length < slots) {
             int c = slots + (slots >> 1);
             s.storing = new byte[c];
@@ -380,43 +353,17 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             s.changed = new int[c];
         }
         ByteBuffer snHost = p.host(LightProgram.Buf.SN, slots * 2048);
-        int stored = 0;
-        for (int slot = 0; slot < slots; slot++) {
-            long key = keys.getLong(slot);
-            DataLayer layer = map.get(key);
-            s.storing[slot] = (byte) (layer != null ? 1 : 0);
-            int base = slot * 2048;
-            if (layer == null) {
-                snHost.put(base, LEVELS[0], 0, 2048);
-            } else {
-                stored++;
-                snHost.put(base, layer.isDefinitelyHomogenous() ? LEVELS[layer.get(0, 0, 0)] : layer.getData(), 0, 2048);
-            }
-            int x = SectionPos.x(key), y = SectionPos.y(key), z = SectionPos.z(key);
-            for (Direction d : DIRECTIONS) {
-                int nx = x + d.getStepX(), ny = y + d.getStepY(), nz = z + d.getStepZ();
-                s.nbr[slot * 6 + d.ordinal()] = slotOf.get(SectionPos.asLong(nx, ny, nz));
-            }
-            s.hazard[slot] = sky ? hazard(map, (SkyLightSectionStorageAccessor) storage, key) : 0;
-        }
+        int stored = levels(s, snHost, map, sky ? (SkyLightSectionStorageAccessor) storage : null, slots);
         snHost.limit(slots * 2048);
 
         long tLevels = System.nanoTime();
         PREP_PARTS[1].add(tLevels - tSlots);
-        // the entries, each in a stored section of the batch (vanilla's propagation reads its stored level)
         if (s.seeds.length < count * 2) {
             s.seeds = new int[count * 2 + count];
         }
-        for (int i = 0; i < count; i++) {
-            long pos = entries[2 * i];
-            int x = BlockPos.getX(pos), y = BlockPos.getY(pos), z = BlockPos.getZ(pos);
-            int slot = slotOf.get(SectionPos.blockToSection(pos));
-            if (slot < 0 || s.storing[slot] == 0) {
-                UNSTORED.increment();
-                return -1;
-            }
-            s.seeds[2 * i] = slot * 4096 + ((y & 15) << 8 | (z & 15) << 4 | (x & 15));
-            s.seeds[2 * i + 1] = (int) (entries[2 * i + 1] & 0xFFF);
+        if (!seeds(s, entries, count)) {
+            UNSTORED.increment();
+            return -1;
         }
 
         long tSeeds = System.nanoTime();
@@ -431,12 +378,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         s.sinfo.clear();
         s.pal.clear();
         s.kslots.clear();
-        for (int slot = 0; slot < slots; slot++) {
-            if (s.storing[slot] != 0) {
-                s.kslots.add(slot);
-                blocks(s, types, level, e, slot, keys.getLong(slot));
-            }
-        }
+        storedBlocks(s, types, level, e, slots);
         s.chunks.clear();
         int nk = s.kslots.size();
         long tBlocks = System.nanoTime();
@@ -531,7 +473,118 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         GPU_NANOS.add(tBack - tGpu);
         PREP_NANOS.add(tGpu - tPrep);
 
-        // the changed sections, as setStoredLevel leaves them
+        int changedCount = applyChanged(s, storage, map, slots);
+        // sections were replaced in the map. Its lookup cache may still hold the old objects
+        updating.clearCache();
+        BATCHES.increment();
+        ENTRIES.add(count);
+        SECTIONS.add(slots);
+        CHANGED.add(changedCount);
+        BACK_NANOS.add(System.nanoTime() - tBack);
+        return count;
+    }
+
+    /**
+     * The sections the batch can reach, its entries' sections and their neighbours, into {@code s.keys} and {@code s.slotOf}.
+     * False when they are more than {@link #MAX_SLOTS}.
+     */
+    private static boolean slots(Scratch s, long[] entries, int count) {
+        Long2IntOpenHashMap slotOf = s.slotOf;
+        LongArrayList keys = s.keys;
+        slotOf.clear();
+        keys.clear();
+        s.seedSections.clear();
+        long lastSection = Long.MAX_VALUE;
+        for (int i = 0; i < count; i++) {
+            long section = SectionPos.blockToSection(entries[2 * i]);
+            if (section == lastSection) {
+                continue;
+            }
+            lastSection = section;
+            if (!s.seedSections.add(section)) {
+                continue;
+            }
+            int sx = SectionPos.x(section), sy = SectionPos.y(section), sz = SectionPos.z(section);
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        long k = SectionPos.asLong(sx + dx, sy + dy, sz + dz);
+                        if (!slotOf.containsKey(k)) {
+                            slotOf.put(k, keys.size());
+                            keys.add(k);
+                        }
+                    }
+                }
+            }
+            if (keys.size() > MAX_SLOTS) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Per section: stored or not, the levels (straight into the upload buffer), the neighbours, and for the sky ({@code sky} not
+     * null) the empty-section hazard. Returns the stored sections.
+     */
+    private static int levels(Scratch s, ByteBuffer snHost, Long2ObjectOpenHashMap<DataLayer> map, SkyLightSectionStorageAccessor sky, int slots) {
+        Long2IntOpenHashMap slotOf = s.slotOf;
+        LongArrayList keys = s.keys;
+        int stored = 0;
+        for (int slot = 0; slot < slots; slot++) {
+            long key = keys.getLong(slot);
+            DataLayer layer = map.get(key);
+            s.storing[slot] = (byte) (layer != null ? 1 : 0);
+            int base = slot * 2048;
+            if (layer == null) {
+                snHost.put(base, LEVELS[0], 0, 2048);
+            } else {
+                stored++;
+                snHost.put(base, layer.isDefinitelyHomogenous() ? LEVELS[layer.get(0, 0, 0)] : layer.getData(), 0, 2048);
+            }
+            int x = SectionPos.x(key), y = SectionPos.y(key), z = SectionPos.z(key);
+            for (Direction d : DIRECTIONS) {
+                int nx = x + d.getStepX(), ny = y + d.getStepY(), nz = z + d.getStepZ();
+                s.nbr[slot * 6 + d.ordinal()] = slotOf.get(SectionPos.asLong(nx, ny, nz));
+            }
+            s.hazard[slot] = sky != null ? hazard(map, sky, key) : 0;
+        }
+        return stored;
+    }
+
+    /**
+     * The entries, each in a stored section of the batch (vanilla's propagation reads its stored level), into {@code s.seeds}.
+     * False when one is not.
+     */
+    private static boolean seeds(Scratch s, long[] entries, int count) {
+        Long2IntOpenHashMap slotOf = s.slotOf;
+        for (int i = 0; i < count; i++) {
+            long pos = entries[2 * i];
+            int x = BlockPos.getX(pos), y = BlockPos.getY(pos), z = BlockPos.getZ(pos);
+            int slot = slotOf.get(SectionPos.blockToSection(pos));
+            if (slot < 0 || s.storing[slot] == 0) {
+                return false;
+            }
+            s.seeds[2 * i] = slot * 4096 + ((y & 15) << 8 | (z & 15) << 4 | (x & 15));
+            s.seeds[2 * i + 1] = (int) (entries[2 * i + 1] & 0xFFF);
+        }
+        return true;
+    }
+
+    /** The blocks of every stored section ({@link #blocks}), and the stored sections' slots into {@code s.kslots}. */
+    private static void storedBlocks(Scratch s, LightTypes types, BlockGetter level, LightEngineAccessor e, int slots) {
+        LongArrayList keys = s.keys;
+        for (int slot = 0; slot < slots; slot++) {
+            if (s.storing[slot] != 0) {
+                s.kslots.add(slot);
+                blocks(s, types, level, e, slot, keys.getLong(slot));
+            }
+        }
+    }
+
+    /** The changed sections, as setStoredLevel leaves them. Returns how many changed. */
+    private static int applyChanged(Scratch s, LayerLightSectionStorageAccessor storage, Long2ObjectOpenHashMap<DataLayer> map, int slots) {
+        LongArrayList keys = s.keys;
         LongSet changedSections = storage.ga2pl$changedSections();
         LongSet affected = storage.ga2pl$sectionsAffectedByLightUpdates();
         int changedCount = 0;
@@ -557,14 +610,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
                 }
             }
         }
-        // sections were replaced in the map. Its lookup cache may still hold the old objects
-        updating.clearCache();
-        BATCHES.increment();
-        ENTRIES.add(count);
-        SECTIONS.add(slots);
-        CHANGED.add(changedCount);
-        BACK_NANOS.add(System.nanoTime() - tBack);
-        return count;
+        return changedCount;
     }
 
     /**

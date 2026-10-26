@@ -21,6 +21,7 @@ public final class SchedulingConfig {
     public static final ConfigSpec.BooleanValue DEDICATED_MAILBOX_THREADS;
     public static final ConfigSpec.BooleanValue STEADY_LIGHT_UPDATES;
     public static final ConfigSpec.IntValue CHUNKY_IN_FLIGHT;
+    public static final ConfigSpec.IntValue CHUNKY_KEPT_CHUNKS;
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();
@@ -48,6 +49,9 @@ public final class SchedulingConfig {
         CHUNKY_IN_FLIGHT = b.comment("How many chunks Chunky may request at once (its chunky.maxWorkingCount, 50 by default). A chunk spends most of its",
             "time waiting between threads, so more open requests keep the CPU busy. 0 picks a count from the processors and the memory.",
             "50 is Chunky's own default. A -Dchunky.maxWorkingCount JVM argument wins. Read at startup.").defineInRange("chunkyInFlight", 0, 0, 4096);
+        CHUNKY_KEPT_CHUNKS = b.comment("How many chunks next to Chunky's requests stay loaded after Chunky lets them go, while Chunky will still need them.",
+            "Without this they are saved, unloaded and read back from disk when Chunky reaches the next region. The world is the same",
+            "either way. -1 picks a count from the memory (at most 4096). 0 turns this off.").defineInRange("chunkyKeptChunks", -1, -1, 65536);
         b.pop();
         SPEC = b.build();
     }
@@ -74,6 +78,14 @@ public final class SchedulingConfig {
             return SPEC.isLoaded() ? FEATURES_GUARD_RADIUS.get() : 2;
         } catch (RuntimeException e) {
             return 2;
+        }
+    }
+
+    public static int chunkyKeptChunks() {
+        try {
+            return SPEC.isLoaded() ? CHUNKY_KEPT_CHUNKS.get() : -1;
+        } catch (RuntimeException e) {
+            return -1;
         }
     }
 

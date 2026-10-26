@@ -385,6 +385,9 @@ public final class Gpu {
             dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches.BATCHES.sum(), dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches.BATCH_LAT.describe()));
         out.add(String.format(java.util.Locale.ROOT, "  answers later than %d ms (the CPU did those chunks): %,d; dimensions paused for a while (GPU busy elsewhere): %,d",
             GpuWorldgen.ANSWER_MS, GpuWorldgen.LATE_ANSWERS.sum(), GpuWorldgen.PAUSES.sum()));
+        out.add(String.format(java.util.Locale.ROOT, "  waits for answers made longer while the whole JVM stood still: %,d (it stood still %.1f s in all)",
+            dev.denismasterherobrine.generatoraccelerator2.scheduling.JvmStalls.STRETCHED.sum(),
+            dev.denismasterherobrine.generatoraccelerator2.scheduling.JvmStalls.total() / 1e9));
         out.add(GpuWorldgen.SHARE
             ? String.format(java.util.Locale.ROOT, "  done by the CPU while the GPU was behind: biomes %,d, blocks %,d, surfaces %,d",
                 GpuWorldgen.SHARED_BIOMES.sum(), GpuWorldgen.SHARED_BLOCKS.sum(), GpuWorldgen.SHARED_SURFACES.sum())
