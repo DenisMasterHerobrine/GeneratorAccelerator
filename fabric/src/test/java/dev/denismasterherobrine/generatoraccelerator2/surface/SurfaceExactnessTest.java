@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.verify.FeatureCompare;
+import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,6 +20,7 @@ import net.minecraft.util.InclusiveRange;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
@@ -67,10 +69,10 @@ class SurfaceExactnessTest {
     @Test
     void biomeProgramsMatch() {
         List<int[]> at = sites(TerrainHarness.Preset.OVERWORLD, SEEDS[1]);
-        long before = dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PICKS.sum();
+        long before = SurfaceProgram.BIOME_PICKS.sum();
         SurfaceConfig.biomeProgramsOverride = true;
         checkSites(TerrainHarness.Preset.OVERWORLD, SEEDS[1], at);
-        assertTrue(dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PICKS.sum() > before, "the builder never picked a biome's program");
+        assertTrue(SurfaceProgram.BIOME_PICKS.sum() > before, "the builder never picked a biome's program");
         SurfaceConfig.biomeProgramsOverride = false;
         checkSites(TerrainHarness.Preset.OVERWORLD, SEEDS[1], at);
     }
@@ -177,7 +179,7 @@ class SurfaceExactnessTest {
     /** A condition from a mod GA2 does not know (it only wraps a vanilla one). */
     private record Unknown(SurfaceRules.ConditionSource inner) implements SurfaceRules.ConditionSource {
         @Override
-        public net.minecraft.util.KeyDispatchDataCodec<? extends SurfaceRules.ConditionSource> codec() {
+        public KeyDispatchDataCodec<? extends SurfaceRules.ConditionSource> codec() {
             throw new UnsupportedOperationException("test only");
         }
 

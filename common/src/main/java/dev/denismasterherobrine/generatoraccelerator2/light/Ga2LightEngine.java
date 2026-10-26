@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 
 /**
  * What the light propagation loops ({@code mixin/light/SkyLightEngineMixin}, {@code BlockLightEngineMixin}) need from
@@ -25,7 +26,7 @@ public interface Ga2LightEngine {
      * {@code section.hasOnlyAir() ? AIR : section.getBlockState(...)}. Null otherwise.
      */
     @Nullable
-    net.minecraft.world.level.chunk.LevelChunkSection ga2$blockSection(int x, int y, int z);
+    LevelChunkSection ga2$blockSection(int x, int y, int z);
 
     /** {@code getOpacity(state, pos)}. */
     int ga2$opacity(BlockState state, BlockPos pos);

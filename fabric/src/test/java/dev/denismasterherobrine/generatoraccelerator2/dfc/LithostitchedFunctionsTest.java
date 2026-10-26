@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
@@ -11,6 +12,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.Litho
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.IrBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.CoverageReport;
+import dev.worldgen.lithostitched.impl.LithostitchedInternalHooks;
 import dev.worldgen.lithostitched.impl.worldgen.densityfunction.AxisDensityFunction;
 import dev.worldgen.lithostitched.impl.worldgen.densityfunction.CellularDensityFunction;
 import dev.worldgen.lithostitched.impl.worldgen.densityfunction.CeilDensityFunction;
@@ -27,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.UnaryOperator;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderGetter;
@@ -34,6 +38,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.CubicSpline;
 import net.minecraft.util.InclusiveRange;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -66,7 +71,7 @@ public class LithostitchedFunctionsTest {
         vanillaState = RandomState.create(settings, noises, 1234567L);
     }
 
-    private static DensityFunction noise(net.minecraft.resources.ResourceKey<NormalNoise.NoiseParameters> key, double xz, double y) {
+    private static DensityFunction noise(ResourceKey<NormalNoise.NoiseParameters> key, double xz, double y) {
         return DensityFunctions.noise(noises.getOrThrow(key), xz, y);
     }
 
@@ -133,12 +138,12 @@ public class LithostitchedFunctionsTest {
         f.put("sin", new SinDensityFunction(DensityFunctions.mul(DensityFunctions.constant(9.0), t)));
         f.put("cos", new CosDensityFunction(DensityFunctions.mul(DensityFunctions.constant(9.0), t)));
         f.put("merged", new MergedDensityFunction(t, e, DensityFunctions.add(t, e)));
-        dev.worldgen.lithostitched.impl.LithostitchedInternalHooks.WORLD_SEED = 1234567L;
+        LithostitchedInternalHooks.WORLD_SEED = 1234567L;
         for (CellularDensityFunction.ReturnType type : CellularDensityFunction.ReturnType.values()) {
-            f.put("cellular 2D " + type, new CellularDensityFunction(java.util.Optional.empty(), new CellularDensityFunction.GridDimensions(48, 0), 0.75f, type, 17));
-            f.put("cellular 3D " + type, new CellularDensityFunction(java.util.Optional.empty(), new CellularDensityFunction.GridDimensions(20, 7), 1.0f, type, -3));
+            f.put("cellular 2D " + type, new CellularDensityFunction(Optional.empty(), new CellularDensityFunction.GridDimensions(48, 0), 0.75f, type, 17));
+            f.put("cellular 3D " + type, new CellularDensityFunction(Optional.empty(), new CellularDensityFunction.GridDimensions(20, 7), 1.0f, type, -3));
         }
-        f.put("cellular with a condition", new CellularDensityFunction(java.util.Optional.of(new CellularDensityFunction.CellCondition(t, new InclusiveRange<>(-0.2, 0.4),
+        f.put("cellular with a condition", new CellularDensityFunction(Optional.of(new CellularDensityFunction.CellCondition(t, new InclusiveRange<>(-0.2, 0.4),
             -1.0)), new CellularDensityFunction.GridDimensions(32, 0), 0.5f, CellularDensityFunction.ReturnType.DISTANCE_2_SUB, 5));
         return f;
     }
@@ -181,8 +186,8 @@ public class LithostitchedFunctionsTest {
     // ---- inside a NoiseChunk ---------------------------------------------------------------------
 
     /** The overworld's settings with {@code extra} added to its final density. */
-    private static NoiseGeneratorSettings withFinalDensity(java.util.function.UnaryOperator<DensityFunction> change) throws Exception {
-        RegistryOps<com.google.gson.JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, lookup);
+    private static NoiseGeneratorSettings withFinalDensity(UnaryOperator<DensityFunction> change) throws Exception {
+        RegistryOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, lookup);
         JsonObject json;
         try (var in = NoiseGeneratorSettings.class.getResourceAsStream("/data/minecraft/worldgen/noise_settings/overworld.json")) {
             assertNotNull(in);

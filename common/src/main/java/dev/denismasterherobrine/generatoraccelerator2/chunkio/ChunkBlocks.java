@@ -2,10 +2,12 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
 import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.BitStorage;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -154,7 +156,7 @@ public final class ChunkBlocks {
             return AIR;
         }
         // PalettedContainer.get with the section-states index (y << 8 | z << 4 | x) spelled out
-        net.minecraft.world.level.chunk.PalettedContainer.Data<BlockState> data = section.getStates().data;
+        PalettedContainer.Data<BlockState> data = section.getStates().data;
         return StateReads.get(data, ((y & 15) << 8) | (lz << 4) | lx);
     }
 
@@ -210,7 +212,7 @@ public final class ChunkBlocks {
      */
     public void rewriteSection(int sectionMinY, BlockState from, BlockState[] targets) {
         LevelChunkSection section = sections[(sectionMinY >> 4) - minSection];
-        net.minecraft.world.level.chunk.PalettedContainer<BlockState> states = section.getStates();
+        PalettedContainer<BlockState> states = section.getStates();
         if (!states.data.palette().maybeHas(s -> s == from)) {
             return;
         }
@@ -224,7 +226,7 @@ public final class ChunkBlocks {
         if (!any) {
             return;
         }
-        net.minecraft.world.level.chunk.PalettedContainer.Data<BlockState> data = states.data;
+        PalettedContainer.Data<BlockState> data = states.data;
         int fromId = data.palette().idFor(from);
         // Thread-local buffers for the section's ids and its 16 targets. unpack writes all ids before they are read.
         int[] ids = REWRITE_IDS.get();
@@ -232,7 +234,7 @@ public final class ChunkBlocks {
         for (int ly = 0; ly < 16; ly++) {
             targetIds[ly] = targets[ly] == null ? -1 : data.palette().idFor(targets[ly]);
         }
-        net.minecraft.util.BitStorage storage = data.storage();
+        BitStorage storage = data.storage();
         storage.unpack(ids);
         for (int index = 0; index < 4096; index++) {
             if (ids[index] == fromId) {

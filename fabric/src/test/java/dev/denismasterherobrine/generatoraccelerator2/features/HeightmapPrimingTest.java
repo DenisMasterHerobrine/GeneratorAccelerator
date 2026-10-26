@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -53,11 +55,11 @@ public class HeightmapPrimingTest {
                 chunk.setPersistedStatus(ChunkStatus.CARVERS);
                 // a "neighbour's" writes: a pillar above the surface and a hole into it (the first primes the final maps)
                 int top = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG).getFirstAvailable(5, 7);
-                chunk.setBlockState(new net.minecraft.core.BlockPos(5, top + 3, 7), net.minecraft.world.level.block.Blocks.OAK_LOG.defaultBlockState(), false);
-                chunk.setBlockState(new net.minecraft.core.BlockPos(5, top + 4, 7), net.minecraft.world.level.block.Blocks.OAK_LEAVES.defaultBlockState(), false);
+                chunk.setBlockState(new BlockPos(5, top + 3, 7), Blocks.OAK_LOG.defaultBlockState(), false);
+                chunk.setBlockState(new BlockPos(5, top + 4, 7), Blocks.OAK_LEAVES.defaultBlockState(), false);
                 int top2 = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG).getFirstAvailable(9, 2);
-                chunk.setBlockState(new net.minecraft.core.BlockPos(9, top2 - 1, 2), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), false);
-                chunk.setBlockState(new net.minecraft.core.BlockPos(9, top2 - 2, 2), net.minecraft.world.level.block.Blocks.WATER.defaultBlockState(), false);
+                chunk.setBlockState(new BlockPos(9, top2 - 1, 2), Blocks.AIR.defaultBlockState(), false);
+                chunk.setBlockState(new BlockPos(9, top2 - 2, 2), Blocks.WATER.defaultBlockState(), false);
             }
             Heightmap.primeHeightmaps(vanilla, ChunkStatus.FINAL_HEIGHTMAPS);
             HeightmapPriming.prime(fast, ChunkStatus.FINAL_HEIGHTMAPS, Heightmap::primeHeightmaps);

@@ -4,12 +4,19 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.tree.CommandNode;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferCommand;
+import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers;
 import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeConfig;
 import dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverConfig;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverPaths;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
+import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig;
+import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatConfig;
+import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch;
+import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
+import dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.logging.RepeatedWarnings;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
@@ -29,6 +36,8 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuConfig;
 import dev.denismasterherobrine.generatoraccelerator2.join.JoinConfig;
 import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightConfig;
+import dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import dev.denismasterherobrine.generatoraccelerator2.noise.SelfCheck;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightConfig;
@@ -38,6 +47,7 @@ import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
 import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import dev.denismasterherobrine.generatoraccelerator2.storage.StorageConfig;
 import dev.denismasterherobrine.generatoraccelerator2.structure.StructureLocks;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceConfig;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -69,7 +79,7 @@ public final class GeneratorAccelerator {
 
     public static void init() {
         ConfigFiles.migrate(Ga2Log.get("Config"));
-        dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.install();
+        MemoryPressure.install();
         // The light switches follow the light config. They are read again whenever a config file changes.
         ConfigManager.onLoad(FastLight::refresh);
         ConfigManager.onReload(FastLight::refresh);
@@ -87,12 +97,12 @@ public final class GeneratorAccelerator {
         ConfigManager.register(JoinConfig.SPEC, ConfigFiles.name("join"));
         ConfigManager.register(ParallelLightConfig.SPEC, ConfigFiles.name("parallel-light"));
         ConfigManager.register(GpuConfig.SPEC, ConfigFiles.name("gpu"));
-        ConfigManager.register(dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig.SPEC, ConfigFiles.name("chunk-loading"));
+        ConfigManager.register(ChunkLoadConfig.SPEC, ConfigFiles.name("chunk-loading"));
         // The parallel light package knows nothing of GA2's compat inspection. It asks through this gate.
         ParallelLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
         // large light batches propagate their increases on the GPU, under the same gate (the same methods, run elsewhere)
-        dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
-        ParallelLight.setIncreaseOffload(dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.INSTANCE);
+        GpuLight.setCompatGate(() -> HookTargets.allowed(HookTargets.LIGHT_PARALLEL));
+        ParallelLight.setIncreaseOffload(GpuLight.INSTANCE);
         StructureLocks.prewarm();
         CompatModules.init();
         if (Boolean.getBoolean("generatoraccelerator2.selfcheck")) {
@@ -136,8 +146,8 @@ public final class GeneratorAccelerator {
     public static void onTagsUpdated() {
         TagEpoch.bump();
         // a datapack reload: Biolith's requests from data may have changed, and the biomes kept with them
-        dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.forget();
-        dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.forgetRequests();
+        BiomeAnswers.forget();
+        BiolithSearch.forgetRequests();
     }
 
     public static void onServerStarting(MinecraftServer starting) {
@@ -155,13 +165,13 @@ public final class GeneratorAccelerator {
         SavePrep.onServerStopped();
         PregenBench.onServerStopped();
         RepeatedWarnings.serverStopped();
-        dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats.serverStopped();
-        dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.serverStopped();
-        dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast.forgetSeeds();
-        dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder.forgetShapes();
+        ChunkLoadStats.serverStopped();
+        ChunkyHolds.serverStopped();
+        GeodeFast.forgetSeeds();
+        SurfaceBuilder.forgetShapes();
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
-        dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.forgetWorlds();
+        BiolithSearch.forgetWorlds();
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
             LithostitchedInjectors.forgetWorlds();
             LithostitchedRegions.forgetWorlds();
@@ -173,7 +183,7 @@ public final class GeneratorAccelerator {
 
     public static void onServerTickPost(MinecraftServer ticking) {
         RepeatedWarnings.tick();
-        dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims.tick();
+        IdleTrims.tick();
         for (Consumer<MinecraftServer> listener : TICK_LISTENERS) {
             listener.accept(ticking);
         }

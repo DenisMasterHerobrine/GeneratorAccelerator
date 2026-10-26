@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.stream.LongStream;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.core.IdMap;
@@ -135,7 +136,7 @@ public final class FastPalettes {
     @Nullable
     private static <T> PalettedContainer<T> build(IdMap<T> registry, PalettedContainer.Strategy strategy, List<T> entries, CompoundTag tag) {
         Tag data = tag.get("data");
-        Optional<java.util.stream.LongStream> storage;
+        Optional<LongStream> storage;
         if (data == null) {
             storage = Optional.empty();
         } else if (data instanceof LongArrayTag longs) {

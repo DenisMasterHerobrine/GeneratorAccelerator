@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch;
+import dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -109,8 +110,8 @@ public final class LithostitchedInjectors {
         }
         CURRENT.forEach(n -> n.biome = null);
     }
-    private static final dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<Noted> CURRENT =
-        new dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<>(Noted::new, n -> {
+    private static final ThreadEntries<Noted> CURRENT =
+        new ThreadEntries<>(Noted::new, n -> {
             RETIRED_FILTERED.add(n.filtered);
             RETIRED_SKIPPED.add(n.skipped);
         });

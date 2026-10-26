@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderGetter;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -18,6 +19,7 @@ import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.level.biome.TheEndBiomeSource;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -38,6 +40,7 @@ import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.carver.CarvingContext;
 import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
 import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
 /**
  * Real terrain for surface and carver tests: the vanilla noise generator with the real biome source
@@ -103,7 +106,7 @@ public final class TerrainHarness {
 
         /** A world on other registries (a datapack's noise settings and biome parameters, loaded by the game's own registry loader). */
         public World(HarnessWorld.Registries2 registries, Holder<NoiseGeneratorSettings> settingsHolder, BiomeSource biomeSource,
-                     net.minecraft.core.HolderGetter<net.minecraft.world.level.levelgen.synth.NormalNoise.NoiseParameters> noises, DimensionType dim, long seed) {
+                     HolderGetter<NormalNoise.NoiseParameters> noises, DimensionType dim, long seed) {
             this.preset = Preset.OVERWORLD;
             this.seed = seed;
             this.registries = registries;
@@ -217,7 +220,7 @@ public final class TerrainHarness {
             for (int x = 0; x < 4; x++) {
                 for (int y = 0; y < 4; y++) {
                     for (int z = 0; z < 4; z++) {
-                        ((net.minecraft.world.level.chunk.PalettedContainer<Holder<Biome>>) dst.getBiomes()).getAndSetUnchecked(x, y, z, src.get(x, y, z));
+                        ((PalettedContainer<Holder<Biome>>) dst.getBiomes()).getAndSetUnchecked(x, y, z, src.get(x, y, z));
                     }
                 }
             }

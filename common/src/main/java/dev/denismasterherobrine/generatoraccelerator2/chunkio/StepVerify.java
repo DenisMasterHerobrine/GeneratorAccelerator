@@ -4,8 +4,12 @@ import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.features.verify.FeatureCompare;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import org.slf4j.Logger;
 
 /**
@@ -64,7 +68,7 @@ public final class StepVerify {
     }
 
     private static String column(ProtoChunk before, ProtoChunk expected, ChunkAccess actual) {
-        net.minecraft.core.BlockPos.MutableBlockPos pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int minX = actual.getPos().getMinBlockX();
         int minZ = actual.getPos().getMinBlockZ();
         for (int y = actual.getMaxBuildHeight() - 1; y >= actual.getMinBuildHeight(); y--) {
@@ -72,7 +76,7 @@ public final class StepVerify {
                 for (int lz = 0; lz < 16; lz++) {
                     pos.set(minX + lx, y, minZ + lz);
                     if (expected.getBlockState(pos) != actual.getBlockState(pos)) {
-                        net.minecraft.world.level.levelgen.Heightmap.Types ws = net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG;
+                        Heightmap.Types ws = Heightmap.Types.WORLD_SURFACE_WG;
                         StringBuilder sb = new StringBuilder("x=" + (minX + lx) + " z=" + (minZ + lz) + " world surface before "
                             + (before == null ? "?" : before.getHeight(ws, lx, lz)) + ", vanilla " + expected.getHeight(ws, lx, lz) + ", fast "
                             + actual.getHeight(ws, lx, lz) + "; status " + (before == null ? "?" : before.getPersistedStatus()) + " (y: before / vanilla / fast)");
@@ -89,8 +93,8 @@ public final class StepVerify {
         return "none";
     }
 
-    private static String name(net.minecraft.world.level.block.state.BlockState state) {
-        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+    private static String name(BlockState state) {
+        return BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
     }
 
     public String summary() {

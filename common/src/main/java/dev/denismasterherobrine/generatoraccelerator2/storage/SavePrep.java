@@ -5,9 +5,17 @@ import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
@@ -17,6 +25,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.SavedTick;
 import net.minecraft.world.ticks.ScheduledTick;
 import net.minecraft.world.ticks.SerializableTickContainer;
@@ -91,11 +100,11 @@ public final class SavePrep {
      */
     private static final int THREADS = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 4));
     private static final AtomicInteger THREAD_IDS = new AtomicInteger();
-    private static final java.util.concurrent.ThreadPoolExecutor POOL = pool();
+    private static final ThreadPoolExecutor POOL = pool();
 
-    private static java.util.concurrent.ThreadPoolExecutor pool() {
-        java.util.concurrent.ThreadPoolExecutor pool = new java.util.concurrent.ThreadPoolExecutor(THREADS, THREADS, 30, java.util.concurrent.TimeUnit.SECONDS,
-            new java.util.concurrent.LinkedBlockingQueue<>(), r -> {
+    private static ThreadPoolExecutor pool() {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(THREADS, THREADS, 30, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(), r -> {
                 Thread t = new Thread(r, "GA2 Save Prep #" + THREAD_IDS.incrementAndGet());
                 t.setDaemon(true);
                 t.setUncaughtExceptionHandler((th, e) -> LOGGER.error("uncaught exception on {}", th.getName(), e));
@@ -155,7 +164,7 @@ public final class SavePrep {
     private static final VerifyCounter VERIFY_TICKS = new VerifyCounter("savePrepTicks");
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
-    static <T> void prepareTicks(SerializableTickContainer<T> container, java.util.function.Function<T, String> id, long gameTime) {
+    static <T> void prepareTicks(SerializableTickContainer<T> container, Function<T, String> id, long gameTime) {
         if (!(container instanceof TickSlot slot)) {
             return;
         }
@@ -163,8 +172,8 @@ public final class SavePrep {
         ListTag list = new ListTag();
         for (Object tick : ticks) {
             // as LevelChunkTicks.save and ProtoChunkTicks.save write them
-            list.add(tick instanceof ScheduledTick scheduled ? SavedTick.saveTick(scheduled, (java.util.function.Function) id, gameTime)
-                : ((SavedTick) tick).save((java.util.function.Function) id));
+            list.add(tick instanceof ScheduledTick scheduled ? SavedTick.saveTick(scheduled, (Function) id, gameTime)
+                : ((SavedTick) tick).save((Function) id));
         }
         slot.ga2$setPreparedTicks(new PreparedTicks(ticks, gameTime, list));
     }
@@ -248,7 +257,7 @@ public final class SavePrep {
         long gameTime = level.getGameTime();
         CompletableFuture<Void> job = new CompletableFuture<>();
         // A save that stopped waiting completes the job. The queued encoding then releases the unloaded chunk.
-        java.util.concurrent.atomic.AtomicReference<ChunkAccess> pending = new java.util.concurrent.atomic.AtomicReference<>(chunk);
+        AtomicReference<ChunkAccess> pending = new AtomicReference<>(chunk);
         job.whenComplete((v, t) -> pending.set(null));
         try {
             POOL.execute(() -> {
@@ -292,7 +301,7 @@ public final class SavePrep {
      * {@code BuiltInRegistries.BLOCK/FLUID.getKey(type).toString()}, which the save writes as the tick's {@code i}. The cached
      * string is identical, and strings are immutable.
      */
-    private static final java.util.Map<Object, String> TICK_IDS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<Object, String> TICK_IDS = new ConcurrentHashMap<>();
 
     private static String blockId(Block block) {
         String id = TICK_IDS.get(block);
@@ -303,7 +312,7 @@ public final class SavePrep {
         return id;
     }
 
-    private static String fluidId(net.minecraft.world.level.material.Fluid fluid) {
+    private static String fluidId(Fluid fluid) {
         String id = TICK_IDS.get(fluid);
         if (id == null) {
             id = BuiltInRegistries.FLUID.getKey(fluid).toString();
@@ -359,7 +368,7 @@ public final class SavePrep {
     }
 
     /** Copies {@code container}'s data and leaves the copy and its encoding on it. */
-    static <T> void prepareContainer(PalettedContainer<T> container, java.util.function.Function<PalettedContainer.Data<T>, Tag> encode) {
+    static <T> void prepareContainer(PalettedContainer<T> container, Function<PalettedContainer.Data<T>, Tag> encode) {
         PalettedContainer.Data<T> copy = container.data.copy();
         Tag tag = encode.apply(copy);
         if (tag != null) {
@@ -466,7 +475,7 @@ public final class SavePrep {
 
     /** For {@code /ga2 steps stats}. */
     public static String stats() {
-        return String.format(java.util.Locale.ROOT, "sections encoded ahead of saves: %d chunks, %d tags taken, %d changed since (encoded again), %d unloads waited a tick,"
+        return String.format(Locale.ROOT, "sections encoded ahead of saves: %d chunks, %d tags taken, %d changed since (encoded again), %d unloads waited a tick,"
             + " %d not ready in time, %d left to the save (busy); tick lists taken %d, changed since %d", CHUNKS.sum(), TAKEN.sum(), CHANGED.sum(), WAITED.sum(), LATE.sum(),
             BUSY.sum(), TICKS_TAKEN.sum(), TICKS_CHANGED.sum());
     }

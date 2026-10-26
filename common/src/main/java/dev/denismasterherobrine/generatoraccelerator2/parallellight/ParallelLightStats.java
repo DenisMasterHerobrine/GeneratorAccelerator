@@ -3,7 +3,9 @@ package dev.denismasterherobrine.generatoraccelerator2.parallellight;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 
 /** Counters for the status lines ({@link ParallelLight#statusLines()}). */
 public final class ParallelLightStats {
@@ -20,7 +22,7 @@ public final class ParallelLightStats {
     static final LongAdder SENT = new LongAdder();
     static final LongAdder NANOS = new LongAdder();
     /** Diagnostics: receives a line per split batch (per-worker entries, the largest sections). */
-    public static volatile java.util.function.Consumer<String> TRACK;
+    public static volatile Consumer<String> TRACK;
     static final LongAdder START_NANOS = new LongAdder();
     static final LongAdder WORK_NANOS = new LongAdder();
     static final LongAdder WAIT_NANOS = new LongAdder();
@@ -41,7 +43,7 @@ public final class ParallelLightStats {
      * update is {@code ThreadedLevelLightEngine.runUpdate}: the tasks before, the propagation, and the tasks after.
      */
     static final LongAdder RUNS = new LongAdder(), RUN_NANOS = new LongAdder(), RUN_TASKS = new LongAdder(), RUN_GAP_NANOS = new LongAdder();
-    static final java.util.concurrent.atomic.AtomicLong RUN_MAX_NANOS = new java.util.concurrent.atomic.AtomicLong();
+    static final AtomicLong RUN_MAX_NANOS = new AtomicLong();
 
     public static void run(long nanos, int tasks, long gapNanos, long cpuNanos) {
         RUN_CPU_NANOS.add(cpuNanos);

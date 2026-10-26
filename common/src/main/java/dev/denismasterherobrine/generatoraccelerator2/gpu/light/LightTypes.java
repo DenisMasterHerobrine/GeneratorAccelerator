@@ -1,7 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.light;
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +48,8 @@ final class LightTypes {
     byte[] opacity = new byte[256];
     short[] faces = new short[256 * 6];
     /** The faces the batch uses, renumbered from 0 (the empty shape). */
-    private final it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap localFace = new it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap();
-    private final it.unimi.dsi.fastutil.ints.IntArrayList faceGlobal = new it.unimi.dsi.fastutil.ints.IntArrayList();
+    private final Int2IntOpenHashMap localFace = new Int2IntOpenHashMap();
+    private final IntArrayList faceGlobal = new IntArrayList();
 
     void reset() {
         index.clear();
@@ -98,8 +101,8 @@ final class LightTypes {
             count = id + 1;
         }
         if (opacity.length < count) {
-            opacity = java.util.Arrays.copyOf(opacity, Math.max(count, opacity.length * 2));
-            faces = java.util.Arrays.copyOf(faces, opacity.length * 6);
+            opacity = Arrays.copyOf(opacity, Math.max(count, opacity.length * 2));
+            faces = Arrays.copyOf(faces, opacity.length * 6);
         }
         opacity[id] = (byte) props[0];
         for (int d = 0; d < 6; d++) {
@@ -180,9 +183,5 @@ final class LightTypes {
             }
             return new Faces(cover, part, pairs, np);
         }
-    }
-
-    int faceCount() {
-        return faceGlobal.size();
     }
 }

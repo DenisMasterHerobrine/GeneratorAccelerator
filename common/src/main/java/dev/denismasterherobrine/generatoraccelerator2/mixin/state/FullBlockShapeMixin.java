@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.state.ShapeFlags;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.shapes.BooleanOp;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -29,7 +30,7 @@ public abstract class FullBlockShapeMixin {
             return f == 1;
         }
         boolean full = !Shapes.joinIsNotEmpty(Shapes.block(), shape, BooleanOp.NOT_SAME);
-        if ((dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED && GA2$HOOK.allowed())) {
+        if ((StateFast.ENABLED && GA2$HOOK.allowed())) {
             h.ga2$setFull(full ? (byte) 1 : (byte) 2);
         }
         return full;

@@ -15,6 +15,10 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
+import java.util.Locale;
 
 /**
  * Measures the share of time the light thread spends in {@code runUpdate} ({@link LightLoad}). Also records the length of each
@@ -47,7 +51,7 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
 
     /** The light thread's CPU time at the start of the update, or -1 where the JVM cannot tell. */
     @Unique private long ga2pl$cpuStart;
-    @Unique private static final java.lang.management.ThreadMXBean ga2pl$THREADS = java.lang.management.ManagementFactory.getThreadMXBean();
+    @Unique private static final ThreadMXBean ga2pl$THREADS = ManagementFactory.getThreadMXBean();
 
     @Inject(method = "runUpdate", at = @At("HEAD"))
     private void ga2pl$startUpdate(CallbackInfo ci) {
@@ -68,7 +72,7 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
     @Unique
     private static long ga2pl$gcMillis() {
         long ms = 0;
-        for (java.lang.management.GarbageCollectorMXBean gc : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+        for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
             // pauses only (G1's concurrent cycles have a bean of their own)
             if (!gc.getName().contains("Concurrent")) {
                 ms += Math.max(0L, gc.getCollectionTime());
@@ -130,7 +134,7 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
         this.ga2pl$updateEnd = now;
         if (TRACE && now - start > 50_000_000L) {
             long[] b = this.ga2pl$propagationBefore, a = this.ga2pl$propagationAfter;
-            String parts = b == null || a == null ? "" : String.format(java.util.Locale.ROOT,
+            String parts = b == null || a == null ? "" : String.format(Locale.ROOT,
                 " (split %d: %d entries queued, %d processed, %d ms waiting for helpers; alone %d: %d queued, %d processed)",
                 a[0] - b[0], a[2] - b[2], a[3] - b[3], (a[4] - b[4]) / 1_000_000, a[1] - b[1], a[5] - b[5], a[6] - b[6]);
             LOGGER.info("update {} ms: {} tasks; pre {} tasks / {} ms (slowest {} ms: {}); propagation {} ms{}; post {} tasks / {} ms (slowest {} ms: {}); rest {} ms; GC {} ms",

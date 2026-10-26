@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.biome;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 
 /**
@@ -51,9 +52,9 @@ public final class SearchTies {
     /** Why a lookup was unsure: a tie in GA2's search, in Biolith's first or second answer, a search GA2 does not see. */
     public static final int TIE = 0, BIOLITH_FIRST = 1, BIOLITH_SECOND = 2, UNSEEN = 3;
     /** Per reason, the searches that made a watching lookup unsure. */
-    public static final java.util.concurrent.atomic.LongAdder[] REASONS = {
-        new java.util.concurrent.atomic.LongAdder(), new java.util.concurrent.atomic.LongAdder(), new java.util.concurrent.atomic.LongAdder(),
-        new java.util.concurrent.atomic.LongAdder() };
+    public static final LongAdder[] REASONS = {
+        new LongAdder(), new LongAdder(), new LongAdder(),
+        new LongAdder() };
 
     /** A search whose answer may depend on the last result, or one GA2 does not see. */
     public static void unsure(int reason) {

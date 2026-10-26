@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.mixin.state.FluidInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import net.minecraft.core.BlockPos;
@@ -60,7 +61,7 @@ public class StateShortcutsTest {
         for (int round = 0; round < 4; round++) {
             LevelChunkSection section = new LevelChunkSection(r.biomes);
             BlockState[] expected = new BlockState[4096];
-            java.util.Arrays.fill(expected, Blocks.AIR.defaultBlockState());
+            Arrays.fill(expected, Blocks.AIR.defaultBlockState());
             int nonEmpty = 0, ticking = 0, fluids = 0;
             // a few states at first (single, linear palette), then more (hash map), then many (global)
             int kinds = round == 0 ? 6 : round == 1 ? 40 : round == 2 ? 300 : 4000;

@@ -2,6 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.biome;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import net.minecraft.world.level.biome.Climate;
 
@@ -15,13 +18,13 @@ public final class ClimateSearch {
      * every biome lookup and then skips the thread-local read. A thread that sets the override counts itself first, so that
      * thread always reads it.
      */
-    private static final java.util.concurrent.atomic.AtomicInteger OVERRIDES = new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger OVERRIDES = new AtomicInteger();
     private static final HookTargets.Hook HOOK = HookTargets.hook(HookTargets.BIOME_CLIMATE_SEARCH);
 
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.biomes", 0);
-    private static final java.util.concurrent.atomic.AtomicLong SEEN = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong SEEN = new AtomicLong();
     /** Searches also walked and compared ({@code verify.biomes}), and the searches that differed. */
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong(), DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong(), DIFFERING = new AtomicLong();
 
     public static boolean enabled() {
         return (OVERRIDES.get() == 0 || !DISABLED.get()[0]) && BiomeConfig.flatClimateSearch() && HOOK.allowed();
@@ -52,7 +55,7 @@ public final class ClimateSearch {
         Climate.RTree.Leaf<T> last = tree.lastResult.get();
         // the GPU's nearest leaf, in a chunk whose biome step it handed it to. It is the only leaf at its distance, so the walk
         // ends on it whatever the last result
-        Climate.RTree.Leaf<T> handed = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.nearest(tree, q0, q1, q2, q3, q4, q5);
+        Climate.RTree.Leaf<T> handed = BiomeHand.nearest(tree, q0, q1, q2, q3, q4, q5);
         if (handed != null) {
             if (handed != last) {
                 tree.lastResult.set(handed);

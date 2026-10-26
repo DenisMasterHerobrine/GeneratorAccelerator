@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.light;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
@@ -19,8 +20,10 @@ import net.minecraft.util.thread.ProcessorHandle;
 import net.minecraft.util.thread.ProcessorMailbox;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import java.nio.file.Path;
 
 /**
  * The light thread's capacity with block light and sky light at once ({@link LightLayers}) and one after the other. A square of
@@ -38,8 +41,8 @@ public class LightLayersBench {
         String file = System.getProperty("ga2.bench.regionFile");
         if (file != null) {
             // full chunks of a vanilla world, as generated
-            base = dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.load(java.nio.file.Path.of(file), 8, 8, 15, world);
-            org.junit.jupiter.api.Assumptions.assumeTrue(base != null, "region square not fully generated");
+            base = RegionChunks.load(Path.of(file), 8, 8, 15, world);
+            Assumptions.assumeTrue(base != null, "region square not fully generated");
         } else {
             // generated terrain with light sources and shapes at random: far more block light than a real world
             List<ProtoChunk> tiles = new ArrayList<>();

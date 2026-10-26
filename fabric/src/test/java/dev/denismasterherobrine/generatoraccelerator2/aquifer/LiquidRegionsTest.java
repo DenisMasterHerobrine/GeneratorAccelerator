@@ -8,12 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import java.util.Arrays;
 import java.util.Random;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,7 +36,7 @@ public class LiquidRegionsTest {
         blocks[0] = LAVA;
         blocks[1] = WATER;
         blocks[2] = null;
-        blocks[17] = Blocks.WATER.defaultBlockState().setValue(net.minecraft.world.level.block.LiquidBlock.LEVEL, 3);
+        blocks[17] = Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3);
         LiquidRegions.Table t = new LiquidRegions.Table(10, blocks);
         // solid stays solid, above the altitude nothing changes
         assertNull(LiquidRegions.apply(t, 0, 5, 0, null));
@@ -83,7 +87,7 @@ public class LiquidRegionsTest {
                 boolean liquidSeen = false;
                 for (int lx = 0; lx < 16 && !liquidSeen; lx++) {
                     for (int lz = 0; lz < 16 && !liquidSeen; lz++) {
-                        BlockState s = perBlock.getBlockState(new net.minecraft.core.BlockPos(cx + lx, t.altitude(), cz + lz));
+                        BlockState s = perBlock.getBlockState(new BlockPos(cx + lx, t.altitude(), cz + lz));
                         liquidSeen = !s.getFluidState().isEmpty() && t.blocks()[lx * 16 + lz] != null && s.is(t.blocks()[lx * 16 + lz].getBlock());
                     }
                 }
@@ -121,12 +125,12 @@ public class LiquidRegionsTest {
             }
             assertArrayEquals(da.storage().getRaw(), db.storage().getRaw(), "storage, section " + s + ", " + where);
         }
-        for (var type : net.minecraft.world.level.levelgen.Heightmap.Types.values()) {
+        for (var type : Heightmap.Types.values()) {
             assertEquals(a.hasPrimedHeightmap(type), b.hasPrimedHeightmap(type), "heightmap presence " + type + ", " + where);
             if (a.hasPrimedHeightmap(type)) {
                 assertArrayEquals(a.getOrCreateHeightmapUnprimed(type).getRawData(), b.getOrCreateHeightmapUnprimed(type).getRawData(), "heightmap " + type + ", " + where);
             }
         }
-        assertEquals(java.util.Arrays.deepToString(a.getPostProcessing()), java.util.Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
+        assertEquals(Arrays.deepToString(a.getPostProcessing()), Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
     }
 }

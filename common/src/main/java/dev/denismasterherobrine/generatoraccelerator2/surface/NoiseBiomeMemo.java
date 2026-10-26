@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.surface;
 
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.BiomeManagerAccessor;
 import java.util.Arrays;
+import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.Holder;
 import net.minecraft.util.LinearCongruentialGenerator;
 import net.minecraft.util.Mth;
@@ -200,7 +201,7 @@ public final class NoiseBiomeMemo implements AutoCloseable {
     public static final class NoiseBiomeStats {
         private NoiseBiomeStats() {}
 
-        public static final java.util.concurrent.atomic.LongAdder LOOKUPS = new java.util.concurrent.atomic.LongAdder();
-        public static final java.util.concurrent.atomic.LongAdder ASKED = new java.util.concurrent.atomic.LongAdder();
+        public static final LongAdder LOOKUPS = new LongAdder();
+        public static final LongAdder ASKED = new LongAdder();
     }
 }

@@ -2,11 +2,13 @@ package terrablender.worldgen.surface;
 
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
+import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
+import java.lang.reflect.Field;
 
 /**
  * Test copy of TerraBlender 4.1's {@code NamespacedSurfaceRuleSource} (same name, shape and rule semantics, no codec).
@@ -30,17 +32,17 @@ public record NamespacedSurfaceRuleSource(SurfaceRules.RuleSource base, Map<Stri
     static Holder<Biome> biome(SurfaceRules.Context context) {
         try {
             if (BIOME == null) {
-                java.lang.reflect.Field f = SurfaceRules.Context.class.getDeclaredField("biome");
+                Field f = SurfaceRules.Context.class.getDeclaredField("biome");
                 f.setAccessible(true);
                 BIOME = f;
             }
-            return ((java.util.function.Supplier<Holder<Biome>>) BIOME.get(context)).get();
+            return ((Supplier<Holder<Biome>>) BIOME.get(context)).get();
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
     }
 
-    private static java.lang.reflect.Field BIOME;
+    private static Field BIOME;
 
     record NamespacedRule(SurfaceRules.Context context, SurfaceRules.SurfaceRule baseRule, Map<String, SurfaceRules.SurfaceRule> rules) implements SurfaceRules.SurfaceRule {
         @Override

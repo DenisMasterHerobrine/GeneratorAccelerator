@@ -1,5 +1,13 @@
 package dev.denismasterherobrine.generatoraccelerator2.aquifer;
 
+import javax.annotation.Nullable;
+
+import net.minecraft.world.level.block.state.BlockState;
+
+import net.minecraft.world.level.levelgen.Aquifer;
+
+import net.minecraft.world.level.levelgen.DensityFunction;
+
 /** Duck interface added to {@code Aquifer.NoiseBasedAquifer} by mixin. */
 public interface Ga2Aquifer {
     /**
@@ -15,14 +23,14 @@ public interface Ga2Aquifer {
      * {@code computeSubstance(new SinglePointContext(x, y, z), density)}. The context is made only when the block's search
      * samples the barrier noise. GA2's carvers ask at every carved block.
      */
-    net.minecraft.world.level.block.state.BlockState ga2$substanceAt(int x, int y, int z, double density);
+    BlockState ga2$substanceAt(int x, int y, int z, double density);
 
     /**
      * {@code computeSubstance(context, density)} for the noise fill. Calls the fast path directly instead of through its hook,
      * which made a callback object per block. The fast path only runs when no other mod changes the aquifer's methods. The
      * hook is then the only code before vanilla's body.
      */
-    net.minecraft.world.level.block.state.BlockState ga2$substance(net.minecraft.world.level.levelgen.DensityFunction.FunctionContext context, double density);
+    BlockState ga2$substance(DensityFunction.FunctionContext context, double density);
 
     /** {@code shouldScheduleFluidUpdate()} without the hook's callback object. Resolves the pending flag as the hook does. */
     boolean ga2$scheduleFlag();
@@ -34,6 +42,6 @@ public interface Ga2Aquifer {
      * The global fluid picker, when {@link #ga2$cellAir} is false for every cell where the picker gives lava or no air, and that
      * picker's fluids depend on y alone (vanilla's). Null otherwise.
      */
-    @javax.annotation.Nullable
-    net.minecraft.world.level.levelgen.Aquifer.FluidPicker ga2$skyPicker();
+    @Nullable
+    Aquifer.FluidPicker ga2$skyPicker();
 }

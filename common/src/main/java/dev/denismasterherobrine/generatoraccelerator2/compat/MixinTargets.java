@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -104,7 +105,7 @@ public final class MixinTargets {
 
     /** Every other mod's change to the aquifer methods, the order-kept ones included (for the GPU's status line). */
     public static List<String> aquiferChanges() {
-        List<String> all = new java.util.ArrayList<>(aquiferForeign);
+        List<String> all = new ArrayList<>(aquiferForeign);
         all.addAll(aquiferOrderKept);
         all.addAll(aquiferLiquidRegions);
         return all;

@@ -1,11 +1,16 @@
 package dev.denismasterherobrine.generatoraccelerator2.carver;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BiFunction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.QuartPos;
@@ -25,6 +30,7 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.RandomSupport;
+import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.carver.CarverConfiguration;
 import net.minecraft.world.level.levelgen.carver.CarvingContext;
@@ -46,14 +52,14 @@ public final class CarverRunner {
      * Another mod's modifier of the {@code surfaceRule()} value in {@code applyCarvers} (Citadel's merged rules). It is applied to
      * the rule the carving context is built from. Null when none is installed.
      */
-    public static volatile java.util.function.BiFunction<NoiseBasedChunkGenerator, net.minecraft.world.level.levelgen.SurfaceRules.RuleSource,
-        net.minecraft.world.level.levelgen.SurfaceRules.RuleSource> surfaceRuleModifier;
+    public static volatile BiFunction<NoiseBasedChunkGenerator, SurfaceRules.RuleSource,
+        SurfaceRules.RuleSource> surfaceRuleModifier;
 
     /** The surface rule vanilla's {@code applyCarvers} builds its carving context from, other mods' modifier included. */
-    static net.minecraft.world.level.levelgen.SurfaceRules.RuleSource surfaceRule(NoiseBasedChunkGenerator generator) {
-        net.minecraft.world.level.levelgen.SurfaceRules.RuleSource rule = generator.generatorSettings().value().surfaceRule();
-        java.util.function.BiFunction<NoiseBasedChunkGenerator, net.minecraft.world.level.levelgen.SurfaceRules.RuleSource,
-            net.minecraft.world.level.levelgen.SurfaceRules.RuleSource> modifier = surfaceRuleModifier;
+    static SurfaceRules.RuleSource surfaceRule(NoiseBasedChunkGenerator generator) {
+        SurfaceRules.RuleSource rule = generator.generatorSettings().value().surfaceRule();
+        BiFunction<NoiseBasedChunkGenerator, SurfaceRules.RuleSource,
+            SurfaceRules.RuleSource> modifier = surfaceRuleModifier;
         return modifier != null ? modifier.apply(generator, rule) : rule;
     }
 
@@ -84,10 +90,10 @@ public final class CarverRunner {
     public static final LongAdder CARVES_REPLAYED = new LongAdder();
     public static final LongAdder CARVES_FOREIGN = new LongAdder();
     /** {@code -Dgeneratoraccelerator2.verify.carvers=N}: every N-th chunk GA2 carves is checked against vanilla on a copy. */
-    public static final dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify VERIFY = new dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify("carvers");
+    public static final StepVerify VERIFY = new StepVerify("carvers");
 
     /** Threads inside {@link #runVanilla}. While there are none, the override is not looked up (see {@code DfcHooks}). */
-    private static final java.util.concurrent.atomic.AtomicInteger OVERRIDES = new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger OVERRIDES = new AtomicInteger();
     private static final HookTargets.Hook ENTRY = HookTargets.hook(HookTargets.CARVER_ENTRY);
 
     public static boolean enabled() {
@@ -112,7 +118,7 @@ public final class CarverRunner {
                                 BiomeManager levelBiomes, ChunkAccess chunk, GenerationStep.Carving step) {
         // a chunk the GPU filled carves with the GPU's aquifer cells and no NoiseChunk. The carving context's top material reads the
         // GPU's surface levels.
-        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain terrain = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk);
+        GpuTerrain terrain = GpuTerrain.of(chunk);
         if (!enabled() || chunk.getClass() != ProtoChunk.class || ((ChunkAccessAccessor) chunk).ga2$noiseChunk() == null && terrain == null) {
             CHUNKS_VANILLA.increment();
             return false;
@@ -147,7 +153,7 @@ public final class CarverRunner {
                     // a holder set is read by index. Its iterator cost one object per chunk around each carved chunk.
                     Iterable<Holder<ConfiguredWorldCarver<?>>> carvers = settings.getCarvers(step);
                     HolderSet<ConfiguredWorldCarver<?>> set = carvers instanceof HolderSet<ConfiguredWorldCarver<?>> s ? s : null;
-                    java.util.Iterator<Holder<ConfiguredWorldCarver<?>>> it = set == null ? carvers.iterator() : null;
+                    Iterator<Holder<ConfiguredWorldCarver<?>>> it = set == null ? carvers.iterator() : null;
                     int n = set == null ? 0 : set.size();
                     for (int l = 0; set != null ? l < n : it.hasNext(); l++) {
                         Holder<ConfiguredWorldCarver<?>> holder = set != null ? set.get(l) : it.next();

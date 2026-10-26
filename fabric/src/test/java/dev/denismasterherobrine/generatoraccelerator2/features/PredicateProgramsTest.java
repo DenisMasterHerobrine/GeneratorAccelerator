@@ -22,6 +22,7 @@ import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
 import net.minecraft.world.level.levelgen.placement.BlockPredicateFilter;
 import net.minecraft.world.level.levelgen.placement.EnvironmentScanPlacement;
@@ -29,6 +30,7 @@ import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 import net.minecraft.world.level.material.Fluids;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /**
  * Every block predicate a vanilla placed feature uses (block predicate filters, environment scans) and a few thousand random
@@ -56,7 +58,7 @@ public class PredicateProgramsTest {
      * single-threaded, alternating rounds.
      */
     @Test
-    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "ga2.bench", matches = "true")
+    @EnabledIfSystemProperty(named = "ga2.bench", matches = "true")
     void bench() throws Exception {
         VanillaTags.bind();
         HarnessWorld.Registries2 r = HarnessWorld.registries();
@@ -67,7 +69,7 @@ public class PredicateProgramsTest {
         for (int i = 0; i < positions.length; i++) {
             int x = FeatureRun.CENTER_X * 16 + random.nextInt(16);
             int z = FeatureRun.CENTER_Z * 16 + random.nextInt(16);
-            int surface = level.getChunk(x >> 4, z >> 4).getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, x & 15, z & 15);
+            int surface = level.getChunk(x >> 4, z >> 4).getHeight(Heightmap.Types.WORLD_SURFACE_WG, x & 15, z & 15);
             positions[i] = new BlockPos(x, surface - 4 + random.nextInt(9), z);
         }
         Object[] programs = new Object[predicates.size()];

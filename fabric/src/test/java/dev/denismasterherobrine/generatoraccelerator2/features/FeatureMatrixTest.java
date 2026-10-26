@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.block.Blocks;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,7 +23,7 @@ public class FeatureMatrixTest {
     @Test
     void optimizedPathMatchesVanilla() {
         HarnessWorld.Registries2 r = HarnessWorld.registries();
-        assertTrue(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState().is(net.minecraft.tags.BlockTags.STONE_ORE_REPLACEABLES), "vanilla block tags are not bound");
+        assertTrue(Blocks.STONE.defaultBlockState().is(BlockTags.STONE_ORE_REPLACEABLES), "vanilla block tags are not bound");
         List<FeatureRun.Case> cases = FeatureRun.cases(r);
         assertTrue(cases.size() > 150, "too few placed features found: " + cases.size());
         Set<String> nonDeterministic = new TreeSet<>();
@@ -100,12 +103,12 @@ public class FeatureMatrixTest {
             }
         }
         System.out.println("FeatureMatrixTest: direct configured runs " + directCompared + ", placed " + directPlaced);
-        assertTrue(dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats.PLACEMENTS_FAST.sum() > 0, "the placement pipeline was never used");
+        assertTrue(FeatureStats.PLACEMENTS_FAST.sum() > 0, "the placement pipeline was never used");
         for (String fast : new String[] { "OreFeature", "GeodeFeature", "DiskFeature", "SpringFeature", "SnowAndFreezeFeature", "SeagrassFeature", "KelpFeature", "MultifaceGrowthFeature", "SimpleBlockFeature", "MonsterRoomFeature", "TreeFeature", "SculkPatchFeature" }) {
-            java.util.concurrent.atomic.LongAdder hits = dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats.fastByFeature().get(fast);
+            LongAdder hits = FeatureStats.fastByFeature().get(fast);
             assertTrue(hits != null && hits.sum() > 0, "fast path never used: " + fast);
         }
-        System.out.println("FeatureMatrixTest: fast paths " + dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats.fastByFeature());
+        System.out.println("FeatureMatrixTest: fast paths " + FeatureStats.fastByFeature());
         System.out.println("FeatureMatrixTest: " + compared + " runs compared, " + placed + " placed something; vanilla non-deterministic: " + nonDeterministic
             + "; unsupported in harness: " + unsupported);
         neverPlaced.removeAll(everPlaced);

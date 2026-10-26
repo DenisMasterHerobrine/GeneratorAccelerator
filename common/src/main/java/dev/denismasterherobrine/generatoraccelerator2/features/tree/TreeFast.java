@@ -11,8 +11,10 @@ import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -32,6 +34,7 @@ import net.minecraft.world.level.levelgen.feature.trunkplacers.TrunkPlacer;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape;
 import net.minecraft.world.phys.shapes.DiscreteVoxelShape;
+import java.lang.reflect.Method;
 
 /**
  * Transcription of {@code TreeFeature.place}. The trunk, foliage and root placers and the decorators
@@ -48,13 +51,13 @@ public final class TreeFast {
 
     private static final Direction[] DIRECTIONS = Direction.values();
     /** Trunk placer classes (and their supertypes up to the base) that declare neither isFree nor validTreePos. */
-    private static final java.util.Map<Class<?>, Boolean> BASE_FREE_TEST = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<Class<?>, Boolean> BASE_FREE_TEST = new ConcurrentHashMap<>();
 
     private static boolean usesBaseFreeTest(Class<?> placer) {
         return BASE_FREE_TEST.computeIfAbsent(placer, cls -> {
             try {
                 for (Class<?> c = cls; c != null && c != TrunkPlacer.class; c = c.getSuperclass()) {
-                    for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                    for (Method m : c.getDeclaredMethods()) {
                         String name = Names.mojangMethod(m.getName());
                         if ((name.equals("isFree") || name.equals("validTreePos")) && m.getParameterCount() == 2) {
                             return Boolean.FALSE;

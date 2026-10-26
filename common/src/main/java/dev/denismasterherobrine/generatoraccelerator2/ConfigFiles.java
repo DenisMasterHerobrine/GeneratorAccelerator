@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;
 import org.slf4j.Logger;
 
 /**
@@ -26,7 +27,7 @@ public final class ConfigFiles {
 
     private static Path gameDir() {
         try {
-            return dev.denismasterherobrine.generatoraccelerator2.platform.Platform.gameDir();
+            return Platform.gameDir();
         } catch (Throwable t) {
             // Loader paths are not available (tests). Use the working directory.
             return Path.of("");
@@ -35,7 +36,7 @@ public final class ConfigFiles {
 
     private static Path configDir() {
         try {
-            return dev.denismasterherobrine.generatoraccelerator2.platform.Platform.configDir();
+            return Platform.configDir();
         } catch (Throwable t) {
             return Path.of("config");
         }

@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.storage.ChunkSerializerAccessor;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
@@ -334,7 +335,7 @@ public final class LoadPrep {
     }
 
     /** Whether {@code primeHeightmaps(chunk, types)} can be skipped: there are no heightmaps to prime and no mod changed it. */
-    public static boolean skipPrime(java.util.Set<?> types) {
+    public static boolean skipPrime(Set<?> types) {
         if (types.isEmpty() && enabled() && PRIME.allowed()) {
             PRIMES_SKIPPED.increment();
             return true;

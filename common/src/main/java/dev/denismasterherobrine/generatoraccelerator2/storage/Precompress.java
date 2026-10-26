@@ -100,7 +100,7 @@ public final class Precompress {
      * A chunk's key: its position, scrambled by a bijection. {@code Long.hashCode} of {@code x | z << 32} is {@code x ^ z}. That
      * hash is equal along whole diagonals. Plain positions would pile into a few bins, which the map turns into locked trees.
      */
-    private static long key(net.minecraft.world.level.ChunkPos pos) {
+    private static long key(ChunkPos pos) {
         return pos.toLong() * 0x9E3779B97F4A7C15L;
     }
     private final AtomicInteger mismatches = new AtomicInteger();

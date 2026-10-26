@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.doubles.DoubleList;
 import net.minecraft.world.level.levelgen.synth.ImprovedNoise;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import net.minecraft.world.level.levelgen.synth.PerlinNoise;
+import java.util.Arrays;
 
 /**
  * Flattened, immutable description of one {@link NormalNoise} instance: permutation tables,
@@ -166,8 +167,8 @@ public final class NoiseSpec {
             void prepare(double x, double z) {
                 int[] ints = this.ints;
                 double[] xz = this.xz;
-                java.util.Arrays.fill(termY, Integer.MIN_VALUE);
-                java.util.Arrays.fill(missed, false);
+                Arrays.fill(termY, Integer.MIN_VALUE);
+                Arrays.fill(missed, false);
                 for (int i = 0; i < p.count; i++) {
                     double f = p.inputFactor[i];
                     double dx = FusedNoise.wrap(x * f) + p.xo[i];

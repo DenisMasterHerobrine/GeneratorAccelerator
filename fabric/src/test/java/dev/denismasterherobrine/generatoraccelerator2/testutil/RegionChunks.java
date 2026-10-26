@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.InflaterInputStream;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
@@ -47,8 +49,8 @@ public final class RegionChunks {
     }
 
     /** Raw chunk tags of an .mca file (zlib chunks only), at most {@code limit}, any status. */
-    public static java.util.List<CompoundTag> readTags(Path file, int limit) throws IOException {
-        java.util.List<CompoundTag> out = new java.util.ArrayList<>();
+    public static List<CompoundTag> readTags(Path file, int limit) throws IOException {
+        List<CompoundTag> out = new ArrayList<>();
         try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {
             byte[] header = new byte[4096];
             raf.readFully(header);

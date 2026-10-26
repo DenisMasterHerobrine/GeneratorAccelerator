@@ -33,6 +33,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.storage.ChunkIOErrorReporter;
@@ -71,7 +72,7 @@ class ChunkLoadTest {
         LevelChunkSection section = new LevelChunkSection(biomes());
         LevelChunkSection[] sections = { section };
         long before = ChunkPackets.version(sections);
-        section.setBlockState(1, 2, 3, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+        section.setBlockState(1, 2, 3, Blocks.STONE.defaultBlockState());
         assertTrue(ChunkPackets.version(sections) > before);
     }
 

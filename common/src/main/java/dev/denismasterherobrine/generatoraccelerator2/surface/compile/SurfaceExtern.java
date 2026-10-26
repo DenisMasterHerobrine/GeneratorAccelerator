@@ -4,7 +4,11 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
+import javax.annotation.Nullable;
+import net.minecraft.world.level.levelgen.SurfaceSystem;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
 /**
  * How {@code compat/<modid>} teaches the surface rule compiler other mods' rule and condition types. A lowering turns
@@ -55,14 +59,14 @@ public final class SurfaceExtern {
          * go on to the next rule. For a condition, an int expression. Null when the extern has no GPU form there. The surface then
          * stays on the CPU.
          */
-        @javax.annotation.Nullable
+        @Nullable
         String gpu(GpuSetup setup);
     }
 
     /** What {@link Gpu#gpu} may use. */
     public interface GpuSetup {
         /** The dimension's surface system (its noises and the random it draws per position). */
-        net.minecraft.world.level.levelgen.SurfaceSystem system();
+        SurfaceSystem system();
 
         /** The GPU's id of a state the rule places. */
         int state(BlockState state);
@@ -71,10 +75,10 @@ public final class SurfaceExtern {
         int table(int[] data);
 
         /** The world's random state. */
-        net.minecraft.world.level.levelgen.RandomState randomState();
+        RandomState randomState();
 
         /** OpenCL for {@code noise.getValue(x, y, z)}, the coordinates OpenCL double expressions. */
-        String noise(net.minecraft.world.level.levelgen.synth.NormalNoise noise, String x, String y, String z);
+        String noise(NormalNoise noise, String x, String y, String z);
     }
 
     /** What a lowering may use. */
@@ -91,7 +95,7 @@ public final class SurfaceExtern {
          * True when every one of {@code conds} is, asked in order up to the first false one. A type whose test has a part that
          * depends on the block and a part that depends on the column only becomes the two, so the column's part is cached.
          */
-        Ir.Cond all(java.util.List<Ir.Cond> conds);
+        Ir.Cond all(List<Ir.Cond> conds);
 
         /** An assumption the lowering makes (a mod's config value). Vanilla builds a chunk for which it no longer holds. */
         void guard(BooleanSupplier holds);

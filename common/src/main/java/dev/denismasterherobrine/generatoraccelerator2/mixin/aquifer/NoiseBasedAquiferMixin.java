@@ -4,8 +4,13 @@ import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
+import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.QuartPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.server.level.ColumnPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
@@ -16,6 +21,7 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
+import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import org.apache.commons.lang3.mutable.MutableDouble;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,6 +31,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import java.util.Arrays;
 
 /**
  * Exact fast path for {@code NoiseBasedAquifer.computeSubstance}.
@@ -158,7 +165,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     /** Per candidate of the current search: squared distance shifted left by 4, with {@code 15 - order} in the low bits. */
     @Unique private final int[] ga2$packed = new int[12];
     /** {@link AquiferFastPath#COLUMNS} mode. The chunk's surface level memo, and per neighbourhood the column the last classify attempt lacked. */
-    @Unique private it.unimi.dsi.fastutil.longs.Long2IntMap ga2$levels;
+    @Unique private Long2IntMap ga2$levels;
     @Unique private long[] ga2$waitingFor;
     /** Per candidate: squared distance from the nearest and the farthest block of a box ({@link #ga2$classifyBox}). */
     @Unique private final int[] ga2$boxNear = new int[12];
@@ -199,7 +206,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             return;
         }
         this.ga2$gridSizeY = cells / layer;
-        if (random.getClass() == net.minecraft.world.level.levelgen.XoroshiroRandomSource.XoroshiroPositionalRandomFactory.class) {
+        if (random.getClass() == XoroshiroRandomSource.XoroshiroPositionalRandomFactory.class) {
             XoroshiroFactoryAccessor seeds = (XoroshiroFactoryAccessor) random;
             this.ga2$seedLo = seeds.ga2$seedLo();
             this.ga2$seedHi = seeds.ga2$seedHi();
@@ -227,7 +234,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             }
         }
         if (mode == AquiferFastPath.COLUMNS) {
-            if ((Object) this.noiseChunk instanceof dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor chunk) {
+            if ((Object) this.noiseChunk instanceof NoiseChunkAccessor chunk) {
                 this.ga2$levels = chunk.ga2$surfaceLevelMemo();
                 this.ga2$waitingFor = new long[cells];
             } else {
@@ -615,7 +622,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         int[] offsets = this.ga2$offsets;
         Aquifer.FluidStatus[] cache = this.aquiferCache;
         int[] centres = this.ga2$centres;
-        it.unimi.dsi.fastutil.longs.Long2IntMap levels = this.ga2$levels;
+        Long2IntMap levels = this.ga2$levels;
         for (int o = 0; o < 12; o++) {
             int index = key + offsets[o];
             if (cache[index] != null) {
@@ -625,9 +632,9 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             int z = centres[index * 3 + 2];
             for (int[] offset : SURFACE_SAMPLING_OFFSETS_IN_CHUNKS) {
                 // NoiseChunk.preliminarySurfaceLevel's key: the quart-aligned column of (x + 16 dx, z + 16 dz)
-                long column = net.minecraft.server.level.ColumnPos.asLong(
-                    net.minecraft.core.QuartPos.toBlock(net.minecraft.core.QuartPos.fromBlock(x + net.minecraft.core.SectionPos.sectionToBlockCoord(offset[0]))),
-                    net.minecraft.core.QuartPos.toBlock(net.minecraft.core.QuartPos.fromBlock(z + net.minecraft.core.SectionPos.sectionToBlockCoord(offset[1]))));
+                long column = ColumnPos.asLong(
+                    QuartPos.toBlock(QuartPos.fromBlock(x + SectionPos.sectionToBlockCoord(offset[0]))),
+                    QuartPos.toBlock(QuartPos.fromBlock(z + SectionPos.sectionToBlockCoord(offset[1]))));
                 if (!levels.containsKey(column)) {
                     this.ga2$waitingFor[key] = column;
                     return GA2_LOCATED;
@@ -701,7 +708,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             int cellZ = this.minGridZ + iz;
             for (int ix = 0; ix < this.gridSizeX; ix++) {
                 int cellX = this.minGridX + ix;
-                java.util.Arrays.fill(first, -1);
+                Arrays.fill(first, -1);
                 for (int iy = 0; iy < this.ga2$gridSizeY; iy++) {
                     int index = (iy * this.gridSizeZ + iz) * this.gridSizeX + ix;
                     if (!this.ga2$located[index]) {

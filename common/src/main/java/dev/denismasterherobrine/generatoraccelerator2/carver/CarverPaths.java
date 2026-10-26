@@ -7,9 +7,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.SectionPos;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.util.valueproviders.ConstantFloat;
 import net.minecraft.util.valueproviders.FloatProvider;
 import net.minecraft.util.valueproviders.TrapezoidFloat;
@@ -194,7 +196,7 @@ public final class CarverPaths {
      * the chunks being carved, whatever the carvers' start probabilities.
      */
     static final long MAX_STEPS = 1L << 18;
-    private static final java.util.concurrent.atomic.AtomicLong weight = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong weight = new AtomicLong();
 
     private static long weight(CarverPath path) {
         long w = 1;
@@ -237,7 +239,7 @@ public final class CarverPaths {
         return nether ? 10 : 15;
     }
 
-    private static float thickness(net.minecraft.util.RandomSource random, boolean nether) {
+    private static float thickness(RandomSource random, boolean nether) {
         if (nether) {
             return (random.nextFloat() * 2.0F + random.nextFloat()) * 2.0F;
         }

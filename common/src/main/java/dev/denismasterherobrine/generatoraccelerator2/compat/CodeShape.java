@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.spongepowered.asm.service.MixinService;
 
 /**
  * Fingerprints of other mods' methods whose exact behaviour a fast path relies on. A fingerprint hashes the instructions with
@@ -38,7 +40,7 @@ public final class CodeShape {
     /** The class as the mixin service reads it (other mods' mixins not applied), or null. */
     public static ClassNode classNode(String className) {
         try {
-            return org.spongepowered.asm.service.MixinService.getService().getBytecodeProvider().getClassNode(className);
+            return MixinService.getService().getBytecodeProvider().getClassNode(className);
         } catch (Exception | LinkageError e) {
             return null;
         }
@@ -142,7 +144,7 @@ public final class CodeShape {
                 hex.append(String.format("%02x", h[i]));
             }
             return hex.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
     }

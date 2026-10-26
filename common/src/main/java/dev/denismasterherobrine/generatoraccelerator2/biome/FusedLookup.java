@@ -2,6 +2,8 @@ package dev.denismasterherobrine.generatoraccelerator2.biome;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SamplerWrappers;
@@ -9,6 +11,7 @@ import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * {@code MultiNoiseBiomeSource.getNoiseBiome(x, y, z, sampler)} in one step, for a sampler bound to the compiled climate program.
@@ -26,9 +29,9 @@ public final class FusedLookup {
     private static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.fusedBiomeLookup"));
     private static final HookTargets.Hook LOOKUP = HookTargets.hook(HookTargets.GPU_BIOMES);
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.biomes", 0);
-    private static final java.util.concurrent.atomic.AtomicLong SEEN = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong SEEN = new AtomicLong();
     /** Fused lookups also made the two-call way and compared ({@code verify.biomes}), and the lookups that differed. */
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong(), DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong(), DIFFERING = new AtomicLong();
 
     /**
      * Whether a lookup may be fused at all. If so, the source's {@code parameters()} is vanilla's, which only reads.
@@ -43,8 +46,8 @@ public final class FusedLookup {
      * TerraBlender's handled mixins allow {@code gpu.biomes}, but its lookup searches a region's tree. This lookup searches the list's
      * own tree, so it stays off with TerraBlender.
      */
-    private static final boolean TERRABLENDER = dev.denismasterherobrine.generatoraccelerator2.dfc.Compat.isLoaded(
-        dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.MOD_ID);
+    private static final boolean TERRABLENDER = Compat.isLoaded(
+        TerraBlenderMixins.MOD_ID);
 
     /**
      * Returns the biome of the quart, or null when this class cannot make the lookup. On null, the caller samples and searches as

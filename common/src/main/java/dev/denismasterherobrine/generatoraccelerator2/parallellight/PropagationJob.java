@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import net.minecraft.core.BlockPos;
@@ -110,7 +111,7 @@ final class PropagationJob {
         this.assigned = pool.assigned;
         this.assigned.clear();
         if (pool.workers.length < count) {
-            Propagator[] grown = java.util.Arrays.copyOf(pool.workers, count);
+            Propagator[] grown = Arrays.copyOf(pool.workers, count);
             for (int i = pool.workers.length; i < count; i++) {
                 grown[i] = new Propagator();
             }
@@ -175,7 +176,7 @@ final class PropagationJob {
         ParallelLightStats.balance(most, processed, job.count);
         if (ParallelLightStats.TRACK != null) {
             StringBuilder sb = new StringBuilder("workers:");
-            it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap all = new it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap();
+            Long2IntOpenHashMap all = new Long2IntOpenHashMap();
             for (Propagator w : job.workers) {
                 sb.append(' ').append(w.processed);
                 if (w.perSection != null) {
@@ -185,7 +186,7 @@ final class PropagationJob {
                 }
             }
             int[] top = all.values().toIntArray();
-            java.util.Arrays.sort(top);
+            Arrays.sort(top);
             sb.append(" sections ").append(top.length).append(" top:");
             for (int i = top.length - 1; i >= Math.max(0, top.length - 8); i--) {
                 sb.append(' ').append(top[i]);
@@ -259,7 +260,7 @@ final class PropagationJob {
             order[n] = (long) (Integer.MAX_VALUE - e.getIntValue()) << 32 | n;
             n++;
         }
-        java.util.Arrays.sort(order, 0, n);
+        Arrays.sort(order, 0, n);
         long[] load = new long[this.count];
         for (int k = 0; k < n; k++) {
             long packed = order[k];

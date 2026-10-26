@@ -14,10 +14,14 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.RandomSupport;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
+import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+import net.minecraft.world.level.levelgen.feature.configurations.TreeConfiguration;
+import net.minecraft.world.level.levelgen.feature.treedecorators.BeehiveDecorator;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 
 /**
@@ -68,9 +72,9 @@ public final class FeatureRun {
     }
 
     /** Trees with a beehive decorator place the nest with the JDK static Random in vanilla. Not deterministic, so excluded. */
-    public static boolean hasBeehiveDecorator(net.minecraft.world.level.levelgen.feature.ConfiguredFeature<?, ?> cf) {
-        return cf.getFeatures().anyMatch(f -> f.config() instanceof net.minecraft.world.level.levelgen.feature.configurations.TreeConfiguration tc
-            && tc.decorators.stream().anyMatch(d -> d instanceof net.minecraft.world.level.levelgen.feature.treedecorators.BeehiveDecorator));
+    public static boolean hasBeehiveDecorator(ConfiguredFeature<?, ?> cf) {
+        return cf.getFeatures().anyMatch(f -> f.config() instanceof TreeConfiguration tc
+            && tc.decorators.stream().anyMatch(d -> d instanceof BeehiveDecorator));
     }
 
     public static HarnessWorld.Kind kindOf(Holder<Biome> biome) {
@@ -118,13 +122,13 @@ public final class FeatureRun {
     }
 
     /** A configured feature run directly (no placement modifiers) at one of three origin heights, so rare features are exercised. */
-    public record ConfiguredCase(String name, net.minecraft.core.Holder<net.minecraft.world.level.levelgen.feature.ConfiguredFeature<?, ?>> feature, int index,
+    public record ConfiguredCase(String name, Holder<ConfiguredFeature<?, ?>> feature, int index,
                                  HarnessWorld.Kind kind, int originKind) {}
 
     public static List<ConfiguredCase> configuredCases(HarnessWorld.Registries2 r) {
         List<ConfiguredCase> out = new ArrayList<>();
         int index = 0;
-        for (Holder.Reference<net.minecraft.world.level.levelgen.feature.ConfiguredFeature<?, ?>> cf
+        for (Holder.Reference<ConfiguredFeature<?, ?>> cf
             : r.lookup.lookupOrThrow(Registries.CONFIGURED_FEATURE).listElements().toList()) {
             String path = cf.key().location().getPath();
             HarnessWorld.Kind kind = path.contains("nether") || path.contains("crimson") || path.contains("warped") || path.contains("basalt") || path.contains("delta")
@@ -141,8 +145,8 @@ public final class FeatureRun {
     public static Result runConfigured(HarnessWorld.Registries2 r, ConfiguredCase c, long seed, boolean vanilla, boolean cacheHeightmaps) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, terrain(r, c.kind(), seed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? net.minecraft.world.level.biome.Biomes.NETHER_WASTES
-            : c.kind() == HarnessWorld.Kind.END ? net.minecraft.world.level.biome.Biomes.THE_END : net.minecraft.world.level.biome.Biomes.PLAINS);
+        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
+            : c.kind() == HarnessWorld.Kind.END ? Biomes.THE_END : Biomes.PLAINS);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
         }
@@ -155,7 +159,7 @@ public final class FeatureRun {
         int x = CENTER_X * 16 + 3 + c.originKind() * 4;
         int z = CENTER_Z * 16 + 9 - c.originKind() * 3;
         int y = switch (c.originKind()) {
-            case 0 -> level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, x, z);
+            case 0 -> level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z);
             case 1 -> c.kind() == HarnessWorld.Kind.OVERWORLD ? 24 : c.kind() == HarnessWorld.Kind.NETHER ? 36 : 45;
             default -> c.kind() == HarnessWorld.Kind.OVERWORLD ? -30 : c.kind() == HarnessWorld.Kind.NETHER ? 70 : 20;
         };

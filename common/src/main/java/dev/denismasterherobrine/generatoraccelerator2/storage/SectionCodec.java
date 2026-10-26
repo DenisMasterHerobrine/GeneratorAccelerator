@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.storage;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,7 +72,7 @@ public final class SectionCodec {
     }
 
     @Nullable
-    private static ListTag statePalette(java.util.List<BlockState> entries) {
+    private static ListTag statePalette(List<BlockState> entries) {
         ListTag palette = new ListTag();
         for (BlockState state : entries) {
             CompoundTag tag = STATE_TAGS.get(state);
@@ -121,7 +122,7 @@ public final class SectionCodec {
     private static final Map<ResourceKey<Biome>, StringTag> BIOME_TAGS = new ConcurrentHashMap<>();
 
     @Nullable
-    private static ListTag biomePalette(java.util.List<Holder<Biome>> entries) {
+    private static ListTag biomePalette(List<Holder<Biome>> entries) {
         ListTag palette = new ListTag();
         for (Holder<Biome> biome : entries) {
             // Registry.holderByNameCodec encodes a holder as its key's location. A holder without a key is an error.

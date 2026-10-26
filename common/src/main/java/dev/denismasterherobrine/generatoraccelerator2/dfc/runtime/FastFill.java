@@ -2,13 +2,19 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.CacheAllInCellAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseInterpolatorAccessor;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Predicate;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
@@ -23,6 +29,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.OreVeinifier;
 import net.minecraft.world.level.levelgen.material.MaterialRuleList;
+import java.lang.invoke.MethodHandle;
 
 /**
  * {@code NoiseBasedChunkGenerator.doFill}, transcribed with the per-block work done in place.
@@ -46,14 +53,14 @@ public final class FastFill {
     private FastFill() {}
 
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
-    public static final java.util.concurrent.atomic.LongAdder FILLS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder FILLS = new LongAdder();
     /** Not final so the exactness test can compare both ways. */
     public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.fastFill"));
     /** Whole-cell paths over {@code CellBounds}. Not final so the exactness test can compare both ways. */
     public static boolean CLASSIFY_CELLS = !"false".equals(System.getProperty("generatoraccelerator2.classifyCells"));
-    public static final java.util.concurrent.atomic.LongAdder CELLS_SKY = new java.util.concurrent.atomic.LongAdder();
-    public static final java.util.concurrent.atomic.LongAdder CELLS_SOLID = new java.util.concurrent.atomic.LongAdder();
-    public static final java.util.concurrent.atomic.LongAdder CELLS_SOLID_VEINS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder CELLS_SKY = new LongAdder();
+    public static final LongAdder CELLS_SOLID = new LongAdder();
+    public static final LongAdder CELLS_SOLID_VEINS = new LongAdder();
 
     /** What the NoiseChunk recorded about its own material rules. */
     public interface Rules {
@@ -128,7 +135,7 @@ public final class FastFill {
         // it does not act, and runs its own step on water and lava where it does
         Object plan = FillSteps.plan(noisechunk);
         boolean inline = plan != FillSteps.SLOW;
-        java.lang.invoke.MethodHandle fluidStep = plan instanceof java.lang.invoke.MethodHandle h ? h : null;
+        MethodHandle fluidStep = plan instanceof MethodHandle h ? h : null;
         NoiseChunkAccessor access = (NoiseChunkAccessor) noisechunk;
 
         Heightmap heightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
@@ -137,8 +144,8 @@ public final class FastFill {
         int[] top = columns ? new int[256] : null;
         int[] top1 = columns ? new int[256] : null;
         if (columns) {
-            java.util.Arrays.fill(top, Integer.MIN_VALUE);
-            java.util.Arrays.fill(top1, Integer.MIN_VALUE);
+            Arrays.fill(top, Integer.MIN_VALUE);
+            Arrays.fill(top1, Integer.MIN_VALUE);
         }
         Predicate<BlockState> opaque = ((FillHeights.Ga2Heightmap) (Object) heightmap).ga2$isOpaque();
         Predicate<BlockState> opaque1 = ((FillHeights.Ga2Heightmap) (Object) heightmap1).ga2$isOpaque();
@@ -150,8 +157,8 @@ public final class FastFill {
         Aquifer aquifer = noisechunk.aquifer();
         // GA2's aquifer fast path called directly, and the interpolators stepped directly, when nothing else changes those methods.
         // Their hooks made a callback object per block (row), and escape analysis does not always remove it
-        dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer fastAquifer =
-            aquifer instanceof dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer a && a.ga2$fast() ? a : null;
+        Ga2Aquifer fastAquifer =
+            aquifer instanceof Ga2Aquifer a && a.ga2$fast() ? a : null;
         boolean steps = HookTargets.allowed(HookTargets.NOISE_FILL_STEPS);
         BlockPos.MutableBlockPos blockpos$mutableblockpos = new BlockPos.MutableBlockPos();
         int k = ((NoiseChunkAccessor) noisechunk).ga2$cellWidth();
@@ -163,7 +170,7 @@ public final class FastFill {
         // (CellBounds). It leaves the per-block densities of an all-air or all-solid cell unfilled. This loop then writes
         // nothing for the air cell. For the solid cell it writes the default block, or runs the vein rule alone per block.
         ChunkBinding binding = duck.ga2$binding();
-        CellSkipper skipper = CLASSIFY_CELLS && dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig.wholeCells() && inline && binding != null && defaultBlock.getFluidState().isEmpty() ? CellAir.of(aquifer) : null;
+        CellSkipper skipper = CLASSIFY_CELLS && DfcConfig.wholeCells() && inline && binding != null && defaultBlock.getFluidState().isEmpty() ? CellAir.of(aquifer) : null;
         // vanilla's vein rule gives no vein where |toggle| stays below the threshold or outside both vein types' y ranges.
         // An interpolated toggle lies within its corners over the cell, and reading the corners computes nothing
         NoiseInterpolatorAccessor toggle = skipper != null && veinRule != null && HookTargets.allowed(HookTargets.NOISE_VEIN_RULE)
@@ -516,14 +523,14 @@ public final class FastFill {
         }
     }
 
-    private static final java.util.concurrent.atomic.AtomicInteger DIAG_CELLS = new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger DIAG_CELLS = new AtomicInteger();
 
     /** {@code -Dgeneratoraccelerator2.verify.fill=N}: every N-th state FastFill computes in place is checked against the NoiseChunk's own. */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.fill", 0);
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_SEEN = new java.util.concurrent.atomic.AtomicLong();
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_CELLS = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong VERIFY_SEEN = new AtomicLong();
+    private static final AtomicLong VERIFY_CELLS = new AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong();
+    public static final AtomicLong DIFFERING = new AtomicLong();
 
     private static void verify(BlockState expected, BlockState actual, int x, int y, int z) {
         VERIFIED.incrementAndGet();

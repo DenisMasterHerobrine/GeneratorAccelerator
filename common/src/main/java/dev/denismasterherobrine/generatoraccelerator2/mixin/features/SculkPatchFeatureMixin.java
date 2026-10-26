@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.features;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureHooks;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesCompat;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.SculkFast;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.levelgen.feature.SculkPatchFeature;
@@ -16,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class SculkPatchFeatureMixin {
     @Inject(method = "place(Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;)Z", at = @At("HEAD"), cancellable = true)
     private void ga2$place(FeaturePlaceContext<?> ctx, CallbackInfoReturnable<Boolean> cir) {
-        if (dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures.fastPath(this.getClass(), SculkPatchFeature.class) && ctx.level() instanceof Ga2Region region
+        if (ModdedFeatures.fastPath(this.getClass(), SculkPatchFeature.class) && ctx.level() instanceof Ga2Region region
             && region.ga2$plain() && FeatureHooks.enabled() && FeaturesCompat.SCULK.allowed() && SculkFast.applies()
             && SculkFast.othersOutOfReach(ctx, region)) {
             cir.setReturnValue(SculkFast.place(ctx, region));

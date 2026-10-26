@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWrit
 import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 
 /** Shared transcriptions of the {@code Feature} helpers the fast paths use. */
@@ -24,7 +25,7 @@ final class Fast {
     static void markAboveForPostProcessing(SectionCursor cursor, BlockPos pos) {
         BlockPos.MutableBlockPos m = pos.mutable();
         for (int i = 0; i < 2; i++) {
-            m.move(net.minecraft.core.Direction.UP);
+            m.move(Direction.UP);
             if (cursor.read(m).isAir()) {
                 return;
             }

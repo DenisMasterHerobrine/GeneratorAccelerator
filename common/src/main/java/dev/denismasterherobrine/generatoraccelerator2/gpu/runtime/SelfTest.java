@@ -1,11 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Climate;
 import java.util.Locale;
 
@@ -26,6 +30,7 @@ import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
 
 /**
  * Checks run before the GPU is used. The first checks that the device computes Java's float and double expressions bit for bit,
@@ -132,9 +137,9 @@ public final class SelfTest {
                                 RandomState randomState, LevelHeightAccessor heights, Registry<Biome> biomes) throws Exception {
         // The level's own structure manager. Other mods' changes to the biome step and the fill read it (Confluence reads its registries).
         // The chunks' NoiseChunk is created here first, so vanilla's code asks the manager for no structures.
-        net.minecraft.world.level.StructureManager structures = heights instanceof net.minecraft.server.level.ServerLevel level ? level.structureManager() : null;
+        StructureManager structures = heights instanceof ServerLevel level ? level.structureManager() : null;
         Beardifier none = new Beardifier(new ObjectArrayList<Beardifier.Rigid>().iterator(),
-            new ObjectArrayList<net.minecraft.world.level.levelgen.structure.pools.JigsawJunction>().iterator());
+            new ObjectArrayList<JigsawJunction>().iterator());
         int compared = 0;
         for (int[] c : CHUNKS) {
             ChunkPos pos = new ChunkPos(c[0], c[1]);
@@ -146,7 +151,7 @@ public final class SelfTest {
                 if (b == null) {
                     return "no GPU biomes for chunk " + pos;
                 }
-                Supplier<Climate.Sampler> tieSampler = () -> ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker) gpu.getOrCreateNoiseChunk(
+                Supplier<Climate.Sampler> tieSampler = () -> ((NoiseChunkSamplerInvoker) gpu.getOrCreateNoiseChunk(
                     ch -> NoiseChunk.forChunk(ch, randomState, none, settings.value(), picker.get(), Blender.empty())))
                     .ga2$cachedClimateSampler(randomState.router(), settings.value().spawnTarget());
                 if (!Apply.biomes(wg, gpu, b, tieSampler)) {
@@ -158,15 +163,15 @@ public final class SelfTest {
                 GpuWorldgen.BiomeResult handed = wg.handsBiomes() ? wg.biomes(pos).get(60, TimeUnit.SECONDS) : null;
                 if (handed != null && handed.hand() != null) {
                     // the CPU's own lookups with the GPU's points and searches, from the same last search results as the CPU's fill below
-                    start = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.handState(wg);
+                    start = GpuVerify.handState(wg);
                     BiomeHand.fill(wg, gpu, handed, () -> GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu))).join();
                 } else {
                     GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu)).join();
                 }
             }
             // no structures, but the chunk's Better Caves liquid regions, which the CPU's aquifer applies too
-            int[] liquids = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.liquids(wg, randomState, pos);
-            if (liquids == dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.LIQUID_WITHOUT_ID) {
+            int[] liquids = GpuSteps.liquids(wg, randomState, pos);
+            if (liquids == GpuSteps.LIQUID_WITHOUT_ID) {
                 continue;
             }
             GpuWorldgen.Beard beard = liquids == null ? GpuWorldgen.Beard.NONE : new GpuWorldgen.Beard(new int[0], new int[0], liquids);
@@ -179,7 +184,7 @@ public final class SelfTest {
             }
             ProtoChunk cpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, biomes, null);
             if (start != null) {
-                dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify.restoreHandState(wg, start);
+                GpuVerify.restoreHandState(wg, start);
             }
             cpu.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, randomState, none, settings.value(), picker.get(), Blender.empty()));
             GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, cpu)).join();

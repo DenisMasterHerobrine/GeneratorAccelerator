@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.util.ArrayDeque;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
@@ -28,11 +29,11 @@ public final class StateDependence {
 
     /** Evaluating the fields at extra points, or in another order, cannot change any value vanilla computes. */
     public static boolean orderIndependent(Map<String, Node> roots, String... fields) {
-        return orderIndependent(roots, java.util.Set.of(), fields);
+        return orderIndependent(roots, Set.of(), fields);
     }
 
     /** {@link #orderIndependent(Map, String...)}, not counting the markers in {@code checked} (and what is below them). */
-    public static boolean orderIndependent(Map<String, Node> roots, java.util.Set<Node> checked, String... fields) {
+    public static boolean orderIndependent(Map<String, Node> roots, Set<Node> checked, String... fields) {
         CoordDeps deps = new CoordDeps(false);
         Map<Node, Boolean> seen = new IdentityHashMap<>();
         for (Node n : checked) {

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.CrudeIncrementalIntIdentityHashBiMap;
 import net.minecraft.world.level.chunk.HashMapPalette;
@@ -36,7 +37,7 @@ public abstract class HashMapPaletteMixin<T> {
     /** The body of {@code idFor(state)}. Returns the remembered last answer, or else runs vanilla's lookup. */
     @Unique
     private int ga2$idFor(T state) {
-        if (state == this.ga2$last && (dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED && GA2$HOOK.allowed())) {
+        if (state == this.ga2$last && (StateFast.ENABLED && GA2$HOOK.allowed())) {
             return this.ga2$lastId;
         }
         int i = this.values.getId(state);

@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.LongAdder;
@@ -56,9 +58,9 @@ public final class FeaturesCommand {
             send(source, "per-block counters need -Dgeneratoraccelerator2.features.stats=true");
         }
         send(source, "region biome zooms " + FeatureStats.REGION_ZOOMS.sum() + (FeatureStats.DETAILED ? " (" + FeatureStats.REGION_BIOME_LOOKUPS.sum() + " lookups)" : "")
-            + "; final heightmaps primed from the worldgen maps " + dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.FAST.sum()
-            + " chunks, kept as maintained " + dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.KEPT.sum()
-            + ", by vanilla " + dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.VANILLA.sum());
+            + "; final heightmaps primed from the worldgen maps " + HeightmapPriming.FAST.sum()
+            + " chunks, kept as maintained " + HeightmapPriming.KEPT.sum()
+            + ", by vanilla " + HeightmapPriming.VANILLA.sum());
         if (FeatureStats.SCULK_OTHERS_NEAR.sum() > 0) {
             send(source, "sculk patches left to vanilla (another mod's sculk block within reach): " + FeatureStats.SCULK_OTHERS_NEAR.sum());
         }
@@ -91,7 +93,7 @@ public final class FeaturesCommand {
 
     /** Modded feature classes placed so far: placements, and whether they decorate in parallel or one at a time (and why). */
     private static int mods(CommandSourceStack source) {
-        for (String line : dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures.report()) {
+        for (String line : ModdedFeatures.report()) {
             send(source, line);
         }
         return 1;

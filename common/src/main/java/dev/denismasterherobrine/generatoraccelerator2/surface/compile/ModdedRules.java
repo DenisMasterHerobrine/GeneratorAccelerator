@@ -9,6 +9,8 @@ import java.util.function.BooleanSupplier;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
+import net.minecraft.tags.TagKey;
+import net.minecraft.util.InclusiveRange;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.SurfaceRules;
 
@@ -107,16 +109,16 @@ final class ModdedRules {
      */
     @Nullable
     @SuppressWarnings("unchecked")
-    static net.minecraft.tags.TagKey<Biome> biomeTag(SurfaceRules.ConditionSource source) {
+    static TagKey<Biome> biomeTag(SurfaceRules.ConditionSource source) {
         Object[] c = components(source, ELYSIUM_BIOME_TAG, "biomeTag");
-        return c != null && c[0] instanceof net.minecraft.tags.TagKey<?> tag ? (net.minecraft.tags.TagKey<Biome>) tag : null;
+        return c != null && c[0] instanceof TagKey<?> tag ? (TagKey<Biome>) tag : null;
     }
 
     /** The height difference range {@code {min, max}} of Lithostitched's slope condition, or null when {@code source} is not one. */
     @Nullable
     static int[] slope(SurfaceRules.ConditionSource source) {
         Object[] c = components(source, LITHO_SLOPE, "threshold");
-        if (c != null && c[0] instanceof net.minecraft.util.InclusiveRange<?> range && range.minInclusive() instanceof Integer min
+        if (c != null && c[0] instanceof InclusiveRange<?> range && range.minInclusive() instanceof Integer min
             && range.maxInclusive() instanceof Integer max) {
             return new int[] { min, max };
         }

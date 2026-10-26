@@ -3,10 +3,12 @@ package dev.denismasterherobrine.generatoraccelerator2.features.modded;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.WorldGenLevel;
 
@@ -32,7 +34,7 @@ public final class SeededStatics {
         new Entry("com.telepathicgrunt.the_bumblezone.worldgen.features.HoneycombCaves", "seed", List.of("noiseGen", "noiseGen2")),
         new Entry("com.telepathicgrunt.the_bumblezone.worldgen.features.TwoToneSpikeFeature", "seed", List.of("noiseGen")));
 
-    private static final Map<String, Entry> BY_TYPE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Entry> BY_TYPE = new ConcurrentHashMap<>();
 
     static {
         for (Entry e : ENTRIES) {
@@ -68,14 +70,14 @@ public final class SeededStatics {
         try {
             MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(type, MethodHandles.lookup());
             Field seed = type.getDeclaredField(e.seedField());
-            if (seed.getType() != long.class || java.lang.reflect.Modifier.isStatic(seed.getModifiers())) {
+            if (seed.getType() != long.class || Modifier.isStatic(seed.getModifiers())) {
                 return null;
             }
             VarHandle seedHandle = lookup.unreflectVarHandle(seed);
             VarHandle[] statics = new VarHandle[e.statics().size()];
             for (int i = 0; i < statics.length; i++) {
                 Field f = type.getDeclaredField(e.statics().get(i));
-                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                if (!Modifier.isStatic(f.getModifiers())) {
                     return null;
                 }
                 statics[i] = lookup.unreflectVarHandle(f);

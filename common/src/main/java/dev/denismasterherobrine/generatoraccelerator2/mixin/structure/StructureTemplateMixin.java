@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.structure;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.structure.JigsawBlocks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -24,8 +25,8 @@ public abstract class StructureTemplateMixin {
 
     /** {@code -Dgeneratoraccelerator2.verify.jigsaw=N}: every N-th cached answer is compared with vanilla's. */
     @Unique
-    private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter GA2_VERIFY =
-        new dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter("jigsaw");
+    private static final VerifyCounter GA2_VERIFY =
+        new VerifyCounter("jigsaw");
     @Unique
     private static final ThreadLocal<Boolean> GA2_VANILLA = new ThreadLocal<>();
 

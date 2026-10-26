@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesConfig;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
+import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
 import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
 import net.minecraft.core.BlockPos;
@@ -20,9 +21,15 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.GlobalPalette;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.Palette;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.chunk.status.ChunkStep;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.levelgen.placement.PlacementContext;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -31,6 +38,9 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Remembers which chunk every (x, z) of the region resolves to, and exposes the region's cached
@@ -66,7 +76,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     @Unique private boolean ga2$readsAllowed;
     @Unique private Holder<Biome>[] ga2$zoomBiomes;
     @Unique private boolean ga2$zoomBiomesDone;
-    @Unique private net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext;
+    @Unique private PlacementContext ga2$placementContext;
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$init(CallbackInfo ci) {
@@ -119,11 +129,11 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     }
 
     @Override
-    public net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext(net.minecraft.world.level.chunk.ChunkGenerator generator) {
-        net.minecraft.world.level.levelgen.placement.PlacementContext c = this.ga2$placementContext;
+    public PlacementContext ga2$placementContext(ChunkGenerator generator) {
+        PlacementContext c = this.ga2$placementContext;
         if (c == null || c.generator() != generator) {
-            c = this.ga2$placementContext = new net.minecraft.world.level.levelgen.placement.PlacementContext((WorldGenRegion) (Object) this, generator,
-                java.util.Optional.empty());
+            c = this.ga2$placementContext = new PlacementContext((WorldGenRegion) (Object) this, generator,
+                Optional.empty());
         }
         return c;
     }
@@ -174,7 +184,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     public Holder<Biome>[] ga2$zoomBiomes() {
         if (!this.ga2$zoomBiomesDone) {
             this.ga2$zoomBiomesDone = true;
-            java.util.List<Holder<Biome>> found = new java.util.ArrayList<>(4);
+            List<Holder<Biome>> found = new ArrayList<>(4);
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     // Looked up as getNoiseBiome looks it up: at BIOMES, or none, in which case the zoom asks the biome source.
@@ -185,12 +195,12 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
                         return null;
                     }
                     // Every palette entry. This is a superset of the biomes the section stores, read without scanning the storage.
-                    for (net.minecraft.world.level.chunk.LevelChunkSection section : chunk.getSections()) {
-                        if (!(section.getBiomes() instanceof net.minecraft.world.level.chunk.PalettedContainer<Holder<Biome>> container)) {
+                    for (LevelChunkSection section : chunk.getSections()) {
+                        if (!(section.getBiomes() instanceof PalettedContainer<Holder<Biome>> container)) {
                             return null;
                         }
-                        net.minecraft.world.level.chunk.Palette<Holder<Biome>> palette = container.data.palette();
-                        if (palette instanceof net.minecraft.world.level.chunk.GlobalPalette) {
+                        Palette<Holder<Biome>> palette = container.data.palette();
+                        if (palette instanceof GlobalPalette) {
                             return null;
                         }
                         next:
@@ -261,7 +271,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     @Override
     public void ga2$onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState) {
         // POI bookkeeping, which does nothing when neither state has a POI type (PoiStates)
-        if (!dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.skip(this.level, oldState, newState)) {
+        if (!PoiStates.skip(this.level, oldState, newState)) {
             this.level.onBlockStateChange(pos, oldState, newState);
         }
     }

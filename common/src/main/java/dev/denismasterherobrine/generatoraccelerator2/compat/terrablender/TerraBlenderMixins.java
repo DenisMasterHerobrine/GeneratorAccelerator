@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -55,9 +56,9 @@ public final class TerraBlenderMixins {
 
     /** {@code -Dgeneratoraccelerator2.verify.biomes=N}: every N-th region search is also walked the vanilla way and compared. */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.biomes", 0);
-    private static final java.util.concurrent.atomic.AtomicLong SEEN = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong SEEN = new AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong();
+    public static final AtomicLong DIFFERING = new AtomicLong();
 
     public static boolean sampleVerify() {
         return VERIFY_EVERY > 0 && SEEN.incrementAndGet() % VERIFY_EVERY == 0;

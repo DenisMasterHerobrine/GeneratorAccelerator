@@ -23,6 +23,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.util.Arrays;
 
 /**
  * Fast {@code setStoredLevel}, which runs for every light level written. Vanilla adds the block's section to
@@ -49,7 +50,7 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
     @Unique
     private static long[] ga2$emptyAffected() {
         long[] keys = new long[16];
-        java.util.Arrays.fill(keys, Long.MAX_VALUE);
+        Arrays.fill(keys, Long.MAX_VALUE);
         return keys;
     }
 
@@ -118,7 +119,7 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
     @Inject(method = "swapSectionMap", at = @At("HEAD"))
     private void ga2$swapSectionMap(CallbackInfo ci) {
         this.ga2$lastChanged = Long.MAX_VALUE;
-        java.util.Arrays.fill(this.ga2$affected, Long.MAX_VALUE);
+        Arrays.fill(this.ga2$affected, Long.MAX_VALUE);
     }
 
     /**

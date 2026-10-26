@@ -2,6 +2,8 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons;
 
 import com.llamalad7.mixinextras.sugar.ref.LocalIntRef;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
 import java.lang.invoke.MethodHandle;
 import java.util.List;
@@ -26,7 +28,7 @@ public final class EclipticSeasonsSurface {
     public static void register() {
         ColumnHooks.register(EclipticSeasonsMixins.SURFACE, EclipticSeasonsSurface::hooks);
         // where the GPU builds the surface, the map is recorded on the CPU just before (ColumnHooks.records)
-        dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_SURFACE,
+        CompatAdapters.register(HookTargets.GPU_SURFACE,
             EclipticSeasonsMixins.SURFACE, () -> ColumnHooks.ready(EclipticSeasonsMixins.SURFACE));
     }
 

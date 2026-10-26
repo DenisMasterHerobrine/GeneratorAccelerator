@@ -2,6 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.state;
 
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.util.Arrays;
 
 /**
  * A block state's id in {@code Block.BLOCK_STATE_REGISTRY}, kept on the state ({@code BlockStateFlagsMixin}) so per-state tables
@@ -30,7 +33,7 @@ public final class StateIndex {
      * that was 52 KB per new state, about 250 KB of garbage per chunk.
      */
     public static final class Table {
-        private static final java.lang.invoke.VarHandle PAGE = java.lang.invoke.MethodHandles.arrayElementVarHandle(int[][].class);
+        private static final VarHandle PAGE = MethodHandles.arrayElementVarHandle(int[][].class);
         private final int missing;
         private volatile int[][] pages = new int[0][];
 
@@ -56,13 +59,13 @@ public final class StateIndex {
             int[][] p = this.pages;
             if (page >= p.length) {
                 // Only the directory grows. The pages stay the same arrays.
-                p = java.util.Arrays.copyOf(p, Math.max(page + 1, p.length * 2));
+                p = Arrays.copyOf(p, Math.max(page + 1, p.length * 2));
                 this.pages = p;
             }
             int[] q = p[page];
             if (q == null) {
                 q = new int[256];
-                java.util.Arrays.fill(q, missing);
+                Arrays.fill(q, missing);
                 q[id & 255] = value;
                 PAGE.setRelease(p, page, q);
             } else {

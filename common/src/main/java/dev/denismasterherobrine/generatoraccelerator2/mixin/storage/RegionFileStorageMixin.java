@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.storage.RegionSync;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.Optional;
 import javax.annotation.Nullable;
 import net.minecraft.nbt.CompoundTag;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileStorage;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -39,7 +41,7 @@ public abstract class RegionFileStorageMixin implements Ga2RegionStorage {
         return this.ga2$precompress;
     }
 
-    @Shadow @org.spongepowered.asm.mixin.Final private java.nio.file.Path folder;
+    @Shadow @Final private Path folder;
 
     @Shadow
     private RegionFile getRegionFile(ChunkPos pos) throws IOException {

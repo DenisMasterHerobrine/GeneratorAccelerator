@@ -5,16 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mojang.serialization.Codec;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -28,6 +31,7 @@ import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import org.junit.jupiter.api.Test;
+import java.nio.file.Path;
 
 /**
  * Saving with the one-pass pack gives byte-identical section tags. Checked on real sections of every preset (after
@@ -119,7 +123,7 @@ public class FastPackTest {
 
     /** {@link SectionCodec} builds the same block state and biome tags as the codecs, for real and synthetic sections. */
     @Test
-    void sectionCodecMatchesCodecs() throws java.io.IOException {
+    void sectionCodecMatchesCodecs() throws IOException {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         Codec<PalettedContainerRO<Holder<Biome>>> biomes = biomeCodec(world.registries.biomes);
         List<PalettedContainer<BlockState>> states = new ArrayList<>();
@@ -135,11 +139,11 @@ public class FastPackTest {
                 }
             }
         }
-        java.nio.file.Path region = dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.defaultRegion();
+        Path region = RegionChunks.defaultRegion();
         if (region != null) {
-            for (net.minecraft.nbt.CompoundTag tag : dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.readTags(region, 64)) {
+            for (CompoundTag tag : RegionChunks.readTags(region, 64)) {
                 for (Tag t : tag.getList("sections", Tag.TAG_COMPOUND)) {
-                    net.minecraft.nbt.CompoundTag section = (net.minecraft.nbt.CompoundTag) t;
+                    CompoundTag section = (CompoundTag) t;
                     if (section.contains("block_states", Tag.TAG_COMPOUND)) {
                         states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow());
                     }
@@ -188,7 +192,7 @@ public class FastPackTest {
 
     private static <T> List<T> pick(List<T> all, int n, Random random) {
         List<T> copy = new ArrayList<>(all);
-        java.util.Collections.shuffle(copy, random);
+        Collections.shuffle(copy, random);
         return new ArrayList<>(copy.subList(0, n));
     }
 

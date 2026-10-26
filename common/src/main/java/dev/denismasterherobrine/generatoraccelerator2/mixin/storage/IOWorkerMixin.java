@@ -16,10 +16,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.visitors.CollectFields;
 import net.minecraft.nbt.visitors.FieldSelector;
+import net.minecraft.util.thread.ProcessorMailbox;
+import net.minecraft.util.thread.StrictQueue;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.IOWorker;
 import net.minecraft.world.level.chunk.storage.RegionFileStorage;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -41,11 +44,11 @@ public abstract class IOWorkerMixin {
     private static final Logger GA2$LOGGER = LogUtils.getLogger();
     /** IOWorker's own logger name, so read failures read as vanilla's. */
     @Unique
-    private static final Logger GA2$IO_LOGGER = org.slf4j.LoggerFactory.getLogger(IOWorker.class);
+    private static final Logger GA2$IO_LOGGER = LoggerFactory.getLogger(IOWorker.class);
 
     @Shadow @Final private Map<ChunkPos, IOWorker.PendingStore> pendingWrites;
     @Shadow @Final private RegionFileStorage storage;
-    @Shadow @Final private net.minecraft.util.thread.ProcessorMailbox<net.minecraft.util.thread.StrictQueue.IntRunnable> mailbox;
+    @Shadow @Final private ProcessorMailbox<StrictQueue.IntRunnable> mailbox;
 
     @Shadow
     private <T> CompletableFuture<T> submitTask(Supplier<Either<T, Exception>> task) {

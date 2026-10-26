@@ -1,14 +1,25 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy;
+import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ChunkCompare;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
@@ -43,7 +54,7 @@ public final class GpuVerify {
      * surface builder off. The returned action compares the two once the GPU's surface is written (sections as stored, counters,
      * heightmaps, marks).
      */
-    static Runnable surfaceBefore(ChunkAccess chunk, java.util.function.Consumer<ChunkAccess> cpuSurface) {
+    static Runnable surfaceBefore(ChunkAccess chunk, Consumer<ChunkAccess> cpuSurface) {
         if (EVERY <= 0 || cpuSurface == null || !(chunk instanceof ProtoChunk proto) || SEEN_SURFACE.incrementAndGet() % EVERY != 0) {
             return null;
         }
@@ -52,9 +63,9 @@ public final class GpuVerify {
             return null;
         }
         try {
-            ProtoChunk copy = dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy.copy(proto, level.registryAccess().registryOrThrow(Registries.BIOME));
+            ProtoChunk copy = ChunkCopy.copy(proto, level.registryAccess().registryOrThrow(Registries.BIOME));
             GpuSteps.cpuOnly(() -> {
-                dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks.runVanilla(() -> cpuSurface.accept(copy));
+                SurfaceHooks.runVanilla(() -> cpuSurface.accept(copy));
                 return null;
             });
             return () -> {
@@ -86,7 +97,7 @@ public final class GpuVerify {
      * The GPU's fill leaves that thread state as vanilla's fill does.
      */
     static void biomes(NoiseBasedChunkGenerator generator, RandomState randomState, ChunkAccess chunk, StructureManager structures, GpuWorldgen wg,
-                       GpuWorldgen.BiomeResult res, net.minecraft.world.level.biome.Climate.RTree.Leaf<Holder<net.minecraft.world.level.biome.Biome>>[] start) {
+                       GpuWorldgen.BiomeResult res, Climate.RTree.Leaf<Holder<Biome>>[] start) {
         if (EVERY <= 0 || start == null || SEEN_BIOMES.incrementAndGet() % EVERY != 0) {
             return;
         }
@@ -99,11 +110,11 @@ public final class GpuVerify {
             var after = wg.lastResults();
             wg.setLastResults(start);
             GpuSteps.cpuOnly(() -> {
-                ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker) (Object) generator).ga2$doCreateBiomes(Blender.empty(), randomState, structures, cpu);
+                ((NoiseChunkFactoryInvoker) (Object) generator).ga2$doCreateBiomes(Blender.empty(), randomState, structures, cpu);
                 return null;
             });
             String diff = ChunkCompare.biomes(cpu, chunk, i -> false);
-            if (diff == null && !java.util.Arrays.equals(wg.lastResults(), after)) {
+            if (diff == null && !Arrays.equals(wg.lastResults(), after)) {
                 // leaves compare by identity
                 diff = "the thread's last climate search result after the fill differs";
             }
@@ -124,11 +135,11 @@ public final class GpuVerify {
      */
     public static Object[] handState(GpuWorldgen wg) {
         Object[] biolith = null;
-        if (dev.denismasterherobrine.generatoraccelerator2.dfc.Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins.MOD_ID)) {
+        if (Compat.isLoaded(BiolithMixins.MOD_ID)) {
             biolith = new Object[wg.biomeTreeCount()];
             for (int t = 0; t < biolith.length; t++) {
                 var tree = wg.biomeTree(t);
-                biolith[t] = tree == null ? null : dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.lastAnswers(tree);
+                biolith[t] = tree == null ? null : BiolithSearch.lastAnswers(tree);
             }
         }
         return new Object[] { wg.lastResults(), biolith };
@@ -136,12 +147,12 @@ public final class GpuVerify {
 
     @SuppressWarnings("unchecked")
     public static void restoreHandState(GpuWorldgen wg, Object[] state) {
-        wg.setLastResults((net.minecraft.world.level.biome.Climate.RTree.Leaf<Holder<net.minecraft.world.level.biome.Biome>>[]) state[0]);
+        wg.setLastResults((Climate.RTree.Leaf<Holder<Biome>>[]) state[0]);
         if (state[1] instanceof Object[] biolith) {
             for (int t = 0; t < biolith.length; t++) {
                 var tree = wg.biomeTree(t);
                 if (tree != null && biolith[t] != null) {
-                    dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.restoreLastAnswers(tree, (Object[]) biolith[t]);
+                    BiolithSearch.restoreLastAnswers(tree, (Object[]) biolith[t]);
                 }
             }
         }
@@ -149,7 +160,7 @@ public final class GpuVerify {
 
     /** Whether two {@link #handState}s hold the same leaves (compared by identity). */
     private static boolean sameHandState(Object[] a, Object[] b) {
-        if (!java.util.Arrays.equals((Object[]) a[0], (Object[]) b[0])) {
+        if (!Arrays.equals((Object[]) a[0], (Object[]) b[0])) {
             return false;
         }
         if (a[1] instanceof Object[] x && b[1] instanceof Object[] y) {
@@ -181,7 +192,7 @@ public final class GpuVerify {
             Object[] after = handState(wg);
             restoreHandState(wg, start);
             GpuSteps.cpuOnly(() -> {
-                ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker) (Object) generator).ga2$doCreateBiomes(Blender.empty(), randomState, structures, cpu);
+                ((NoiseChunkFactoryInvoker) (Object) generator).ga2$doCreateBiomes(Blender.empty(), randomState, structures, cpu);
                 return null;
             });
             String diff = ChunkCompare.biomes(cpu, chunk, i -> false);
@@ -222,7 +233,7 @@ public final class GpuVerify {
             // Compare what SURFACE and CARVERS read instead of a NoiseChunk with the CPU fill's NoiseChunk.
             GpuTerrain terrain = GpuTerrain.of(chunk);
             if (terrain != null) {
-                String td = terrain.compare(((dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor) cpu).ga2$noiseChunk(),
+                String td = terrain.compare(((ChunkAccessAccessor) cpu).ga2$noiseChunk(),
                     randomState.aquiferRandom());
                 TERRAINS.incrementAndGet();
                 if (td != null) {

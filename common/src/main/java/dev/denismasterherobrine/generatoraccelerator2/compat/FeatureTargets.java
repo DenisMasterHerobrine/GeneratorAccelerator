@@ -2,10 +2,13 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 
 /**
@@ -105,18 +108,18 @@ public final class FeatureTargets {
 
     /** Records an inspection. GA2's code handles changes of mixins that {@link KnownMixins} covers. Other mixins make the hook stand down. */
     public static void recordChanges(String hook, List<MergedMethods.Change> changes) {
-        java.util.Map<String, List<String>> byMixin = new java.util.LinkedHashMap<>();
+        Map<String, List<String>> byMixin = new LinkedHashMap<>();
         for (MergedMethods.Change c : changes) {
-            byMixin.computeIfAbsent(c.mixin(), k -> new java.util.ArrayList<>()).add(c.method().substring(0, c.method().indexOf('(')));
+            byMixin.computeIfAbsent(c.mixin(), k -> new ArrayList<>()).add(c.method().substring(0, c.method().indexOf('(')));
         }
-        List<String> foreign = new java.util.ArrayList<>();
+        List<String> foreign = new ArrayList<>();
         for (Map.Entry<String, List<String>> e : byMixin.entrySet()) {
             KnownMixins.Entry known = KnownMixins.find(compatKey(hook), e.getKey(), e.getValue());
             if (known == null) {
                 foreign.add(e.getKey());
                 continue;
             }
-            HANDLED.merge(hook, List.of(e.getKey()), (a, b) -> java.util.stream.Stream.concat(a.stream(), b.stream()).distinct().toList());
+            HANDLED.merge(hook, List.of(e.getKey()), (a, b) -> Stream.concat(a.stream(), b.stream()).distinct().toList());
             LOGGER.info("feature hook '{}' shared with {} ({}) -> kept, emulated: {}",
                 hook, e.getKey(), known.modId(), known.what());
         }
@@ -133,7 +136,7 @@ public final class FeatureTargets {
 
     public static void record(String hook, List<String> foreignMixins) {
         if (!foreignMixins.isEmpty()) {
-            FOREIGN.merge(hook, List.copyOf(foreignMixins), (a, b) -> java.util.stream.Stream.concat(a.stream(), b.stream()).distinct().toList());
+            FOREIGN.merge(hook, List.copyOf(foreignMixins), (a, b) -> Stream.concat(a.stream(), b.stream()).distinct().toList());
             if (forced(hook)) {
                 LOGGER.warn("feature hook '{}' conflicts with {} -> kept (forced: -D{}=true)", hook, foreignMixins, forceProperty(hook));
             } else {

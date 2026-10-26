@@ -1,16 +1,26 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.AquiferStatusInvoker;
+import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
 import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
+import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.RandomState;
+import javax.annotation.Nullable;
 
 /**
  * What the SURFACE and CARVERS steps of a GPU-filled chunk read instead of a NoiseChunk. The data comes from the GPU's work for
@@ -190,7 +200,7 @@ public final class GpuTerrain {
         }
 
         @Override
-        public net.minecraft.util.KeyDispatchDataCodec<? extends DensityFunction> codec() {
+        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
             return wrapped.codec();
         }
     }
@@ -200,8 +210,8 @@ public final class GpuTerrain {
     final int cx, cz;
     private GpuAquifer aquifer;
     /** Better Caves' liquid regions of the chunk, applied to the carvers' aquifer answers ({@code aquifer.LiquidRegions}), or null. */
-    @javax.annotation.Nullable
-    public dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.Table liquids;
+    @Nullable
+    public LiquidRegions.Table liquids;
 
     public GpuTerrain(Spec spec, int[] data, int cx, int cz) {
         this.spec = spec;
@@ -229,7 +239,7 @@ public final class GpuTerrain {
         Boolean e = enabled;
         if (e == null) {
             enabled = e = ENABLED && HOOK.allowed() && SURFACE_BUILD.unchanged()
-                && dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks.noiseChunkFree()
+                && ColumnHooks.noiseChunkFree()
                 && TOP_MATERIAL.unchanged() && HookTargets.handled(HookTargets.SURFACE_TOP_MATERIAL).isEmpty() && MixinTargets.aquiferVanilla()
                 && MixinTargets.surfaceLevelAllowed();
         }
@@ -237,7 +247,7 @@ public final class GpuTerrain {
     }
 
     /** The first condition of {@link #enabled} that fails, for the GPU's status line. Null when it holds. */
-    @javax.annotation.Nullable
+    @Nullable
     public static String disabledReason() {
         if (!ENABLED) {
             return "off (-Dgeneratoraccelerator2.gpu.terrain=false)";
@@ -245,7 +255,7 @@ public final class GpuTerrain {
             return "gpu.terrain off";
         } else if (!SURFACE_BUILD.unchanged()) {
             return "another mod changes the surface build " + HookTargets.foreign(HookTargets.SURFACE_BUILD);
-        } else if (!dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks.noiseChunkFree()) {
+        } else if (!ColumnHooks.noiseChunkFree()) {
             return "other mods' code in the surface's column loop may read the NoiseChunk " + HookTargets.handledMixins(HookTargets.SURFACE_BUILD);
         } else if (!TOP_MATERIAL.unchanged() || !HookTargets.handled(HookTargets.SURFACE_TOP_MATERIAL).isEmpty()) {
             return "another mod changes the top material";
@@ -274,7 +284,7 @@ public final class GpuTerrain {
      * The differences from a NoiseChunk that ran the CPU's fill (verification), or null when they match. Compares the quart columns'
      * surface levels, every aquifer cell's centre and status, and the aquifer's flag after the fill.
      */
-    public String compare(net.minecraft.world.level.levelgen.NoiseChunk cpu, net.minecraft.world.level.levelgen.PositionalRandomFactory random) {
+    public String compare(NoiseChunk cpu, PositionalRandomFactory random) {
         Aquifer aquifer = cpu.aquifer();
         boolean flag = aquifer.shouldScheduleFluidUpdate();
         if (flag != fillFlag()) {
@@ -289,20 +299,20 @@ public final class GpuTerrain {
                 }
             }
         }
-        if (!(aquifer instanceof dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.AquiferStatusInvoker statuses)) {
+        if (!(aquifer instanceof AquiferStatusInvoker statuses)) {
             return null;
         }
         for (int cell = 0; cell < spec.cellsPerChunk; cell++) {
             int ii = cell % 3, t = cell / 3, kk = t % 3, jj = t / 3;
             int gx = cx - 1 + ii, gy = spec.minGridY + jj, gz = cz - 1 + kk;
-            net.minecraft.util.RandomSource r = random.at(gx, gy, gz);
+            RandomSource r = random.at(gx, gy, gz);
             int x = gx * 16 + r.nextInt(10), y = gy * 12 + r.nextInt(9), z = gz * 16 + r.nextInt(10);
             if (x != gx * 16 + offsetX(cell) || y != gy * 12 + offsetY(cell) || z != gz * 16 + offsetZ(cell)) {
                 return "aquifer cell " + gx + ", " + gy + ", " + gz + " centre: CPU " + x + ", " + y + ", " + z + ", GPU " + (gx * 16 + offsetX(cell)) + ", "
                     + (gy * 12 + offsetY(cell)) + ", " + (gz * 16 + offsetZ(cell));
             }
-            Aquifer.FluidStatus s = statuses.ga2$getAquiferStatus(net.minecraft.core.BlockPos.asLong(x, y, z));
-            var fs = (dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor) (Object) s;
+            Aquifer.FluidStatus s = statuses.ga2$getAquiferStatus(BlockPos.asLong(x, y, z));
+            var fs = (FluidStatusAccessor) (Object) s;
             if (fs.ga2$fluidLevel() != level(cell) || fs.ga2$fluidType() != fluid(cell)) {
                 return "aquifer cell " + gx + ", " + gy + ", " + gz + ": CPU " + fs.ga2$fluidLevel() + " " + fs.ga2$fluidType() + ", GPU " + level(cell) + " " + fluid(cell);
             }

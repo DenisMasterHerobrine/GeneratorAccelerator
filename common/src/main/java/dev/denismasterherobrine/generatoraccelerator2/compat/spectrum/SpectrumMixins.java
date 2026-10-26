@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.spectrum;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes;
 import java.util.List;
 import java.util.Set;
 
@@ -22,7 +24,7 @@ public final class SpectrumMixins {
             "Spectrum's gemstone ores around geodes still generate. GA2's faster geodes place them at the same point vanilla does."));
 
     public static void register() {
-        dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(FeatureTargets.compatKey("geode"), GEODE_ORES,
-            dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes::bindTail);
+        CompatAdapters.register(FeatureTargets.compatKey("geode"), GEODE_ORES,
+            PastelGeodes::bindTail);
     }
 }

@@ -3,7 +3,9 @@ package dev.denismasterherobrine.generatoraccelerator2.biome;
 import com.mojang.datafixers.util.Pair;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
@@ -25,7 +27,7 @@ public class ColumnGroupSearchBench {
         Climate.ParameterList<Holder<Biome>> list = new Climate.ParameterList<>(entries);
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) list.index).ga2$flat();
         int[] keys = new int[flat.nodes() + 1];
-        java.util.Map<Object, Integer> numbers = new java.util.HashMap<>();
+        Map<Object, Integer> numbers = new HashMap<>();
         numbers.put("none", 0);
         for (int id = 0; id < flat.nodes(); id++) {
             if (flat.leaf(id) != null) {

@@ -15,9 +15,11 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.function.Function;
 import net.minecraft.core.Holder;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,7 +73,7 @@ public class BiolithFittestTest {
     private static long distance(Climate.RTree.Node<?> node, long[] values) {
         long sum = 0L;
         for (int d = 0; d < 7; d++) {
-            sum += net.minecraft.util.Mth.square(node.parameterSpace[d].distance(values[d]));
+            sum += Mth.square(node.parameterSpace[d].distance(values[d]));
         }
         return sum;
     }
@@ -208,8 +210,8 @@ public class BiolithFittestTest {
                 flat.searchFittest(q[0], q[1], q[2], q[3], q[4], q[5], keys, flatLast[0], flatLast[1], ids, distance);
                 // the per-column variant, from the same last answers, must give the same answers
                 flat.searchFittestColumns(q[0], q[1], q[2], q[3], q[4], q[5], keys, flatLast[0], flatLast[1], ids2, distance2);
-                org.junit.jupiter.api.Assertions.assertArrayEquals(ids, ids2, "column parts ids, mode " + mode + " query " + it);
-                org.junit.jupiter.api.Assertions.assertArrayEquals(distance, distance2, "column parts distances, mode " + mode + " query " + it);
+                Assertions.assertArrayEquals(ids, ids2, "column parts ids, mode " + mode + " query " + it);
+                Assertions.assertArrayEquals(distance, distance2, "column parts distances, mode " + mode + " query " + it);
                 flatLast[0] = ids[0];
                 flatLast[1] = ids[1];
                 String where = "mode " + mode + " query " + it;

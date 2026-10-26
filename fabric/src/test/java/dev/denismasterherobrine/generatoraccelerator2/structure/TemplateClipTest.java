@@ -8,9 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureRun;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessLevel;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
@@ -22,6 +25,7 @@ import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
@@ -72,7 +76,7 @@ public class TemplateClipTest {
             List.of(new ProtectedBlockProcessor(BlockTags.FEATURES_CANNOT_REPLACE), new BlockAgeProcessor(0.5F)),
             List.of(LavaSubmergedBlockProcessor.INSTANCE, BlackstoneReplaceProcessor.INSTANCE));
         // the jigsaw replacement parses its final state through the level's block registry
-        net.minecraft.core.RegistryAccess access = new net.minecraft.core.RegistryAccess.ImmutableRegistryAccess(List.of(r.biomes, BuiltInRegistries.BLOCK));
+        RegistryAccess access = new RegistryAccess.ImmutableRegistryAccess(List.of(r.biomes, BuiltInRegistries.BLOCK));
         long clippedBefore = TemplatePlacement.CLIPPED.sum();
         long skippedBefore = TemplatePlacement.SKIPPED.sum();
         int compared = 0;
@@ -124,7 +128,7 @@ public class TemplateClipTest {
     private static StructureTemplate template(Random rng) {
         BlockState[] palette = {
             Blocks.STONE.defaultBlockState(), Blocks.OAK_PLANKS.defaultBlockState(), Blocks.COBBLESTONE.defaultBlockState(),
-            Blocks.COBBLESTONE_STAIRS.defaultBlockState().setValue(net.minecraft.world.level.block.StairBlock.FACING, net.minecraft.core.Direction.EAST),
+            Blocks.COBBLESTONE_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.EAST),
             Blocks.STONE_BRICK_SLAB.defaultBlockState(), Blocks.WATER.defaultBlockState(), Blocks.LAVA.defaultBlockState(), Blocks.AIR.defaultBlockState(),
             Blocks.JIGSAW.defaultBlockState(), Blocks.STONE_BRICKS.defaultBlockState(), Blocks.MOSSY_COBBLESTONE_WALL.defaultBlockState(),
             Blocks.OBSIDIAN.defaultBlockState(), Blocks.STRUCTURE_VOID.defaultBlockState()
@@ -188,6 +192,6 @@ public class TemplateClipTest {
                 assertArrayEquals(a.getOrCreateHeightmapUnprimed(type).getRawData(), b.getOrCreateHeightmapUnprimed(type).getRawData(), "heightmap " + type + ", " + where);
             }
         }
-        assertEquals(java.util.Arrays.deepToString(a.getPostProcessing()), java.util.Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
+        assertEquals(Arrays.deepToString(a.getPostProcessing()), Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
     }
 }

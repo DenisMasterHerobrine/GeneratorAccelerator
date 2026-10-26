@@ -5,13 +5,23 @@ import static org.lwjgl.opencl.CL10.*;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.opencl.CL10;
 import org.lwjgl.opencl.CL12;
+import org.lwjgl.system.Configuration;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 
 /**
  * Minimal OpenCL host layer for the GPU go/no-go harness (LWJGL bindings): one GPU device, one in-order profiling queue,
@@ -29,9 +39,9 @@ public final class Cl implements AutoCloseable {
     public final int computeUnits;
     public final long doubleFpConfig;
     public final String extensions;
-    private final List<Long> mems = java.util.Collections.synchronizedList(new ArrayList<>());
-    private final List<Long> programs = java.util.Collections.synchronizedList(new ArrayList<>());
-    private final List<Long> kernels = java.util.Collections.synchronizedList(new ArrayList<>());
+    private final List<Long> mems = Collections.synchronizedList(new ArrayList<>());
+    private final List<Long> programs = Collections.synchronizedList(new ArrayList<>());
+    private final List<Long> kernels = Collections.synchronizedList(new ArrayList<>());
 
     private Cl(long platform, long device) {
         this.platform = platform;
@@ -59,34 +69,34 @@ public final class Cl implements AutoCloseable {
      */
     private static void isolateNatives() {
         String dir = System.getProperty("org.lwjgl.librarypath");
-        System.out.println("[GpuProbe] natives: org.lwjgl.librarypath=" + dir + ", Configuration loader " + org.lwjgl.system.Configuration.class.getClassLoader()
-            + ", CL10 loader " + org.lwjgl.opencl.CL10.class.getClassLoader() + ", Cl loader " + Cl.class.getClassLoader());
+        System.out.println("[GpuProbe] natives: org.lwjgl.librarypath=" + dir + ", Configuration loader " + Configuration.class.getClassLoader()
+            + ", CL10 loader " + CL10.class.getClassLoader() + ", Cl loader " + Cl.class.getClassLoader());
         if (dir == null) {
-            dir = System.getProperty("java.io.tmpdir") + java.io.File.separator + "lwjgl_" + System.getProperty("user.name");
+            dir = System.getProperty("java.io.tmpdir") + File.separator + "lwjgl_" + System.getProperty("user.name");
         }
         try {
-            java.nio.file.Path src;
-            try (java.util.stream.Stream<java.nio.file.Path> s = java.nio.file.Files.walk(java.nio.file.Path.of(dir), 3)) {
+            Path src;
+            try (Stream<Path> s = Files.walk(Path.of(dir), 3)) {
                 src = s.filter(p -> p.getFileName().toString().equals("lwjgl.dll") && p.toString().contains("x64")).findFirst().orElse(null);
             }
             if (src == null) {
                 System.out.println("[GpuProbe] no lwjgl.dll under org.lwjgl.librarypath=" + dir);
                 return;
             }
-            java.nio.file.Path dst = java.nio.file.Path.of("build", "gpu-probe", "natives", "lwjgl_ga2gpu.dll").toAbsolutePath();
-            java.nio.file.Files.createDirectories(dst.getParent());
-            java.nio.file.Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Path dst = Path.of("build", "gpu-probe", "natives", "lwjgl_ga2gpu.dll").toAbsolutePath();
+            Files.createDirectories(dst.getParent());
+            Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
             // a system property, not Configuration.set. This class may see the game's copy of Configuration, while the binding
             // sees its own copy
             System.setProperty("org.lwjgl.libname", dst.toString());
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
     /** The first GPU of the first platform that has one (-Dga2.gpu.device=N picks the N-th GPU overall). */
     public static Cl open() {
-        if (org.lwjgl.system.Configuration.class.getClassLoader() != org.lwjgl.opencl.CL10.class.getClassLoader()) {
+        if (Configuration.class.getClassLoader() != CL10.class.getClassLoader()) {
             isolateNatives();
         }
         int want = Integer.getInteger("ga2.gpu.device", 0);

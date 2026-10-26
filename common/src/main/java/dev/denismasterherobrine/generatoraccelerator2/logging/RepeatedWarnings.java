@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 import org.slf4j.Logger;
 
@@ -215,7 +216,7 @@ public final class RepeatedWarnings {
      * The placed feature or structure a generation region writes for, as the region names it ({@code currentlyGenerating}),
      * shortened from {@code ResourceKey[minecraft:worldgen/placed_feature / mod:name]} to {@code mod:name}. Null for none.
      */
-    public static String generating(java.util.function.Supplier<String> currentlyGenerating) {
+    public static String generating(Supplier<String> currentlyGenerating) {
         if (currentlyGenerating == null) {
             return null;
         }

@@ -1,17 +1,25 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.codegen;
 
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CoordDeps;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.RefCount;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntFunction;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
@@ -53,7 +61,7 @@ public final class ProgramCompiler {
      * Generates at the default layout. When a method comes out too large to be JIT-compiled, generates again with smaller
      * methods. Large datapack splines and routers with many roots can trigger this. The code computes the same either way.
      */
-    private static <T> T compacting(java.util.function.IntFunction<T> generate) {
+    private static <T> T compacting(IntFunction<T> generate) {
         for (int compact = 0; ; compact++) {
             try {
                 return generate.apply(compact);
@@ -282,8 +290,8 @@ public final class ProgramCompiler {
             lerpCount = Math.max(lerpCount, r + 1);
         }
         final int rowEnd = rowBase + 2 * lerpCount;
-        java.util.SortedSet<Integer> rowLerps = new java.util.TreeSet<>();
-        collectLerps(root, lerpIndex, rowLerps, new java.util.IdentityHashMap<>());
+        SortedSet<Integer> rowLerps = new TreeSet<>();
+        collectLerps(root, lerpIndex, rowLerps, new IdentityHashMap<>());
         if (CELL_ROW_LERP) {
             emitter.setCellRowBase(rowBase);
         }
@@ -422,14 +430,14 @@ public final class ProgramCompiler {
         MethodHandles.Lookup lookup = HiddenClassLoader.define(cw, "cell-" + debugName);
         try {
             MethodHandle mh = lookup.findConstructor(lookup.lookupClass(), CTOR_TYPE);
-            dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds bounds = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.of(root, lerpIndex,
+            CellBounds bounds = CellBounds.of(root, lerpIndex,
                 specs.toArray(new NoiseSpec[0]));
             if (bounds == null) {
-                dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler.LOGGER.info("cell program {}: no whole-cell bounds (first uncovered node: {})", debugName,
-                    dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.uncovered(root, lerpIndex));
+                Compiler.LOGGER.info("cell program {}: no whole-cell bounds (first uncovered node: {})", debugName,
+                    CellBounds.uncovered(root, lerpIndex));
             }
             if (emitter.columnValueCount() > 0) {
-                dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler.LOGGER.info(
+                Compiler.LOGGER.info(
                     "cell program {}: {} x/z-only parts hoisted per column", debugName,
                     emitter.columnValueCount());
             }
@@ -491,7 +499,7 @@ public final class ProgramCompiler {
     }
 
     /** Indexes of the interpolated markers reachable from a cell program's root (an over-approximation is harmless). */
-    private static void collectLerps(Node n, Map<Node.Marker, Integer> lerpIndex, java.util.Set<Integer> out, Map<Node, Boolean> seen) {
+    private static void collectLerps(Node n, Map<Node.Marker, Integer> lerpIndex, Set<Integer> out, Map<Node, Boolean> seen) {
         if (seen.put(n, Boolean.TRUE) != null) {
             return;
         }
@@ -504,12 +512,12 @@ public final class ProgramCompiler {
         if (n instanceof Node.Spline sp) {
             collectSplineLerps(sp.spline(), lerpIndex, out, seen);
         }
-        for (Node c : dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.RefCount.children(n)) {
+        for (Node c : RefCount.children(n)) {
             collectLerps(c, lerpIndex, out, seen);
         }
     }
 
-    private static void collectSplineLerps(Node.SplineSpec s, Map<Node.Marker, Integer> lerpIndex, java.util.Set<Integer> out, Map<Node, Boolean> seen) {
+    private static void collectSplineLerps(Node.SplineSpec s, Map<Node.Marker, Integer> lerpIndex, Set<Integer> out, Map<Node, Boolean> seen) {
         if (s instanceof Node.SplineMulti m) {
             collectLerps(m.coordinate(), lerpIndex, out, seen);
             for (Node.SplineSpec v : m.values()) {

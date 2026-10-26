@@ -1,9 +1,16 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.biomeswevegone;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
 import java.lang.invoke.MethodHandle;
 import java.util.List;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.BlockColumn;
 
 /**
@@ -21,15 +28,15 @@ public final class BiomesWeveGoneSurface {
     public static void register() {
         ColumnHooks.register(BiomesWeveGoneMixins.SURFACE, BiomesWeveGoneSurface::hooks);
         // the GPU's surface leaves the chunks of these two biomes to the CPU, where the handler runs, as it leaves eroded badlands
-        dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.addBadlandsExtension(biome("shattered_glacier"));
-        dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.addBadlandsExtension(biome("eroded_borealis"));
-        dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_SURFACE,
+        SurfaceSpec.addBadlandsExtension(biome("shattered_glacier"));
+        SurfaceSpec.addBadlandsExtension(biome("eroded_borealis"));
+        CompatAdapters.register(HookTargets.GPU_SURFACE,
             BiomesWeveGoneMixins.SURFACE, () -> true);
     }
 
-    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.biome.Biome> biome(String path) {
-        return net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.BIOME,
-            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+    private static ResourceKey<Biome> biome(String path) {
+        return ResourceKey.create(Registries.BIOME,
+            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     private static List<ColumnHooks.Hook> hooks() throws ReflectiveOperationException {

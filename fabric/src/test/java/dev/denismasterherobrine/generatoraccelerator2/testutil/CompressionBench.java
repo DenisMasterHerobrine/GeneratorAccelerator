@@ -9,9 +9,11 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
+import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 import net.minecraft.nbt.CompoundTag;
@@ -66,11 +68,11 @@ public class CompressionBench {
                     int n = 0;
                     while (!deflater.finished()) {
                         if (n == out.length) {
-                            out = java.util.Arrays.copyOf(out, out.length * 2);
+                            out = Arrays.copyOf(out, out.length * 2);
                         }
                         n += deflater.deflate(out, n, out.length - n);
                     }
-                    packed.add(java.util.Arrays.copyOf(out, n));
+                    packed.add(Arrays.copyOf(out, n));
                 }
                 long t1 = System.nanoTime();
                 for (int i = 0; i < packed.size(); i++) {
@@ -84,7 +86,7 @@ public class CompressionBench {
                         if (n != raw.get(i).length) {
                             throw new IllegalStateException("round trip length");
                         }
-                    } catch (java.util.zip.DataFormatException e) {
+                    } catch (DataFormatException e) {
                         throw new IOException(e);
                     }
                 }

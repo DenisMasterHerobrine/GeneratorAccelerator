@@ -1,8 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.light;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -60,10 +64,10 @@ public final class FastLight {
      * {@code SectionPos.blockToSection(BlockPos.offset(pos, direction))} given {@code section = SectionPos.blockToSection(pos)}.
      * Returns the same section, unless the step leaves it through a face. In that case, returns the adjacent section.
      */
-    public static long neighbourSection(long pos, long section, net.minecraft.core.Direction direction) {
+    public static long neighbourSection(long pos, long section, Direction direction) {
         int d = direction.ordinal();
         int local = (int) (pos >> FACE_SHIFT[d]) & 15;
-        return local == FACE_LOCAL[d] ? net.minecraft.core.SectionPos.offset(section, direction) : section;
+        return local == FACE_LOCAL[d] ? SectionPos.offset(section, direction) : section;
     }
 
     /** Per direction ordinal: the shift, in a packed {@code BlockPos}, of the coordinate the direction moves along. Also the
@@ -72,7 +76,7 @@ public final class FastLight {
     private static final int[] FACE_LOCAL = new int[6];
 
     static {
-        for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+        for (Direction direction : Direction.values()) {
             int d = direction.ordinal();
             // BlockPos packs x at bit 38, z at bit 12, y at bit 0. The low 4 bits of each are the in-section coordinate.
             FACE_SHIFT[d] = switch (direction.getAxis()) {
@@ -80,7 +84,7 @@ public final class FastLight {
                 case Y -> 0;
                 case Z -> 12;
             };
-            FACE_LOCAL[d] = direction.getAxisDirection() == net.minecraft.core.Direction.AxisDirection.POSITIVE ? 15 : 0;
+            FACE_LOCAL[d] = direction.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 15 : 0;
         }
     }
 
@@ -100,7 +104,7 @@ public final class FastLight {
 
     /** The sections {@code getBlockState} reads for a chunk of kind PROTO or LEVEL. */
     public static LevelChunkSection[] sectionsOf(LightChunk chunk) {
-        return chunk instanceof ImposterProtoChunk imposter ? imposter.getWrapped().getSections() : ((net.minecraft.world.level.chunk.ChunkAccess) chunk).getSections();
+        return chunk instanceof ImposterProtoChunk imposter ? imposter.getWrapped().getSections() : ((ChunkAccess) chunk).getSections();
     }
 
     /**
@@ -114,12 +118,12 @@ public final class FastLight {
                 return Blocks.VOID_AIR.defaultBlockState();
             }
             LevelChunkSection section = sections[index];
-            return section.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+            return section.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : StateReads.get(section, x & 15, y & 15, z & 15);
         }
         if (index >= 0 && index < sections.length) {
             LevelChunkSection section = sections[index];
             if (!section.hasOnlyAir()) {
-                return dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+                return StateReads.get(section, x & 15, y & 15, z & 15);
             }
         }
         return Blocks.AIR.defaultBlockState();

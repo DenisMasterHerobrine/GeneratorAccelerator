@@ -1,7 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import java.util.List;
 import java.util.Map;
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath;
+import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
+import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -35,14 +43,14 @@ public final class CompatCommand {
             send(source, "beardifier: other mods wrap compute (" + chain.outer() + ") and add after vanilla's sum " + chain.steps()
                 + (chain.understood() ? ". The piece index runs those steps itself." : ". The index cannot run all of them: " + chain.unknown()));
         }
-        for (Map.Entry<String, java.util.List<String>> e : HookTargets.allForeign().entrySet()) {
+        for (Map.Entry<String, List<String>> e : HookTargets.allForeign().entrySet()) {
             if (e.getKey().equals(HookTargets.NOISE_FILL_STATE) && HookTargets.fillStateKnown()) {
                 send(source, "hook " + e.getKey() + ": GA2's fill runs the fluid steps of " + e.getValue() + " itself in the chunks with their structures");
                 continue;
             }
             send(source, "hook " + e.getKey() + " keeps the code of " + e.getValue());
         }
-        for (Map.Entry<String, java.util.List<HookTargets.Handled>> e : HookTargets.allHandled().entrySet()) {
+        for (Map.Entry<String, List<HookTargets.Handled>> e : HookTargets.allHandled().entrySet()) {
             String hook = e.getKey();
             for (String mixin : HookTargets.handledMixins(hook)) {
                 KnownMixins.Entry entry = e.getValue().stream().filter(h -> h.mixin().equals(mixin)).findFirst().orElseThrow().entry();
@@ -50,41 +58,41 @@ public final class CompatCommand {
                     + (CompatAdapters.ready(hook, mixin) ? "" : " - its compat code is not set up, so the hook is off"));
             }
         }
-        java.util.List<String> undecided = HookTargets.undecided();
+        List<String> undecided = HookTargets.undecided();
         if (!undecided.isEmpty()) {
             send(source, "hooks whose classes were not inspected (not loaded yet, so off until they are): " + undecided);
         }
-        for (Map.Entry<String, java.util.List<String>> e : FeatureTargets.allForeign().entrySet()) {
+        for (Map.Entry<String, List<String>> e : FeatureTargets.allForeign().entrySet()) {
             send(source, "feature hook " + e.getKey() + " keeps the code of " + e.getValue());
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks.VERIFY.enabled()) {
-            send(source, "verify " + dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks.VERIFY.summary());
+        if (SurfaceHooks.VERIFY.enabled()) {
+            send(source, "verify " + SurfaceHooks.VERIFY.summary());
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner.VERIFY.enabled()) {
-            send(source, "verify " + dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner.VERIFY.summary());
+        if (CarverRunner.VERIFY.enabled()) {
+            send(source, "verify " + CarverRunner.VERIFY.summary());
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.VERIFIED.get() > 0) {
-            send(source, "verify fill: " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.VERIFIED.get()
-                + " block states checked against the NoiseChunk's own, " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.DIFFERING.get() + " differ");
+        if (FastFill.VERIFIED.get() > 0) {
+            send(source, "verify fill: " + FastFill.VERIFIED.get()
+                + " block states checked against the NoiseChunk's own, " + FastFill.DIFFERING.get() + " differ");
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.CELLS_VERIFIED.get() > 0) {
-            send(source, "verify cells: " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.CELLS_VERIFIED.get()
-                + " cells checked against vanilla's fill, " + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding.CELLS_DIFFERING.get() + " differ");
+        if (ChunkBinding.CELLS_VERIFIED.get() > 0) {
+            send(source, "verify cells: " + ChunkBinding.CELLS_VERIFIED.get()
+                + " cells checked against vanilla's fill, " + ChunkBinding.CELLS_DIFFERING.get() + " differ");
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.VERIFIED.get() > 0) {
-            send(source, "verify prime: " + dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.VERIFIED.get()
-                + " chunks' final heightmaps checked against vanilla's scan, " + dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.DIFFERING.get() + " differ");
+        if (HeightmapPriming.VERIFIED.get() > 0) {
+            send(source, "verify prime: " + HeightmapPriming.VERIFIED.get()
+                + " chunks' final heightmaps checked against vanilla's scan, " + HeightmapPriming.DIFFERING.get() + " differ");
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath.VERIFIED.get() > 0) {
-            send(source, "verify beardifier: " + dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath.VERIFIED.get()
-                + " sums checked against vanilla's compute, " + dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath.DIFFERING.get() + " differ");
+        if (BeardifierFastPath.VERIFIED.get() > 0) {
+            send(source, "verify beardifier: " + BeardifierFastPath.VERIFIED.get()
+                + " sums checked against vanilla's compute, " + BeardifierFastPath.DIFFERING.get() + " differ");
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.VERIFIED.get() > 0) {
-            send(source, "verify biomes: " + dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.VERIFIED.get()
+        if (TerraBlenderMixins.VERIFIED.get() > 0) {
+            send(source, "verify biomes: " + TerraBlenderMixins.VERIFIED.get()
                 + " TerraBlender region searches checked against vanilla's walk, "
-                + dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.DIFFERING.get() + " differ");
+                + TerraBlenderMixins.DIFFERING.get() + " differ");
         }
-        for (Map.Entry<String, java.util.List<String>> e : FeatureTargets.allHandled().entrySet()) {
+        for (Map.Entry<String, List<String>> e : FeatureTargets.allHandled().entrySet()) {
             for (String mixin : e.getValue()) {
                 send(source, "feature hook " + e.getKey() + " runs " + mixin + " itself"
                     + (CompatAdapters.ready(FeatureTargets.compatKey(e.getKey()), mixin) ? "" : " - its compat code is not set up, so the hook is off"));
@@ -93,7 +101,7 @@ public final class CompatCommand {
         return 1;
     }
 
-    private static void report(CommandSourceStack source, String hook, boolean on, java.util.List<String> foreign) {
+    private static void report(CommandSourceStack source, String hook, boolean on, List<String> foreign) {
         send(source, hook + ": " + (on ? "on" : "off") + (foreign.isEmpty() ? "" : " (method also changed by " + foreign + ")"));
     }
 

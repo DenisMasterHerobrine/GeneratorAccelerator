@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.DataLayerStorageMapAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LayerLightSectionStorageAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LightEngineAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps;
@@ -42,10 +43,14 @@ import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.lighting.LayerLightSectionStorage;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * Light from GA2's light engine hooks equals vanilla's. The terrain is real: noise and surface of the overworld and the
@@ -67,12 +72,12 @@ public class LightExactnessTest {
 
     /** Full chunks of a dev-run world (features, structures, real light sources), when one is around. */
     @Test
-    void realChunks() throws java.io.IOException {
-        java.nio.file.Path region = dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.defaultRegion();
-        org.junit.jupiter.api.Assumptions.assumeTrue(region != null, "no dev-run region file");
+    void realChunks() throws IOException {
+        Path region = RegionChunks.defaultRegion();
+        Assumptions.assumeTrue(region != null, "no dev-run region file");
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
-        ProtoChunk[] chunks = dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.load(region, 4, 6, 8, world);
-        org.junit.jupiter.api.Assumptions.assumeTrue(chunks != null, "region square not fully generated");
+        ProtoChunk[] chunks = RegionChunks.load(region, 4, 6, 8, world);
+        Assumptions.assumeTrue(chunks != null, "region square not fully generated");
         compare(world, chunks, true, 99L, "region " + region.getFileName());
     }
 
@@ -170,7 +175,7 @@ public class LightExactnessTest {
                     }
                 }
                 // a floating canopy so sky light has shade to fill
-                int top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, 8, 8) + 6;
+                int top = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, 8, 8) + 6;
                 if (top < minY + height - 1) {
                     for (int x = 2; x < 14; x++) {
                         for (int z = 3; z < 12; z++) {

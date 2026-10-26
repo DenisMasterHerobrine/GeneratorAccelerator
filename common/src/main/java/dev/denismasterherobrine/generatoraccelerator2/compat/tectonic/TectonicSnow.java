@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.util.OptionalInt;
 
 /**
@@ -48,14 +49,14 @@ public final class TectonicSnow {
         try {
             ClassLoader loader = TectonicSnow.class.getClassLoader();
             Class<?> tectonic = Class.forName("dev.worldgen.tectonic.Tectonic", true, loader);
-            java.lang.reflect.Field config = tectonic.getField("CONFIG");
+            Field config = tectonic.getField("CONFIG");
             Object holder = config.get(null);
             MethodHandles.Lookup lookup = MethodHandles.publicLookup();
             // Called through the field's declared public type, as Tectonic's own code calls it.
             MethodHandle state = lookup.unreflect(config.getType().getMethod("getState")).asType(MethodType.methodType(Object.class, Object.class));
             Class<?> configState = Class.forName("dev.worldgen.tectonic.config.ConfigState", true, loader);
-            java.lang.reflect.Field generalField = configState.getField("general");
-            java.lang.reflect.Field offsetField = generalField.getType().getField("snowStartOffset");
+            Field generalField = configState.getField("general");
+            Field offsetField = generalField.getType().getField("snowStartOffset");
             if (offsetField.getType() != int.class) {
                 throw new NoSuchFieldException("snowStartOffset is a " + offsetField.getType());
             }

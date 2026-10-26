@@ -2,16 +2,32 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuDevice;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuRuntime;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ProgramCache;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ProgramParts;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.blending.Blender;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -29,7 +45,7 @@ public class GpuBuildBench {
         System.out.println("[GpuBuild] " + String.format(Locale.ROOT, fmt, args));
     }
 
-    private static final java.util.concurrent.atomic.AtomicLong NONCE = new java.util.concurrent.atomic.AtomicLong(System.nanoTime() & 0x3fffffffL);
+    private static final AtomicLong NONCE = new AtomicLong(System.nanoTime() & 0x3fffffffL);
 
     private static GpuDevice device() throws Exception {
         ClLoader.Loaded loaded = ClLoader.load(Path.of("build", "gpu-lib").toAbsolutePath());
@@ -109,7 +125,7 @@ public class GpuBuildBench {
             try {
                 String options = Gpu.BUILD_OPTIONS + " -D GA2_NONCE=" + NONCE.getAndIncrement();
                 t0 = System.nanoTime();
-                var b = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ProgramCache.start(d, sources, options);
+                var b = ProgramCache.start(d, sources, options);
                 StringBuilder how = new StringBuilder();
                 for (int i = 0; i < b.size(); i++) {
                     d.cl.releaseProgram(b.take(i, new StringBuilder()));
@@ -133,7 +149,7 @@ public class GpuBuildBench {
         for (Path file : sources(d)) {
             String src = Files.readString(file);
             List<String> sources = GpuWorldgen.parts(ProgramParts.names(src)).stream().map(p -> ProgramParts.only(src, p)).toList();
-            java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+            AtomicBoolean stop = new AtomicBoolean();
             List<Thread> load = new ArrayList<>();
             for (int i = 0; i < n; i++) {
                 load.add(Thread.ofPlatform().daemon().start(() -> {
@@ -155,7 +171,7 @@ public class GpuBuildBench {
                     System.setProperty("generatoraccelerator2.gpu.noBinaryCache", "true");
                     try {
                         String options = Gpu.BUILD_OPTIONS + " -D GA2_NONCE=" + NONCE.getAndIncrement();
-                        var b = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ProgramCache.start(d, sources, options);
+                        var b = ProgramCache.start(d, sources, options);
                         StringBuilder how = new StringBuilder();
                         double required = 0;
                         for (int i = 0; i < b.size(); i++) {
@@ -190,13 +206,13 @@ public class GpuBuildBench {
         GpuProbe.Setup s = GpuDatapack.setup(Long.getLong("ga2.gpu.seed", 1234567L));
         GpuWorldgen[] wgs = { open(d, s, "whole", false), open(d, s, "parts", true) };
         int side = Integer.getInteger("ga2.gpu.square", 12), rounds = Integer.getInteger("ga2.gpu.rounds", 6);
-        List<java.util.Map<String, List<Double>>> per = List.of(new java.util.TreeMap<>(), new java.util.TreeMap<>());
+        List<Map<String, List<Double>>> per = List.of(new TreeMap<>(), new TreeMap<>());
         for (int round = 0; round < rounds; round++) {
             for (int t = 0; t < 2; t++) {
                 int w = (round + t) & 1;
-                java.util.Map<String, Long> before = deviceNanos(wgs[w]);
+                Map<String, Long> before = deviceNanos(wgs[w]);
                 surfaceRound(s, wgs[w], 2000 + round * 40, -3000 + round * 40, side);
-                java.util.Map<String, Long> after = deviceNanos(wgs[w]);
+                Map<String, Long> after = deviceNanos(wgs[w]);
                 // the first round warms up
                 if (round > 0) {
                     for (var e : after.entrySet()) {
@@ -216,12 +232,12 @@ public class GpuBuildBench {
         }
         log("  %-16s %8.2f / %8.2f us  (%+.1f%%)", "total", total[0], total[1], (total[1] - total[0]) / total[0] * 100);
         for (GpuWorldgen wg : wgs) {
-            java.util.concurrent.CompletableFuture<Void> closed = new java.util.concurrent.CompletableFuture<>();
+            CompletableFuture<Void> closed = new CompletableFuture<>();
             d.submit(() -> {
                 GpuRuntime.close(wg);
                 closed.complete(null);
             });
-            closed.get(60, java.util.concurrent.TimeUnit.SECONDS);
+            closed.get(60, TimeUnit.SECONDS);
         }
     }
 
@@ -247,12 +263,12 @@ public class GpuBuildBench {
         return wg;
     }
 
-    private static java.util.Map<String, Long> deviceNanos(GpuWorldgen wg) {
-        java.util.Map<String, Long> out = new java.util.TreeMap<>();
+    private static Map<String, Long> deviceNanos(GpuWorldgen wg) {
+        Map<String, Long> out = new TreeMap<>();
         wg.deviceNanos.forEach((k, v) -> out.put(k, v.sum()));
         String[] surface = { "s.unpack", "s.build", "s.pack", "s.heights" };
         for (int i = 0; i < surface.length; i++) {
-            out.put(surface[i], dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches.DEVICE_NANOS[i].sum());
+            out.put(surface[i], SurfaceBatches.DEVICE_NANOS[i].sum());
         }
         return out;
     }
@@ -260,37 +276,37 @@ public class GpuBuildBench {
     /** Noise, biomes and the surface of side² chunks at (ox, oz), as GpuSteps and GpuSurfaceJob ask for them. */
     private static void surfaceRound(GpuProbe.Setup s, GpuWorldgen wg, int ox, int oz, int side) throws Exception {
         int n = side + 2;
-        List<java.util.concurrent.CompletableFuture<GpuWorldgen.BiomeResult>> bf = new ArrayList<>();
-        List<java.util.concurrent.CompletableFuture<GpuWorldgen.NoiseResult>> nf = new ArrayList<>();
+        List<CompletableFuture<GpuWorldgen.BiomeResult>> bf = new ArrayList<>();
+        List<CompletableFuture<GpuWorldgen.NoiseResult>> nf = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                net.minecraft.world.level.ChunkPos pos = new net.minecraft.world.level.ChunkPos(ox - 1 + i, oz - 1 + j);
+                ChunkPos pos = new ChunkPos(ox - 1 + i, oz - 1 + j);
                 bf.add(wg.biomes(pos));
                 boolean inner = i > 0 && j > 0 && i <= side && j <= side;
-                nf.add(inner ? wg.noise(pos, GpuWorldgen.Beard.NONE) : java.util.concurrent.CompletableFuture.completedFuture(null));
+                nf.add(inner ? wg.noise(pos, GpuWorldgen.Beard.NONE) : CompletableFuture.completedFuture(null));
             }
         }
-        net.minecraft.world.level.chunk.ProtoChunk[] chunks = new net.minecraft.world.level.chunk.ProtoChunk[n * n];
+        ProtoChunk[] chunks = new ProtoChunk[n * n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 int cx = ox - 1 + i, cz = oz - 1 + j;
                 var c = s.world.emptyChunk(cx, cz);
-                var b = bf.get(i * n + j).get(120, java.util.concurrent.TimeUnit.SECONDS);
+                var b = bf.get(i * n + j).get(120, TimeUnit.SECONDS);
                 var structures = Structures.none(cx, cz, 1, 1).beardifierFor(cx, cz);
-                dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply.biomes(wg, c, b, () -> ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker) c
-                    .getOrCreateNoiseChunk(x -> net.minecraft.world.level.levelgen.NoiseChunk.forChunk(x, s.world.randomState, structures, s.world.settings, s.world.fluidPicker,
-                        net.minecraft.world.level.levelgen.blending.Blender.empty()))).ga2$cachedClimateSampler(s.world.randomState.router(), s.world.settings.spawnTarget()));
-                c.setPersistedStatus(net.minecraft.world.level.chunk.status.ChunkStatus.BIOMES);
+                Apply.biomes(wg, c, b, () -> ((NoiseChunkSamplerInvoker) c
+                    .getOrCreateNoiseChunk(x -> NoiseChunk.forChunk(x, s.world.randomState, structures, s.world.settings, s.world.fluidPicker,
+                        Blender.empty()))).ga2$cachedClimateSampler(s.world.randomState.router(), s.world.settings.spawnTarget()));
+                c.setPersistedStatus(ChunkStatus.BIOMES);
                 chunks[i * n + j] = c;
             }
         }
         var spec = wg.surfaceSpec;
         GpuTerrain.Spec tspec = wg.terrainSpec(() -> s.world.fluidPicker);
-        List<java.util.concurrent.CompletableFuture<?>> sf = new ArrayList<>();
+        List<CompletableFuture<?>> sf = new ArrayList<>();
         for (int i = 1; i <= side; i++) {
             for (int j = 1; j <= side; j++) {
                 int cx = ox - 1 + i, cz = oz - 1 + j;
-                GpuWorldgen.NoiseResult res = nf.get(i * n + j).get(120, java.util.concurrent.TimeUnit.SECONDS);
+                GpuWorldgen.NoiseResult res = nf.get(i * n + j).get(120, TimeUnit.SECONDS);
                 if (res == null) {
                     continue;
                 }
@@ -314,10 +330,10 @@ public class GpuBuildBench {
                 int bx = cx * 16, bz = cz * 16;
                 int[] cpar = { cx, cz, terrain.preliminarySurfaceLevel(bx, bz), terrain.preliminarySurfaceLevel(bx + 16, bz), terrain.preliminarySurfaceLevel(bx, bz + 16),
                     terrain.preliminarySurfaceLevel(bx + 16, bz + 16), 0, 0 };
-                sf.add(wg.surfaces.submit(new net.minecraft.world.level.ChunkPos(cx, cz), res.storage(), res.meta(), tops, win, cpar));
+                sf.add(wg.surfaces.submit(new ChunkPos(cx, cz), res.storage(), res.meta(), tops, win, cpar));
             }
         }
-        java.util.concurrent.CompletableFuture.allOf(sf.toArray(java.util.concurrent.CompletableFuture[]::new)).get(300, java.util.concurrent.TimeUnit.SECONDS);
+        CompletableFuture.allOf(sf.toArray(CompletableFuture[]::new)).get(300, TimeUnit.SECONDS);
     }
 
     /**
@@ -339,14 +355,14 @@ public class GpuBuildBench {
             System.setProperty("java.home", h);
             System.setProperty("generatoraccelerator2.gpu.noBinaryCache", "true");
             try {
-                var b = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ProgramCache.start(d, sources, Gpu.BUILD_OPTIONS + " -D GA2_NONCE=" + NONCE.getAndIncrement());
+                var b = ProgramCache.start(d, sources, Gpu.BUILD_OPTIONS + " -D GA2_NONCE=" + NONCE.getAndIncrement());
                 for (int i = 0; i < b.size(); i++) {
                     long p = b.take(i, new StringBuilder());
                     d.cl.releaseKernel(d.cl.createKernel(p, i == 0 ? "k_a" : "k_b"));
                     d.cl.releaseProgram(p);
                 }
                 log("java.home %s: parts made %s", h, String.join(", ", b.how));
-                if (!java.util.Arrays.stream(b.how).allMatch("here"::equals)) {
+                if (!Arrays.stream(b.how).allMatch("here"::equals)) {
                     throw new AssertionError("a failed process's part was not built here");
                 }
             } finally {

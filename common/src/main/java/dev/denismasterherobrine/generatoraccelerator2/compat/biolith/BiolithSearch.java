@@ -5,19 +5,31 @@ import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeConfig;
 import dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree;
 import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateLeaf;
 import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateTree;
+import dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
@@ -92,15 +104,15 @@ public final class BiolithSearch {
      * requests, and those a replacement can turn into one, in any dimension. Read from Biolith's placements when first needed,
      * once the server runs ({@code biome.BiomeAnswers}). {@link #ANY_BIOME} when they cannot be read.
      */
-    private static volatile java.util.Set<Object> leafBiomes;
-    private static final java.util.Set<Object> ANY_BIOME = new java.util.HashSet<>();
+    private static volatile Set<Object> leafBiomes;
+    private static final Set<Object> ANY_BIOME = new HashSet<>();
     /** The End's biomes, for which Biolith's vanilla compat builds a leaf from the first answer's ranges. */
-    private static final java.util.Set<Object> END_BIOMES = java.util.Set.of(net.minecraft.world.level.biome.Biomes.SMALL_END_ISLANDS,
-        net.minecraft.world.level.biome.Biomes.END_BARRENS, net.minecraft.world.level.biome.Biomes.END_MIDLANDS, net.minecraft.world.level.biome.Biomes.END_HIGHLANDS);
+    private static final Set<Object> END_BIOMES = Set.of(Biomes.SMALL_END_ISLANDS,
+        Biomes.END_BARRENS, Biomes.END_MIDLANDS, Biomes.END_HIGHLANDS);
 
     /** Whether Biolith may read the leaf of a first answer {@code leaf}, beyond its biome and distance. */
     static boolean firstLeafRead(Climate.RTree.Leaf<?> leaf) {
-        java.util.Set<Object> biomes = leafBiomes;
+        Set<Object> biomes = leafBiomes;
         if (biomes == null) {
             leafBiomes = biomes = readLeafBiomes();
         }
@@ -112,7 +124,7 @@ public final class BiolithSearch {
     }
 
     @SuppressWarnings("unchecked")
-    private static java.util.Set<Object> readLeafBiomes() {
+    private static Set<Object> readLeafBiomes() {
         try {
             ClassLoader loader = Climate.class.getClassLoader();
             Class<?> coordinator = Class.forName("com.terraformersmc.biolith.impl.biome.BiomeCoordinator", false, loader);
@@ -122,18 +134,18 @@ public final class BiolithSearch {
             Field subs = placement.getDeclaredField("subBiomeRequests");
             Field reps = placement.getDeclaredField("replacementRequests");
             Field requests = replacementSet.getDeclaredField("requests");
-            java.lang.reflect.Method biome = replacement.getDeclaredMethod("biome");
+            Method biome = replacement.getDeclaredMethod("biome");
             subs.setAccessible(true);
             reps.setAccessible(true);
             requests.setAccessible(true);
             biome.setAccessible(true);
-            java.util.Set<Object> out = new java.util.HashSet<>();
+            Set<Object> out = new HashSet<>();
             for (String dimension : new String[] { "OVERWORLD", "NETHER", "END" }) {
                 Object p = coordinator.getField(dimension).get(null);
                 Map<Object, Object> sub = (Map<Object, Object>) subs.get(p);
                 out.addAll(sub.keySet());
                 for (Map.Entry<Object, Object> e : ((Map<Object, Object>) reps.get(p)).entrySet()) {
-                    for (Object r : (java.util.List<Object>) requests.get(e.getValue())) {
+                    for (Object r : (List<Object>) requests.get(e.getValue())) {
                         if (sub.containsKey(biome.invoke(r))) {
                             out.add(e.getKey());
                         }
@@ -153,7 +165,7 @@ public final class BiolithSearch {
         Object answer = flatSearch(tree, target, metric);
         if (answer == null) {
             // Biolith's own search: GA2 does not see whether its answers hold for any last answers
-            dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.UNSEEN);
+            SearchTies.unsure(SearchTies.UNSEEN);
         }
         return answer;
     }
@@ -193,7 +205,7 @@ public final class BiolithSearch {
         // the GPU's two answers, in a chunk whose biome step it handed them to. They are this walk's answers when the last answers
         // are of two biomes (see FlatClimateTree.searchFittest)
         Climate.RTree.Leaf<?>[] handed = u >= 0 && p >= 0 && keys[u] == keys[p] ? null
-            : dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fittest(tree, target);
+            : BiomeHand.fittest(tree, target);
         int hu = handed == null ? -2 : id(flat, handed[0]);
         int hp = handed == null ? -2 : id(flat, handed[1]);
         boolean byGpu = hu >= 0 && hp != -2;
@@ -223,12 +235,12 @@ public final class BiolithSearch {
         // The GPU's answers are the only leaves at their distances. Others are checked while a lookup watches (biome.SearchTies).
         // Biolith's sub-biome criteria read the first answer's leaf (its parameter ranges) and the second's biome and distance.
         // Without such criteria for the first answer's biome, a tie with a leaf of the same biome gives the same answer
-        if (!byGpu && dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.watching()) {
+        if (!byGpu && SearchTies.watching()) {
             long t0 = target.temperature(), t1 = target.humidity(), t2 = target.continentalness(), t3 = target.erosion(), t4 = target.depth(), t5 = target.weirdness();
             if (!flat.alone(t0, t1, t2, t3, t4, t5, uId, uId >= 0 && !firstLeafRead(flat.leaf(uId)))) {
-                dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.BIOLITH_FIRST);
+                SearchTies.unsure(SearchTies.BIOLITH_FIRST);
             } else if (!flat.secondAlone(t0, t1, t2, t3, t4, t5, pId, keys, keys[uId < 0 ? keys.length - 1 : uId])) {
-                dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.BIOLITH_SECOND);
+                SearchTies.unsure(SearchTies.BIOLITH_SECOND);
             }
         }
         Climate.RTree.Leaf<?> ultimate = uId < 0 ? null : flat.leaf(uId);
@@ -262,18 +274,16 @@ public final class BiolithSearch {
             last.shape = s;
             last.answer = answer;
             return answer;
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
     }
 
     /** {@code -Dgeneratoraccelerator2.verify.biomes=N}: every N-th search also runs Biolith's and compares, as for TerraBlender. */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.biomes", 0);
-    private static final java.util.concurrent.atomic.AtomicLong SEEN = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong SEEN = new AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong();
+    public static final AtomicLong DIFFERING = new AtomicLong();
 
     public static boolean sampleVerify() {
         return VERIFY_EVERY > 0 && SEEN.incrementAndGet() % VERIFY_EVERY == 0;
@@ -310,11 +320,11 @@ public final class BiolithSearch {
     /** Compares GA2's result and last answers with Biolith's. Records compare leaves by identity and distances by value. */
     public static void compare(Object ga2, Object[] ga2Last, Object biolith, Object[] biolithLast, Climate.TargetPoint target) {
         VERIFIED.incrementAndGet();
-        boolean same = java.util.Objects.equals(ga2, biolith) && ga2Last != null && biolithLast != null
+        boolean same = Objects.equals(ga2, biolith) && ga2Last != null && biolithLast != null
             && ga2Last[0] == biolithLast[0] && ga2Last[1] == biolithLast[1];
         if (!same && DIFFERING.incrementAndGet() <= 10) {
             Ga2Log.get("Verify").warn("Biolith search mismatch at {}: GA2 {} (last {}), Biolith {} (last {})", target, ga2,
-                java.util.Arrays.toString(ga2Last), biolith, java.util.Arrays.toString(biolithLast));
+                Arrays.toString(ga2Last), biolith, Arrays.toString(biolithLast));
         }
     }
 
@@ -390,7 +400,7 @@ public final class BiolithSearch {
         }
         try {
             ThreadLocal[] read = { (ThreadLocal) s.ultimate.get(tree), (ThreadLocal) s.penultimate.get(tree) };
-            if (java.lang.reflect.Modifier.isFinal(s.ultimate.getModifiers()) && java.lang.reflect.Modifier.isFinal(s.penultimate.getModifiers())) {
+            if (Modifier.isFinal(s.ultimate.getModifiers()) && Modifier.isFinal(s.penultimate.getModifiers())) {
                 flat.compatFields = read;
             }
             return read;

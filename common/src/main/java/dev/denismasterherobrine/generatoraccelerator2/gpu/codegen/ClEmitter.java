@@ -6,16 +6,25 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * GA2's IR as OpenCL C. Mirrors GA2's chunk-mode code generator (the {@code COLUMN} and {@code CELL} modes of
@@ -129,7 +138,7 @@ public final class ClEmitter {
      * The dimension's global fluid picker as intervals {@code {fromY, level, id}} in y order (the first from {@code Integer.MIN_VALUE}),
      * or null for vanilla's picker ({@code runtime.PickerShape}).
      */
-    public java.util.List<int[]> pickerIntervals;
+    public List<int[]> pickerIntervals;
     /**
      * The default fluid (the id {@code ID_WATER}) is lava, as in a Nether with aquifers (Jaden's Nether Expansion). Vanilla's
      * aquifer tests water and lava by block. For that id, its water tests are therefore false and its lava tests true
@@ -183,7 +192,7 @@ public final class ClEmitter {
     public static final String[] APOINT_ROOTS = { "initial_density_without_jaggedness", "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread",
         "lava", "temperature", "vegetation", "continents", "ridges" };
     /** The APOINT roots that only the biomes read. The aquifer also reads erosion and depth. */
-    private static final java.util.Set<String> CLIMATE_ONLY = java.util.Set.of("temperature", "vegetation", "continents", "ridges");
+    private static final Set<String> CLIMATE_ONLY = Set.of("temperature", "vegetation", "continents", "ridges");
 
     /** Every spline the roots evaluate, children before their parents. Each spline's depth is kept too (1: constant values only). */
     private final List<Node.SplineMulti> splines = new ArrayList<>();
@@ -422,7 +431,7 @@ public final class ClEmitter {
     }
 
     /** More source appended to the program (the GPU surface, {@code gpu.surface}): it may use every helper and {@code Ctx}. */
-    public java.util.function.Function<ClEmitter, String> extra;
+    public Function<ClEmitter, String> extra;
 
     /** The arguments every kernel that evaluates noise takes first (noise tables, flat caches). */
     public String commonArgs() {
@@ -584,7 +593,7 @@ public final class ClEmitter {
         for (Node r : fnRoots) {
             count(mode, r, counts);
         }
-        Set<Node> out = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Node> out = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Map.Entry<Node, Integer> e : counts.entrySet()) {
             if (e.getValue() > 1 && !(e.getKey() instanceof Node.Const)) {
                 out.add(e.getKey());
@@ -1344,7 +1353,7 @@ public final class ClEmitter {
         final Set<Node> shared;
         final Map<Node, Integer> memo = new IdentityHashMap<>();
         /** The walk's cache_2d slots, by vanilla marker (equal markers are one wrapper in a NoiseChunk). */
-        final Map<Object, Integer> walkMemo = new java.util.HashMap<>();
+        final Map<Object, Integer> walkMemo = new HashMap<>();
         int tmp;
 
         Fn(Mode mode, List<Node> fnRoots) {
@@ -2512,7 +2521,7 @@ public final class ClEmitter {
      * only called by that fill, once per column, and the flat fill reproduces it. The aquifer's fields, the surface walk and the
      * climate are also asked elsewhere.
      */
-    private static final java.util.Set<String> INSIDE_ONLY = java.util.Set.of("final_density", "vein_toggle", "vein_ridged", "vein_gap", "barrier");
+    private static final Set<String> INSIDE_ONLY = Set.of("final_density", "vein_toggle", "vein_ridged", "vein_gap", "barrier");
 
     /**
      * Whether every flat cache in a router field holds a function of x and z alone. Inside its range, a NoiseChunk's flat cache
@@ -2523,8 +2532,8 @@ public final class ClEmitter {
         if (root == null) {
             return true;
         }
-        java.util.Set<Node> seen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
-        java.util.ArrayDeque<Node> stack = new java.util.ArrayDeque<>();
+        Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Node> stack = new ArrayDeque<>();
         stack.push(root);
         seen.add(root);
         while (!stack.isEmpty()) {
@@ -2543,13 +2552,13 @@ public final class ClEmitter {
 
     /** Sets {@link #c2dKind} from which router fields reach a cache_2d whose child reads y. */
     private void classifyCache2d() {
-        java.util.Set<String> fields = new java.util.TreeSet<>();
-        java.util.Set<Object> markers = new java.util.HashSet<>();
+        Set<String> fields = new TreeSet<>();
+        Set<Object> markers = new HashSet<>();
         StringBuilder paths = new StringBuilder();
         for (Map.Entry<String, Node> e : router.entrySet()) {
             boolean inside = INSIDE_ONLY.contains(e.getKey());
             Map<Node, Node> parent = new IdentityHashMap<>();
-            java.util.ArrayDeque<Node> stack = new java.util.ArrayDeque<>();
+            ArrayDeque<Node> stack = new ArrayDeque<>();
             stack.push(e.getValue());
             parent.put(e.getValue(), e.getValue());
             boolean shown = false;
@@ -2562,9 +2571,9 @@ public final class ClEmitter {
                     if (!shown) {
                         // the first path in the field down to such a cache_2d (for the reason a dimension stays on the CPU)
                         shown = true;
-                        java.util.List<String> chain = new ArrayList<>();
+                        List<String> chain = new ArrayList<>();
                         for (Node p = n; p != e.getValue(); p = parent.get(p)) {
-                            chain.add(0, p instanceof Node.Marker mm ? mm.type().name().toLowerCase(java.util.Locale.ROOT) : p.getClass().getSimpleName());
+                            chain.add(0, p instanceof Node.Marker mm ? mm.type().name().toLowerCase(Locale.ROOT) : p.getClass().getSimpleName());
                         }
                         String v = String.valueOf(m.vanilla());
                         paths.append("; ").append(e.getKey()).append(": ").append(String.join(" > ", chain)).append(" (")
@@ -2583,9 +2592,9 @@ public final class ClEmitter {
             }
         }
         c2dPaths = paths.toString();
-        if (fields.equals(java.util.Set.of("initial_density_without_jaggedness"))) {
+        if (fields.equals(Set.of("initial_density_without_jaggedness"))) {
             c2dKind = C2d.WALK;
-        } else if (fields.equals(java.util.Set.of("fluid_level_floodedness")) && markers.size() == 1) {
+        } else if (fields.equals(Set.of("fluid_level_floodedness")) && markers.size() == 1) {
             c2dKind = C2d.FLOODED;
         }
         c2dFields = fields + (markers.size() > 1 ? " (" + markers.size() + " of them)" : "");
@@ -3603,8 +3612,8 @@ public final class ClEmitter {
             floats += 3 * m.locations().length;
         }
         int io = oi.length, fo = of.length;
-        oi = java.util.Arrays.copyOf(oi, io + ints);
-        of = java.util.Arrays.copyOf(of, fo + floats);
+        oi = Arrays.copyOf(oi, io + ints);
+        of = Arrays.copyOf(of, fo + floats);
         int ic = 4 * ns, fc = 0;
         for (int i = 0; i < ns; i++) {
             Node.SplineMulti m = splines.get(i);
@@ -3820,7 +3829,7 @@ public final class ClEmitter {
             }
             """);
         sb.append(prec == Prec.F64 ? "#define lerp3 lerp3d\n#define lerpR lerpd\n" : "#define lerp3 lerp3f\n#define lerpR lerpf\n");
-        sb.append(XO).append(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpuSource());
+        sb.append(XO).append(ExternSamplers.gpuSource());
         return sb.toString();
     }
 
@@ -3870,7 +3879,7 @@ public final class ClEmitter {
     static String exactDouble(Node n) {
         return switch (n) {
             case Node.Const k -> dlit(k.value());
-            case Node.IntToDouble i when i.value() instanceof dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode.IntCoord ic ->
+            case Node.IntToDouble i when i.value() instanceof INode.IntCoord ic ->
                 "(double) c->" + (ic.axis() == 0 ? "bx" : ic.axis() == 1 ? "by" : "bz");
             case Node.StaticCall s when s.owner().equals("$op") && s.args().size() == 2 && (s.name().equals("dadd") || s.name().equals("dsub") || s.name().equals("dmul")) -> {
                 String a = s.args().get(0) instanceof Node na ? exactDouble(na) : null, b = s.args().get(1) instanceof Node nb ? exactDouble(nb) : null;
@@ -3882,24 +3891,24 @@ public final class ClEmitter {
 
     /** The OpenCL function of a call to an extern sampler the GPU computes ({@code ExternSamplers.GpuForm}), or null. */
     static String extern(Node.StaticCall c) {
-        if (!c.owner().equals(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.OWNER) || c.args().size() != 4
-            || !(c.args().get(0) instanceof dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode.IntConst i)) {
+        if (!c.owner().equals(ExternSamplers.OWNER) || c.args().size() != 4
+            || !(c.args().get(0) instanceof INode.IntConst i)) {
             return null;
         }
-        var form = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpu(i.value());
+        var form = ExternSamplers.gpu(i.value());
         if (form == null) {
             return null;
         }
         return switch (form.kind()) {
-            case dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.FNL_CELLULAR -> "fnl_cellular";
-            case dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.LITHO_CELLULAR -> "litho_cellular";
+            case ExternSamplers.GpuForm.FNL_CELLULAR -> "fnl_cellular";
+            case ExternSamplers.GpuForm.LITHO_CELLULAR -> "litho_cellular";
             default -> null;
         };
     }
 
-    private final Map<Integer, String> externArgs = new java.util.LinkedHashMap<>();
+    private final Map<Integer, String> externArgs = new LinkedHashMap<>();
     /** Per extern sampler the program computes: its ints', floats' and table's offsets in oi and of. */
-    public final Map<Integer, int[]> externOffsets = new java.util.LinkedHashMap<>();
+    public final Map<Integer, int[]> externOffsets = new LinkedHashMap<>();
     private final Map<float[], Integer> externTablesAt = new IdentityHashMap<>();
 
     /**
@@ -3907,7 +3916,7 @@ public final class ClEmitter {
      * source is done, because the noise tables are built after the root functions ({@link #resolveExterns}).
      */
     String externTables(Node.StaticCall c) {
-        int index = ((dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode.IntConst) c.args().get(0)).value();
+        int index = ((INode.IntConst) c.args().get(0)).value();
         externArgs.putIfAbsent(index, null);
         return "@EXTERN" + index + "@";
     }
@@ -3915,17 +3924,17 @@ public final class ClEmitter {
     /** Appends each extern's data to oi and of (the tables are final now). Replaces each extern's placeholder with its offsets. */
     private String resolveExterns(String src) {
         for (int k : externArgs.keySet()) {
-            var form = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpu(k);
+            var form = ExternSamplers.gpu(k);
             int io = oi.length;
-            oi = java.util.Arrays.copyOf(oi, io + form.ints().length);
+            oi = Arrays.copyOf(oi, io + form.ints().length);
             System.arraycopy(form.ints(), 0, oi, io, form.ints().length);
             int fo = of.length;
-            of = java.util.Arrays.copyOf(of, fo + form.floats().length);
+            of = Arrays.copyOf(of, fo + form.floats().length);
             System.arraycopy(form.floats(), 0, of, fo, form.floats().length);
             Integer to = externTablesAt.get(form.table());
             if (to == null) {
                 to = of.length;
-                of = java.util.Arrays.copyOf(of, to + form.table().length);
+                of = Arrays.copyOf(of, to + form.table().length);
                 System.arraycopy(form.table(), 0, of, to, form.table().length);
                 externTablesAt.put(form.table(), to);
             }

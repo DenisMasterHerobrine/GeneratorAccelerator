@@ -2,12 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.winterly;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.FeatureWraps;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.Arrays;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
@@ -25,27 +22,17 @@ public final class WinterlyFeatures {
     }
 
     private static boolean setUp() {
-        Class<?>[] params = {Biome.class, LevelReader.class, BlockPos.class};
-        for (Method m : dev.denismasterherobrine.generatoraccelerator2.compat.Reflect.declaredMethods(SnowAndFreezeFeature.class)) {
-            if (m.getName().endsWith("$winterly$canSetIce") && !Modifier.isStatic(m.getModifiers()) && m.getReturnType() == boolean.class
-                && Arrays.equals(m.getParameterTypes(), params)) {
-                try {
-                    m.setAccessible(true);
-                    MethodHandle handler = MethodHandles.lookup().unreflect(m);
-                    return FeatureWraps.claimSnow((feature, biome, level, pos) -> {
-                        try {
-                            return (boolean) handler.invoke(feature, biome, level, pos);
-                        } catch (RuntimeException | Error e) {
-                            throw e;
-                        } catch (Throwable t) {
-                            throw new IllegalStateException(t);
-                        }
-                    });
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    return false;
-                }
-            }
+        MethodHandle handler = Reflect.mergedMethod(SnowAndFreezeFeature.class, "$winterly$canSetIce", false,
+            boolean.class, Biome.class, LevelReader.class, BlockPos.class);
+        if (handler == null) {
+            return false;
         }
-        return false;
+        return FeatureWraps.claimSnow((feature, biome, level, pos) -> {
+            try {
+                return (boolean) handler.invoke(feature, biome, level, pos);
+            } catch (Throwable t) {
+                throw Reflect.unchecked(t);
+            }
+        });
     }
 }

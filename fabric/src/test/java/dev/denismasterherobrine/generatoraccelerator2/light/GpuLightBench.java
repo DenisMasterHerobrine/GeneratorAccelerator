@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuDevice;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuRuntime;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -73,7 +74,7 @@ public class GpuLightBench {
                 ProtoChunk[] base;
                 if (t[0].equals("real chunks")) {
                     String file = System.getProperty("ga2.bench.regionFile");
-                    base = file == null ? null : dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks.load(Path.of(file), (Integer) t[3], (Integer) t[4], 15, world);
+                    base = file == null ? null : RegionChunks.load(Path.of(file), (Integer) t[3], (Integer) t[4], 15, world);
                     if (base == null) {
                         continue;
                     }

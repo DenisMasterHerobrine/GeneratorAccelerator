@@ -1,24 +1,35 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.placement;
 
+import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
+import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesCompat;
+import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.features.PlacementFilterInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.features.RepeatingPlacementInvoker;
+import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
+import it.unimi.dsi.fastutil.HashCommon;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.placement.BiomeFilter;
 import net.minecraft.world.level.levelgen.placement.BlockPredicateFilter;
 import net.minecraft.world.level.levelgen.placement.CountOnEveryLayerPlacement;
 import net.minecraft.world.level.levelgen.placement.CountPlacement;
+import net.minecraft.world.level.levelgen.placement.EnvironmentScanPlacement;
 import net.minecraft.world.level.levelgen.placement.HeightRangePlacement;
 import net.minecraft.world.level.levelgen.placement.HeightmapPlacement;
 import net.minecraft.world.level.levelgen.placement.InSquarePlacement;
@@ -33,6 +44,7 @@ import net.minecraft.world.level.levelgen.placement.RarityFilter;
 import net.minecraft.world.level.levelgen.placement.RepeatingPlacement;
 import net.minecraft.world.level.levelgen.placement.SurfaceRelativeThresholdFilter;
 import net.minecraft.world.level.levelgen.placement.SurfaceWaterDepthFilter;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 
 /**
  * {@code PlacedFeature.placeWithContext} without the stream chain. Vanilla pushes every position
@@ -54,8 +66,8 @@ public final class PlacementPipeline {
      */
     @FunctionalInterface
     public interface PositionWrap {
-        void place(PlacedFeature placed, BlockPos pos, java.util.function.Consumer<BlockPos> place, PlacementContext ctx, RandomSource random,
-                   org.apache.commons.lang3.mutable.MutableBoolean success);
+        void place(PlacedFeature placed, BlockPos pos, Consumer<BlockPos> place, PlacementContext ctx, RandomSource random,
+                   MutableBoolean success);
     }
 
     public static volatile PositionWrap position;
@@ -63,15 +75,15 @@ public final class PlacementPipeline {
     /** {@code -Dgeneratoraccelerator2.biomeSet=false}: every biome check looks the biome up. */
     private static final boolean BIOME_SET = !"false".equals(System.getProperty("generatoraccelerator2.biomeSet"));
     /** {@code -Dgeneratoraccelerator2.verify.biomeSet=N}: every N-th check the biome set answers is looked up after all. */
-    private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter VERIFY_BIOME_SET =
-        new dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter("biomeSet");
+    private static final VerifyCounter VERIFY_BIOME_SET =
+        new VerifyCounter("biomeSet");
 
     /** Per modifier class: true for a vanilla class the pipeline transcribes that no other mod changes ({@code placement.<class>}). */
     private static final ClassValue<Boolean> TRANSCRIBED = new ClassValue<>() {
         @Override
         protected Boolean computeValue(Class<?> type) {
-            return type.getName().startsWith("net.minecraft.") && dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.allowed(
-                dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets.modifierKey(type.getName().replace('.', '/')));
+            return type.getName().startsWith("net.minecraft.") && FeatureTargets.allowed(
+                FeatureTargets.modifierKey(type.getName().replace('.', '/')));
         }
     };
 
@@ -109,7 +121,7 @@ public final class PlacementPipeline {
             return NOISE_COUNT;
         } else if (cls == RandomOffsetPlacement.class) {
             return RANDOM_OFFSET;
-        } else if (cls == net.minecraft.world.level.levelgen.placement.EnvironmentScanPlacement.class && m instanceof ScanPlacement) {
+        } else if (cls == EnvironmentScanPlacement.class && m instanceof ScanPlacement) {
             return SCAN;
         }
         return OTHER;
@@ -132,7 +144,7 @@ public final class PlacementPipeline {
     private static boolean readsOnly(byte kind, PlacementModifier m) {
         return switch (kind) {
             case HEIGHTMAP, WATER_DEPTH, SURFACE_RELATIVE, NOISE_THRESHOLD, NOISE_COUNT -> true;
-            case PREDICATE -> ((dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms.FilterProgram) (Object) m).ga2$readsOnly();
+            case PREDICATE -> ((PredicatePrograms.FilterProgram) (Object) m).ga2$readsOnly();
             case SCAN -> ((ScanPlacement) m).ga2$readsOnly();
             default -> false;
         };
@@ -205,7 +217,7 @@ public final class PlacementPipeline {
 
         Run take() {
             if (depth == runs.length) {
-                runs = java.util.Arrays.copyOf(runs, depth * 2);
+                runs = Arrays.copyOf(runs, depth * 2);
             }
             Run run = runs[depth];
             if (run == null) {
@@ -228,15 +240,15 @@ public final class PlacementPipeline {
      * operation made an array per try. {@code stamp} is the patch's stamp: tries that gave no position under it still hold. 0 before
      * its first try.
      */
-    static boolean patchTry(PlacedFeature inner, net.minecraft.world.level.WorldGenLevel level, net.minecraft.world.level.chunk.ChunkGenerator generator,
-                            RandomSource random, BlockPos pos, com.llamalad7.mixinextras.sugar.ref.LocalLongRef stamp) {
+    static boolean patchTry(PlacedFeature inner, WorldGenLevel level, ChunkGenerator generator,
+                            RandomSource random, BlockPos pos, LocalLongRef stamp) {
         Runs runs = RUNS.get();
         long s = stamp.get();
         if (s == 0) {
             stamp.set(s = ++runs.stamps);
         }
         long key = pos.asLong();
-        int slot = (int) it.unimi.dsi.fastutil.HashCommon.mix(key) & (REPEAT_SLOTS - 1);
+        int slot = (int) HashCommon.mix(key) & (REPEAT_SLOTS - 1);
         boolean known = runs.noneStamp[slot] == s && runs.noneAt[slot] == key;
         runs.patchTries++;
         boolean verify = known && PatchRepeats.VERIFY.sample();
@@ -306,8 +318,8 @@ public final class PlacementPipeline {
         private PlacedFeature placedFeature;
         private PositionWrap wrap;
         /** Vanilla's {@code MutableBoolean} of the placement, when a wrapper takes part ({@link PositionWrap}). */
-        org.apache.commons.lang3.mutable.MutableBoolean success;
-        private java.util.function.Consumer<BlockPos> consumer;
+        MutableBoolean success;
+        private Consumer<BlockPos> consumer;
         private List<PlacementModifier> modifiers;
         /** {@link #kind} of each modifier ({@link #kinds}). Read only. */
         private byte[] kinds;
@@ -327,7 +339,7 @@ public final class PlacementPipeline {
         private boolean memoResult1;
 
         /** The walk from modifier {@code index} on, for a stream of positions. Stateless, so one per index stays with the run. */
-        private final class Next implements java.util.function.Consumer<BlockPos> {
+        private final class Next implements Consumer<BlockPos> {
             final int index;
 
             Next(int index) {
@@ -345,7 +357,7 @@ public final class PlacementPipeline {
         /** This run's walk from modifier {@code i} on. A lambda here was one object per generic modifier call. */
         private Next next(int i) {
             if (i >= nexts.length) {
-                nexts = java.util.Arrays.copyOf(nexts, Math.max(i + 1, nexts.length * 2));
+                nexts = Arrays.copyOf(nexts, Math.max(i + 1, nexts.length * 2));
             }
             Next n = nexts[i];
             if (n == null) {
@@ -396,7 +408,7 @@ public final class PlacementPipeline {
         /** The last step with another mod's wrapper: vanilla's consumer for this placement, handed to the wrapper at each position. */
         private void placeWrapped(BlockPos pos) {
             if (consumer == null) {
-                success = new org.apache.commons.lang3.mutable.MutableBoolean();
+                success = new MutableBoolean();
                 consumer = p -> {
                     if (feature.place(ctx.getLevel(), ctx.generator(), random, p)) {
                         success.setTrue();
@@ -465,7 +477,7 @@ public final class PlacementPipeline {
                     pos = new BlockPos(x, y, z);
                 }
                 // the filter keeps its predicate's program (BlockPredicateFilterPredicateMixin)
-                if (((dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms.FilterProgram) (Object) m).ga2$test(ctx.getLevel(), pos)) {
+                if (((PredicatePrograms.FilterProgram) (Object) m).ga2$test(ctx.getLevel(), pos)) {
                     walk(i + 1, x, y, z, pos);
                 }
             } else if (kind == WATER_DEPTH) {
@@ -564,7 +576,7 @@ public final class PlacementPipeline {
 
         /** 0 not known yet, 1 every biome of the region has the top feature, 2 not (or no zoom). */
         private int allBiomesHave;
-        private dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom zoom;
+        private BiomeZoom zoom;
 
         private boolean allRegionBiomesHave(PlacedFeature top) {
             if (!BIOME_SET || !(ctx.getLevel() instanceof Ga2Region region)) {

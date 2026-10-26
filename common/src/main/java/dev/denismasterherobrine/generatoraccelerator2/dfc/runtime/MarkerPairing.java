@@ -1,13 +1,17 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.util.CubicSpline;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseRouter;
+import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
 
 /**
  * Walks a RandomState-level router and the same router after {@code NoiseChunk.wrap} in lock-step.
@@ -62,7 +66,7 @@ public final class MarkerPairing {
     }
 
     /** Pairs the six climate fields of a RandomState-level router with a chunk-wrapped sampler. */
-    public static MarkerPairing ofSampler(NoiseRouter base, net.minecraft.world.level.biome.Climate.Sampler sampler) {
+    public static MarkerPairing ofSampler(NoiseRouter base, Climate.Sampler sampler) {
         MarkerPairing p = new MarkerPairing(samplerNodes, samplerReplaced);
         p.pair(base.temperature(), sampler.temperature());
         p.pair(base.vegetation(), sampler.humidity());
@@ -143,7 +147,7 @@ public final class MarkerPairing {
             pairSpline(b.spline(), c.spline());
         } else if (base.getClass() == chunk.getClass() && base.getClass().isRecord() && base != chunk) {
             // Modded record density functions: mapAll typically rebuilds the record with mapped children.
-            for (java.lang.reflect.Method accessor : FUNCTION_COMPONENTS.get(base.getClass())) {
+            for (Method accessor : FUNCTION_COMPONENTS.get(base.getClass())) {
                 if (accessor == null) {
                     continue;
                 }
@@ -163,27 +167,27 @@ public final class MarkerPairing {
         }
     }
 
-    private final List<String> divergences = new java.util.ArrayList<>();
+    private final List<String> divergences = new ArrayList<>();
 
     /**
      * Per record class, the accessors of its density function components, made accessible once. An entry is null where that
      * failed, and the walk skips it as it skipped a failing component. Cached because every NoiseChunk pairs its router, and each
      * {@code getRecordComponents} and {@code getAccessor} call copied the reflection objects anew.
      */
-    private static final ClassValue<java.lang.reflect.Method[]> FUNCTION_COMPONENTS = new ClassValue<>() {
+    private static final ClassValue<Method[]> FUNCTION_COMPONENTS = new ClassValue<>() {
         @Override
-        protected java.lang.reflect.Method[] computeValue(Class<?> type) {
-            List<java.lang.reflect.Method> accessors = new java.util.ArrayList<>();
+        protected Method[] computeValue(Class<?> type) {
+            List<Method> accessors = new ArrayList<>();
             try {
-                java.lang.reflect.RecordComponent[] components = type.getRecordComponents();
+                RecordComponent[] components = type.getRecordComponents();
                 if (components == null) {
-                    return new java.lang.reflect.Method[0];
+                    return new Method[0];
                 }
-                for (java.lang.reflect.RecordComponent rc : components) {
+                for (RecordComponent rc : components) {
                     if (!DensityFunction.class.isAssignableFrom(rc.getType())) {
                         continue;
                     }
-                    java.lang.reflect.Method accessor;
+                    Method accessor;
                     try {
                         accessor = rc.getAccessor();
                         accessor.setAccessible(true);
@@ -194,9 +198,9 @@ public final class MarkerPairing {
                 }
             } catch (LinkageError e) {
                 // a component type this side cannot load: the subtree stays unpaired
-                return new java.lang.reflect.Method[0];
+                return new Method[0];
             }
-            return accessors.toArray(new java.lang.reflect.Method[0]);
+            return accessors.toArray(new Method[0]);
         }
     };
 

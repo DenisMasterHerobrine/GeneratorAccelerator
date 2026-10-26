@@ -3,7 +3,10 @@ package dev.denismasterherobrine.generatoraccelerator2.carver;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import net.minecraft.core.QuartPos;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -40,7 +43,7 @@ public class CarverBench {
                         copies.add(c);
                     }
                     CarverPaths.clear();
-                    java.util.Map<Long, ProtoChunk> neighbours = new java.util.HashMap<>();
+                    Map<Long, ProtoChunk> neighbours = new HashMap<>();
                     // as in a level, every chunk's carver biome is computed once, not per carving run
                     for (TerrainHarness.Site site : sites) {
                         TerrainHarness.ChunkLookup warm = TerrainHarness.carverNeighbourhood(site.world, copies.get(sites.indexOf(site)), neighbours);
@@ -49,7 +52,7 @@ public class CarverBench {
                                 int cx = site.cx + dx;
                                 int cz = site.cz + dz;
                                 warm.get(cx, cz).carverBiome(() -> site.world.generator.getBiomeGenerationSettings(site.world.biomeSource.getNoiseBiome(
-                                    net.minecraft.core.QuartPos.fromBlock(cx << 4), 0, net.minecraft.core.QuartPos.fromBlock(cz << 4), site.world.randomState.sampler())));
+                                    QuartPos.fromBlock(cx << 4), 0, QuartPos.fromBlock(cz << 4), site.world.randomState.sampler())));
                             }
                         }
                     }

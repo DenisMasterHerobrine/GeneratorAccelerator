@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -422,7 +423,7 @@ final class ClGen {
         for (Node r : fnRoots) {
             count(mode, r, counts);
         }
-        Set<Node> out = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Node> out = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Map.Entry<Node, Integer> e : counts.entrySet()) {
             if (e.getValue() > 1 && !(e.getKey() instanceof Node.Const)) {
                 out.add(e.getKey());

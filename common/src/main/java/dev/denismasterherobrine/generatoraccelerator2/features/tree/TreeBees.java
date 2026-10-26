@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,7 +39,7 @@ public final class TreeBees {
 
     private static final FeatureTargets.Hook HOOK = FeatureTargets.hook("treeBees");
     /** Trees whose beehives drew first, for the tests. */
-    public static final java.util.concurrent.atomic.LongAdder TREES = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder TREES = new LongAdder();
 
     /** Whether every decorator is vanilla's beehive decorator, unchanged by other mods. */
     /** {@code -Dgeneratoraccelerator2.treeBees=false} keeps vanilla's way. Not final so the cost harness can compare both ways. */

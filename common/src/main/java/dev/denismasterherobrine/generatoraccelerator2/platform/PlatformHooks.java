@@ -4,9 +4,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import javax.annotation.Nullable;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 /**
  * Where the loaders' Minecraft differs. NeoForge patches light emission to depend on position. It counts a section's blocks
@@ -36,13 +41,13 @@ public final class PlatformHooks {
          * One processor's step on a template block, as the loader's {@code StructureTemplate.processBlockInfos} calls it. NeoForge
          * calls {@code process} with the template, vanilla {@code processBlock}.
          */
-        @javax.annotation.Nullable
-        net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
-            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
-            @javax.annotation.Nullable net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template);
+        @Nullable
+        StructureTemplate.StructureBlockInfo processTemplateBlock(
+            StructureProcessor processor, LevelReader level,
+            BlockPos offset, BlockPos pivot, StructureTemplate.StructureBlockInfo raw,
+            StructureTemplate.StructureBlockInfo placed,
+            StructurePlaceSettings settings,
+            @Nullable StructureTemplate template);
     }
 
     private static final Service SERVICE = Platform.load(Service.class);
@@ -86,13 +91,13 @@ public final class PlatformHooks {
     }
 
     /** One processor's step on a template block, as the loader's {@code processBlockInfos} calls it ({@code structure.TemplatePlacement}). */
-    @javax.annotation.Nullable
-    public static net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
-            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
-            @javax.annotation.Nullable net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template) {
+    @Nullable
+    public static StructureTemplate.StructureBlockInfo processTemplateBlock(
+            StructureProcessor processor, LevelReader level,
+            BlockPos offset, BlockPos pivot, StructureTemplate.StructureBlockInfo raw,
+            StructureTemplate.StructureBlockInfo placed,
+            StructurePlaceSettings settings,
+            @Nullable StructureTemplate template) {
         return SERVICE.processTemplateBlock(processor, level, offset, pivot, raw, placed, settings, template);
     }
 }

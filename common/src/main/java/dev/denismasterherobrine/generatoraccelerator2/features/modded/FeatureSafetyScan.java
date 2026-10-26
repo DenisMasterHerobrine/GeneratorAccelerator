@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.Frame;
@@ -125,7 +126,7 @@ public final class FeatureSafetyScan {
                     if (!isVanillaOrLibrary(call.owner.replace('/', '.'))) {
                         work.add(new String[] { call.owner, call.name, call.desc });
                     }
-                } else if (followInstantiated && insn.getOpcode() == Opcodes.NEW && insn instanceof org.objectweb.asm.tree.TypeInsnNode t
+                } else if (followInstantiated && insn.getOpcode() == Opcodes.NEW && insn instanceof TypeInsnNode t
                     && !isVanillaOrLibrary(t.desc.replace('/', '.')) && instantiated.add(t.desc)) {
                     // an object of a modded class: vanilla code may call any of its methods through a vanilla type
                     for (String c = t.desc; c != null && !isVanillaOrLibrary(c.replace('/', '.')); ) {

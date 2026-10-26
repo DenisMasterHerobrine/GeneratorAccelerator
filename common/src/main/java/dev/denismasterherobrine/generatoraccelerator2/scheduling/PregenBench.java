@@ -1,6 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
+import com.sun.management.OperatingSystemMXBean;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.GeneratorAccelerator;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightLayers;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightTasks;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
@@ -17,6 +23,7 @@ import java.util.Map;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
@@ -90,7 +97,7 @@ public final class PregenBench {
             return 0;
         }
         if (!listening) {
-            dev.denismasterherobrine.generatoraccelerator2.GeneratorAccelerator.addServerTickListener(PregenBench::onTick);
+            GeneratorAccelerator.addServerTickListener(PregenBench::onTick);
             listening = true;
         }
         Run run = new Run(source, source.getLevel(), cx, cz, radius, ticking, inFlight);
@@ -137,7 +144,7 @@ public final class PregenBench {
             return 0;
         }
         if (!listening) {
-            dev.denismasterherobrine.generatoraccelerator2.GeneratorAccelerator.addServerTickListener(PregenBench::onTick);
+            GeneratorAccelerator.addServerTickListener(PregenBench::onTick);
             listening = true;
         }
         probe = new Probe(source, source.getLevel(), cx, cz, count, spacing);
@@ -186,7 +193,7 @@ public final class PregenBench {
                 this.millis[this.index]));
             if (this.index + 1 >= this.count) {
                 long[] sorted = this.millis.clone();
-                java.util.Arrays.sort(sorted);
+                Arrays.sort(sorted);
                 send(this.source, String.format(Locale.ROOT, "probe: %d chunks, median %d ms, max %d ms (step lane %s)", this.count, sorted[sorted.length / 2],
                     sorted[sorted.length - 1], StepLane.ENABLED ? "on" : "off"));
                 return true;
@@ -196,7 +203,7 @@ public final class PregenBench {
         }
     }
 
-    private static void onTick(net.minecraft.server.MinecraftServer server) {
+    private static void onTick(MinecraftServer server) {
         Probe p = probe;
         if (p != null && p.poll()) {
             probe = null;
@@ -267,14 +274,14 @@ public final class PregenBench {
             this.surface0 = ParallelSteps.SURFACE_ASYNC.sum() + ParallelSteps.SURFACE_INLINE.sum();
             this.features0 = ParallelSteps.FEATURES_ASYNC.sum() + ParallelSteps.FEATURES_INLINE.sum();
             this.starts0 = ParallelSteps.STARTS_ASYNC.sum() + ParallelSteps.STARTS_INLINE.sum();
-            this.lightBatches0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.batchNanos();
-            this.lightRuns0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.runs();
-            this.lightParts0 = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.parts();
-            this.lightTasks0 = dev.denismasterherobrine.generatoraccelerator2.light.LightTasks.snapshot();
-            this.lightLayers0 = dev.denismasterherobrine.generatoraccelerator2.light.LightLayers.snapshot();
-            this.gpuLight0 = dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.snapshot();
+            this.lightBatches0 = ParallelLightStats.batchNanos();
+            this.lightRuns0 = ParallelLightStats.runs();
+            this.lightParts0 = ParallelLightStats.parts();
+            this.lightTasks0 = LightTasks.snapshot();
+            this.lightLayers0 = LightLayers.snapshot();
+            this.gpuLight0 = GpuLight.snapshot();
             this.locks0 = AreaLocks.occupancy();
-            dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.takeRunMax();
+            ParallelLightStats.takeRunMax();
         }
 
         private ChunkPos pos(int i) {
@@ -350,17 +357,17 @@ public final class PregenBench {
             perThread.setLength(perThread.length() - 1);
             // wall time, not CPU: a light thread also waits while helpers finish a split batch
             perThread.append(String.format(Locale.ROOT, "; light update batches %.2f ms/chunk of light thread time",
-                (dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.batchNanos() - lightBatches0) / 1e6 / total));
-            long[] runs = dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.runs();
+                (ParallelLightStats.batchNanos() - lightBatches0) / 1e6 / total));
+            long[] runs = ParallelLightStats.runs();
             long n = Math.max(1L, runs[0] - lightRuns0[0]);
             perThread.append(String.format(Locale.ROOT, "; whole light updates %d, %.2f ms each (longest %.1f), %.1f tasks each, %.2f ms idle before each",
-                runs[0] - lightRuns0[0], (runs[1] - lightRuns0[1]) / 1e6 / n, dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.takeRunMax() / 1e6,
+                runs[0] - lightRuns0[0], (runs[1] - lightRuns0[1]) / 1e6 / n, ParallelLightStats.takeRunMax() / 1e6,
                 (runs[2] - lightRuns0[2]) / (double) n, (runs[3] - lightRuns0[3]) / 1e6 / n));
             send(source, perThread.toString());
-            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.partsReport(lightParts0, total));
-            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.light.LightTasks.report(lightTasks0, total));
-            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.light.LightLayers.report(lightLayers0, total));
-            send(source, "bench: " + dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight.report(gpuLight0, total));
+            send(source, "bench: " + ParallelLightStats.partsReport(lightParts0, total));
+            send(source, "bench: " + LightTasks.report(lightTasks0, total));
+            send(source, "bench: " + LightLayers.report(lightLayers0, total));
+            send(source, "bench: " + GpuLight.report(gpuLight0, total));
             double[] locks = AreaLocks.occupancy();
             send(source, String.format(Locale.ROOT, "bench: steps run: structure starts %d, surface %d, features %d; on average %.1f decorations running under their area locks, %.1f light initializations, %.1f requests parked",
                 starts, surface, features, (locks[0] - locks0[0]) / seconds, (locks[1] - locks0[1]) / seconds, (locks[2] - locks0[2]) / seconds));
@@ -443,7 +450,7 @@ public final class PregenBench {
     }
 
     private static long processCpu() {
-        if (ManagementFactory.getOperatingSystemMXBean() instanceof com.sun.management.OperatingSystemMXBean os) {
+        if (ManagementFactory.getOperatingSystemMXBean() instanceof OperatingSystemMXBean os) {
             return os.getProcessCpuTime();
         }
         return 0;

@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.region;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
+import java.util.Arrays;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
@@ -12,6 +14,7 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import org.slf4j.Logger;
 
 /**
  * A generation region's {@code getBlockState} and {@code getFluidState} for every caller (features, predicates, placement
@@ -40,7 +43,7 @@ public final class RegionReads {
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.regionReads", 0);
     public static final LongAdder VERIFIED = new LongAdder();
     public static final LongAdder DIFFERING = new LongAdder();
-    private static final org.slf4j.Logger LOGGER = Ga2Log.get("Verify");
+    private static final Logger LOGGER = Ga2Log.get("Verify");
 
     private final Ga2Region region;
     private final int centerX;
@@ -126,7 +129,7 @@ public final class RegionReads {
         }
         if (oceanFloorMax == null) {
             oceanFloorMax = new int[size * size];
-            java.util.Arrays.fill(oceanFloorMax, UNKNOWN);
+            Arrays.fill(oceanFloorMax, UNKNOWN);
         }
         int v = oceanFloorMax[s];
         if (v == UNKNOWN) {
@@ -185,7 +188,7 @@ public final class RegionReads {
             return VOID_AIR;
         }
         LevelChunkSection section = sections[s][(y >> 4) - minSection];
-        return section.hasOnlyAir() ? AIR : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+        return section.hasOnlyAir() ? AIR : StateReads.get(section, x & 15, y & 15, z & 15);
     }
 
     /** Exact {@code WorldGenRegion.getBlockState(pos)}, or null when vanilla must answer (outside the grid). */
@@ -212,7 +215,7 @@ public final class RegionReads {
             state = VOID_AIR;
         } else {
             LevelChunkSection section = sections[s][(y >> 4) - minSection];
-            state = section.hasOnlyAir() ? AIR : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+            state = section.hasOnlyAir() ? AIR : StateReads.get(section, x & 15, y & 15, z & 15);
         }
         if (VERIFY_EVERY > 0 && ++verifyCount % VERIFY_EVERY == 0) {
             ChunkAccess vanilla = region.ga2$chunk(x >> 4, z >> 4);

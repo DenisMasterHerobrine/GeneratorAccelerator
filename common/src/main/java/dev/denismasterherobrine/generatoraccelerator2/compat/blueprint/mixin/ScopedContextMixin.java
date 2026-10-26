@@ -1,9 +1,11 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.mixin;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SamplerWrappers;
 import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.levelgen.DensityFunction;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -33,13 +35,13 @@ public abstract class ScopedContextMixin {
         if (bound != null) {
             // blockX = QuartPos.toBlock(quartX), so the quart point is blockX >> 2
             Climate.TargetPoint point = bound.sample(this.blockX >> 2, this.blockY >> 2, this.blockZ >> 2);
-            if (dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate.verifyNow()) {
+            if (BlueprintClimate.verifyNow()) {
                 // Blueprint's own computation, through Blueprint's caches with this context
-                net.minecraft.world.level.levelgen.DensityFunction.FunctionContext ctx = (net.minecraft.world.level.levelgen.DensityFunction.FunctionContext) (Object) this;
+                DensityFunction.FunctionContext ctx = (DensityFunction.FunctionContext) (Object) this;
                 Climate.TargetPoint expected = Climate.target((float) this.optimizedSampler.temperature().compute(ctx), (float) this.optimizedSampler.humidity().compute(ctx),
                     (float) this.optimizedSampler.continentalness().compute(ctx), (float) this.optimizedSampler.erosion().compute(ctx),
                     (float) this.optimizedSampler.depth().compute(ctx), (float) this.optimizedSampler.weirdness().compute(ctx));
-                dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate.verified(expected.equals(point));
+                BlueprintClimate.verified(expected.equals(point));
             }
             this.targetPoint = point;
             cir.setReturnValue(point);

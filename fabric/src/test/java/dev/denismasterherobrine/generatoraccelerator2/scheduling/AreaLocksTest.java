@@ -9,11 +9,12 @@ import java.util.List;
 import java.util.Random;
 import net.minecraft.world.level.ChunkPos;
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Constructor;
 
 /** {@link AreaLocks}: no holder writes a chunk another holder reads, and everything else runs side by side. */
 class AreaLocksTest {
     private static AreaLocks fresh() throws Exception {
-        java.lang.reflect.Constructor<AreaLocks> c = AreaLocks.class.getDeclaredConstructor();
+        Constructor<AreaLocks> c = AreaLocks.class.getDeclaredConstructor();
         c.setAccessible(true);
         return c.newInstance();
     }

@@ -8,12 +8,14 @@ import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRead
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Vec3i;
@@ -22,6 +24,7 @@ import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
+import net.minecraft.world.level.levelgen.blockpredicates.HasSturdyFacePredicate;
 import net.minecraft.world.level.levelgen.blockpredicates.StateTestingPredicate;
 import net.minecraft.world.level.material.Fluid;
 
@@ -252,7 +255,7 @@ public final class PredicatePrograms {
                 default -> {
                 }
             }
-            if (p instanceof net.minecraft.world.level.levelgen.blockpredicates.HasSturdyFacePredicate h) {
+            if (p instanceof HasSturdyFacePredicate h) {
                 return new Sturdy(h.offset.getX(), h.offset.getY(), h.offset.getZ(), h.direction);
             }
             if (p instanceof StateTestingPredicate && own(StateTestingPredicate.class)) {
@@ -390,7 +393,7 @@ public final class PredicatePrograms {
         }
 
         void forget() {
-            java.util.Arrays.fill(this.states, null);
+            Arrays.fill(this.states, null);
         }
     }
 
@@ -480,9 +483,9 @@ public final class PredicatePrograms {
     /** {@code has_sturdy_face}: the state at the offset and its face, read through the thread's position instead of a new one. */
     static final class Sturdy extends Node {
         final int dx, dy, dz;
-        final net.minecraft.core.Direction direction;
+        final Direction direction;
 
-        Sturdy(int dx, int dy, int dz, net.minecraft.core.Direction direction) {
+        Sturdy(int dx, int dy, int dz, Direction direction) {
             this.dx = dx;
             this.dy = dy;
             this.dz = dz;
@@ -501,7 +504,7 @@ public final class PredicatePrograms {
      * {@code HasSturdyFacePredicate.test}: {@code level.getBlockState(p).isFaceSturdy(level, p, direction)} at {@code origin} plus the
      * offset. The face test keeps no position, so the thread's mutable one stands in for vanilla's new one.
      */
-    public static boolean sturdy(WorldGenLevel level, BlockPos origin, int dx, int dy, int dz, net.minecraft.core.Direction direction) {
+    public static boolean sturdy(WorldGenLevel level, BlockPos origin, int dx, int dy, int dz, Direction direction) {
         BlockPos.MutableBlockPos at = STURDY_AT.get().set(origin.getX() + dx, origin.getY() + dy, origin.getZ() + dz);
         return level.getBlockState(at).isFaceSturdy(level, at, direction);
     }

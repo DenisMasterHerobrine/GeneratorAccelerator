@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
+import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 /**
@@ -25,7 +26,7 @@ public final class FirstSeenIds implements IntConsumer {
     public static FirstSeenIds take() {
         Levels l = LEVELS.get();
         if (l.depth == l.items.length) {
-            l.items = java.util.Arrays.copyOf(l.items, l.depth * 2);
+            l.items = Arrays.copyOf(l.items, l.depth * 2);
         }
         FirstSeenIds s = l.items[l.depth];
         if (s == null) {

@@ -1,13 +1,18 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.region;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import java.lang.ref.WeakReference;
+import java.util.Arrays;
 
 /**
  * Block access for fast paths: remembers the last chunk and section so consecutive reads in the
@@ -52,8 +57,8 @@ public final class SectionCursor {
      * placements of a kind in one step the cursor is nearly always still there and is reused as before.
      */
     @SuppressWarnings("unchecked")
-    private static final ThreadLocal<java.lang.ref.WeakReference<SectionCursor>[]> MINE =
-        ThreadLocal.withInitial(() -> (java.lang.ref.WeakReference<SectionCursor>[]) new java.lang.ref.WeakReference[MONSTER_ROOM + 1]);
+    private static final ThreadLocal<WeakReference<SectionCursor>[]> MINE =
+        ThreadLocal.withInitial(() -> (WeakReference<SectionCursor>[]) new WeakReference[MONSTER_ROOM + 1]);
 
     /**
      * This thread's cursor of the fast path {@code kind}, as a new one over {@code region}, instead of a new cursor per placement. For
@@ -62,19 +67,19 @@ public final class SectionCursor {
      * thread's step ({@link #releaseMine}) or the next collection, whichever comes first.
      */
     public static SectionCursor mine(int kind, Ga2Region region) {
-        java.lang.ref.WeakReference<SectionCursor>[] mine = MINE.get();
-        java.lang.ref.WeakReference<SectionCursor> ref = mine[kind];
+        WeakReference<SectionCursor>[] mine = MINE.get();
+        WeakReference<SectionCursor> ref = mine[kind];
         SectionCursor cursor = ref == null ? null : ref.get();
         if (cursor == null) {
             cursor = new SectionCursor();
-            mine[kind] = new java.lang.ref.WeakReference<>(cursor);
+            mine[kind] = new WeakReference<>(cursor);
         }
         return cursor.reset(region);
     }
 
     /** Clears this thread's cursors ({@link #mine}), so they no longer hold their last region and its chunks ({@link RegionRefs}). */
     public static void releaseMine() {
-        for (java.lang.ref.WeakReference<SectionCursor> ref : MINE.get()) {
+        for (WeakReference<SectionCursor> ref : MINE.get()) {
             SectionCursor cursor = ref == null ? null : ref.get();
             if (cursor != null && cursor.region != null) {
                 cursor.clear();
@@ -89,8 +94,8 @@ public final class SectionCursor {
         this.maxY = region.ga2$maxY();
         this.minSection = minY >> 4;
         this.chunk = null;
-        java.util.Arrays.fill(this.near, null);
-        java.util.Arrays.fill(this.nearKey, Long.MIN_VALUE);
+        Arrays.fill(this.near, null);
+        Arrays.fill(this.nearKey, Long.MIN_VALUE);
         invalidate();
         return this;
     }
@@ -100,8 +105,8 @@ public final class SectionCursor {
         this.region = null;
         this.chunk = null;
         this.section = null;
-        java.util.Arrays.fill(this.near, null);
-        java.util.Arrays.fill(this.nearKey, Long.MIN_VALUE);
+        Arrays.fill(this.near, null);
+        Arrays.fill(this.nearKey, Long.MIN_VALUE);
         invalidate();
     }
 
@@ -118,15 +123,11 @@ public final class SectionCursor {
         return maxY;
     }
 
-    public boolean outsideBuildHeight(int y) {
-        return y < minY || y >= maxY;
-    }
-
     public ChunkAccess chunk(int cx, int cz) {
         if (cx != chunkX || cz != chunkZ) {
             // a region's chunks stay the same objects while it lives
             int k = (cx & 1) | (cz & 1) << 1;
-            long key = net.minecraft.world.level.ChunkPos.asLong(cx, cz);
+            long key = ChunkPos.asLong(cx, cz);
             ChunkAccess c = nearKey[k] == key ? near[k] : null;
             if (c == null) {
                 c = region.ga2$chunk(cx, cz);
@@ -164,7 +165,7 @@ public final class SectionCursor {
             return c.getBlockState(scratch.set(x, y, z));
         }
         LevelChunkSection s = section(x, y, z);
-        return s.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(s, x & 15, y & 15, z & 15);
+        return s.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : StateReads.get(s, x & 15, y & 15, z & 15);
     }
 
     public BlockState read(BlockPos pos) {
@@ -189,7 +190,7 @@ public final class SectionCursor {
     }
 
     /** Exact {@code WorldGenRegion.getHeight(type, x, z)}. */
-    public int height(net.minecraft.world.level.levelgen.Heightmap.Types type, int x, int z) {
+    public int height(Heightmap.Types type, int x, int z) {
         return chunk(x >> 4, z >> 4).getHeight(type, x & 15, z & 15) + 1;
     }
 

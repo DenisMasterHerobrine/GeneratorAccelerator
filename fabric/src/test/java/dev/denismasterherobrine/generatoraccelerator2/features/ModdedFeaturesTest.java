@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntUnaryOperator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.LevelWriter;
@@ -54,7 +56,7 @@ public class ModdedFeaturesTest {
 
     /** Remembers answers in a static map declared as a {@code Map} but made a {@code ConcurrentHashMap}: thread-safe, not counted. */
     static final class ConcurrentCache extends Base {
-        static final Map<BlockPos, Boolean> MEMO = new java.util.concurrent.ConcurrentHashMap<>();
+        static final Map<BlockPos, Boolean> MEMO = new ConcurrentHashMap<>();
 
         @Override
         public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {
@@ -64,7 +66,7 @@ public class ModdedFeaturesTest {
 
     /** The same through a synchronized wrapper: thread-safe, not counted. */
     static final class SynchronizedCache extends Base {
-        static final Map<BlockPos, Boolean> MEMO = java.util.Collections.synchronizedMap(new HashMap<>());
+        static final Map<BlockPos, Boolean> MEMO = Collections.synchronizedMap(new HashMap<>());
 
         @Override
         public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {

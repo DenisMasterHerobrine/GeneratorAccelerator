@@ -1,5 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkload;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
+import dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater;
 import it.unimi.dsi.fastutil.longs.Long2LongLinkedOpenHashMap;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -156,7 +158,7 @@ public final class ChunkLoadStats {
             a.reset();
         }
         GRAPH_TRAVEL_MAX.set(0);
-        dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.resetCounts();
+        ChunkyHolds.resetCounts();
         PresentChunks.ANSWERED.reset();
         UNLOADED.clear();
         since = System.nanoTime();
@@ -176,7 +178,7 @@ public final class ChunkLoadStats {
         out.add("chunks read from disk on the server thread: " + DISK_LOAD.describe() + "; unloaded " + String.format(Locale.ROOT, "%,d", UNLOADS.sum())
             + ", read back within " + RELOAD_WINDOW_MS / 1000 + " s of their unload " + String.format(Locale.ROOT, "%,d", RELOADS.sum())
             + (RELOADS.sum() > 0 ? String.format(Locale.ROOT, " (%.1f s after it on average)", RELOAD_AGE_MS.sum() / 1000.0 / RELOADS.sum()) : ""));
-        String holds = dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.report();
+        String holds = ChunkyHolds.report();
         if (holds != null) {
             out.add(holds);
         }
@@ -195,7 +197,7 @@ public final class ChunkLoadStats {
         long skipped = FLUID_TICKS_SKIPPED.sum();
         out.add("chunks made ticking, post-processing on the server thread: " + POST_PROCESS.describe() + "; fluid updates "
             + String.format(Locale.ROOT, "%,d, of them still water left out %,d (%s)", fluidTicks, skipped, percent(skipped, fluidTicks))
-            + (dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater.postProcessSkipOn() ? "" : " (skip off)"));
+            + (StillWater.postProcessSkipOn() ? "" : " (skip off)"));
         out.add("chunk packets: " + SEND.describe() + " each on the server thread, " + String.format(Locale.ROOT, "%.1f", SEND.count() / seconds)
             + " per second; block data encoded ahead " + String.format(Locale.ROOT, "%,d", PREPARED.sum()) + " (used "
             + String.format(Locale.ROOT, "%,d", PREPARED_USED.sum()) + ", changed meanwhile " + PREPARED_STALE.sum() + "), batches " + PREPARE.describe());
@@ -206,7 +208,7 @@ public final class ChunkLoadStats {
         if (meshed > 0) {
             long hidden = WATER_HIDDEN.sum();
             out.add(String.format(Locale.ROOT, "client: water blocks meshed %,d, of them hidden in water left out %,d (%s)", meshed, hidden, percent(hidden, meshed))
-                + (dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater.hiddenSkipOn() ? "" : " (skip off)"));
+                + (StillWater.hiddenSkipOn() ? "" : " (skip off)"));
         }
         long shown = GRAPH_SHOWN.sum();
         if (GRAPH_REBUILD.count() > 0) {

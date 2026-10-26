@@ -5,6 +5,19 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.util.List;
 import java.util.Set;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
+import org.spongepowered.asm.service.MixinService;
 
 /** Lithostitched mixins that GA2 handles ({@link KnownMixins}). Contains no Minecraft types, because the mixin plugin reads it. */
 public final class LithostitchedMixins {
@@ -36,8 +49,8 @@ public final class LithostitchedMixins {
      */
     public static boolean injectorListShapeOk() {
         try {
-            org.objectweb.asm.tree.ClassNode node = org.spongepowered.asm.service.MixinService.getService().getBytecodeProvider().getClassNode(INJECTOR_SOURCE);
-            for (org.objectweb.asm.tree.MethodNode m : node.methods) {
+            ClassNode node = MixinService.getService().getBytecodeProvider().getClassNode(INJECTOR_SOURCE);
+            for (MethodNode m : node.methods) {
                 if (Names.mojangMethodKey(m.name, m.desc).equals(NOISE_BIOME)) {
                     return biomeLocalShapeOk(m);
                 }
@@ -54,12 +67,12 @@ public final class LithostitchedMixins {
      * into the local, and each result goes straight there. Nothing after the lookup jumps back before it. The walks after
      * the lookup may store a replacement, but they run after the subset was taken. No exception handlers.
      */
-    private static boolean biomeLocalShapeOk(org.objectweb.asm.tree.MethodNode m) {
+    private static boolean biomeLocalShapeOk(MethodNode m) {
         if (m.localVariables == null || (m.tryCatchBlocks != null && !m.tryCatchBlocks.isEmpty())) {
             return false;
         }
         int slot = -1;
-        for (org.objectweb.asm.tree.LocalVariableNode v : m.localVariables) {
+        for (LocalVariableNode v : m.localVariables) {
             if (Names.mojangDesc(v.desc).equals("Lnet/minecraft/core/Holder;")) {
                 if (slot >= 0) {
                     return false;
@@ -70,10 +83,10 @@ public final class LithostitchedMixins {
         if (slot < 0) {
             return false;
         }
-        org.objectweb.asm.tree.InsnList insns = m.instructions;
+        InsnList insns = m.instructions;
         int partial = -1;
-        for (org.objectweb.asm.tree.AbstractInsnNode insn = insns.getFirst(); insn != null; insn = insn.getNext()) {
-            if (insn instanceof org.objectweb.asm.tree.FieldInsnNode f && f.getOpcode() == org.objectweb.asm.Opcodes.GETSTATIC
+        for (AbstractInsnNode insn = insns.getFirst(); insn != null; insn = insn.getNext()) {
+            if (insn instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETSTATIC
                 && f.owner.equals("dev/worldgen/lithostitched/impl/worldgen/biomeinjector/ReplacePartially") && f.name.equals("CODEC")) {
                 if (partial >= 0) {
                     return false;
@@ -85,36 +98,36 @@ public final class LithostitchedMixins {
             return false;
         }
         int lookups = 0;
-        for (org.objectweb.asm.tree.AbstractInsnNode insn = insns.getFirst(); insn != null; insn = insn.getNext()) {
+        for (AbstractInsnNode insn = insns.getFirst(); insn != null; insn = insn.getNext()) {
             int at = insns.indexOf(insn);
             if (at >= partial) {
-                if (insn instanceof org.objectweb.asm.tree.JumpInsnNode jump && insns.indexOf(jump.label) < partial
-                    || insn instanceof org.objectweb.asm.tree.TableSwitchInsnNode || insn instanceof org.objectweb.asm.tree.LookupSwitchInsnNode) {
+                if (insn instanceof JumpInsnNode jump && insns.indexOf(jump.label) < partial
+                    || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) {
                     return false;
                 }
                 continue;
             }
-            if (insn instanceof org.objectweb.asm.tree.MethodInsnNode call && isBiomeLookup(call)) {
+            if (insn instanceof MethodInsnNode call && isBiomeLookup(call)) {
                 // The result goes straight into the local, and a cast in between is fine. Or the result is returned, when
                 // there are no injectors at all.
-                org.objectweb.asm.tree.AbstractInsnNode next = real(call.getNext());
-                if (next != null && next.getOpcode() == org.objectweb.asm.Opcodes.CHECKCAST) {
+                AbstractInsnNode next = real(call.getNext());
+                if (next != null && next.getOpcode() == Opcodes.CHECKCAST) {
                     next = real(next.getNext());
                 }
-                if (next != null && next.getOpcode() == org.objectweb.asm.Opcodes.ARETURN) {
+                if (next != null && next.getOpcode() == Opcodes.ARETURN) {
                     continue;
                 }
-                if (!(next instanceof org.objectweb.asm.tree.VarInsnNode store) || store.getOpcode() != org.objectweb.asm.Opcodes.ASTORE || store.var != slot) {
+                if (!(next instanceof VarInsnNode store) || store.getOpcode() != Opcodes.ASTORE || store.var != slot) {
                     return false;
                 }
                 lookups++;
-            } else if (insn instanceof org.objectweb.asm.tree.VarInsnNode store && store.getOpcode() == org.objectweb.asm.Opcodes.ASTORE && store.var == slot) {
+            } else if (insn instanceof VarInsnNode store && store.getOpcode() == Opcodes.ASTORE && store.var == slot) {
                 // and nothing else is stored there before the partial replacements
-                org.objectweb.asm.tree.AbstractInsnNode prev = realBack(store.getPrevious());
-                if (prev != null && prev.getOpcode() == org.objectweb.asm.Opcodes.CHECKCAST) {
+                AbstractInsnNode prev = realBack(store.getPrevious());
+                if (prev != null && prev.getOpcode() == Opcodes.CHECKCAST) {
                     prev = realBack(prev.getPrevious());
                 }
-                if (!(prev instanceof org.objectweb.asm.tree.MethodInsnNode call) || !isBiomeLookup(call)) {
+                if (!(prev instanceof MethodInsnNode call) || !isBiomeLookup(call)) {
                     return false;
                 }
             }
@@ -122,7 +135,7 @@ public final class LithostitchedMixins {
         return lookups >= 1;
     }
 
-    private static boolean isBiomeLookup(org.objectweb.asm.tree.MethodInsnNode call) {
+    private static boolean isBiomeLookup(MethodInsnNode call) {
         // The method is read as the running game has it. Names are compared by their Mojang names (Names).
         String owner = Names.mojangClass(call.owner);
         String name = Names.mojangMethod(call.name);
@@ -130,14 +143,14 @@ public final class LithostitchedMixins {
             || owner.equals(PARAMETER_LIST) && name.equals("findValue");
     }
 
-    private static org.objectweb.asm.tree.AbstractInsnNode real(org.objectweb.asm.tree.AbstractInsnNode insn) {
+    private static AbstractInsnNode real(AbstractInsnNode insn) {
         while (insn != null && insn.getOpcode() < 0) {
             insn = insn.getNext();
         }
         return insn;
     }
 
-    private static org.objectweb.asm.tree.AbstractInsnNode realBack(org.objectweb.asm.tree.AbstractInsnNode insn) {
+    private static AbstractInsnNode realBack(AbstractInsnNode insn) {
         while (insn != null && insn.getOpcode() < 0) {
             insn = insn.getPrevious();
         }

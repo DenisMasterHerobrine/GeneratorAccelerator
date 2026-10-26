@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
 import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -278,7 +279,7 @@ public final class FeatureCensus {
             }
         }
         lines.add(top.toString());
-        Path f = dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu.dataDir()
+        Path f = Gpu.dataDir()
             .resolve("decor-census-" + d.name.replace(':', '_').replace('/', '_') + ".txt");
         try {
             Files.createDirectories(f.getParent());

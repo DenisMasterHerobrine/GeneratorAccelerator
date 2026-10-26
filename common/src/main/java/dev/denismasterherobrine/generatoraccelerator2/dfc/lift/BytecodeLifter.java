@@ -32,6 +32,7 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.objectweb.asm.util.Printer;
 
 /**
  * Lifts the {@code compute(FunctionContext)} bytecode of a non-vanilla density function into IR
@@ -780,6 +781,6 @@ public final class BytecodeLifter {
     }
 
     private static String opName(int op) {
-        return org.objectweb.asm.util.Printer.OPCODES[op];
+        return Printer.OPCODES[op];
     }
 }

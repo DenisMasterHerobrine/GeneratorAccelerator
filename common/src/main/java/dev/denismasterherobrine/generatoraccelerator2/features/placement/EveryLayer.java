@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
@@ -14,6 +15,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
+import org.slf4j.Logger;
 
 /**
  * {@code CountOnEveryLayerPlacement.getPositions} with the column scans read in place. Vanilla runs layer after layer until
@@ -38,10 +40,10 @@ public final class EveryLayer {
      * chunk's own reads, the minimum build height asked on every step) and compared.
      */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.layers", 0);
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_COUNTER = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong VERIFY_COUNTER = new AtomicLong();
     public static final LongAdder VERIFIED = new LongAdder();
     public static final LongAdder DIFFERING = new LongAdder();
-    private static final org.slf4j.Logger LOGGER = Ga2Log.get("Verify");
+    private static final Logger LOGGER = Ga2Log.get("Verify");
 
     public static List<BlockPos> positions(IntProvider count, PlacementContext ctx, RandomSource random, BlockPos origin, RegionReads reads) {
         CALLS.increment();

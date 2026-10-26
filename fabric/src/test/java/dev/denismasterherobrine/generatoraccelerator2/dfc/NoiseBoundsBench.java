@@ -3,11 +3,18 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.NoiseBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuDatapack;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Locale;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -26,14 +33,14 @@ public class NoiseBoundsBench {
         TerrainHarness.World world;
         if (synthetic) {
             // the overworld with three per-block noise terms, as NoiseCellBoundsTest adds them
-            dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld.Registries2 registries = dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld.registries();
+            HarnessWorld.Registries2 registries = HarnessWorld.registries();
             var lookup = registries.lookup;
-            var overworld = lookup.lookupOrThrow(net.minecraft.core.registries.Registries.NOISE_SETTINGS).getOrThrow(net.minecraft.world.level.levelgen.NoiseGeneratorSettings.OVERWORLD).value();
-            var noises = lookup.lookupOrThrow(net.minecraft.core.registries.Registries.NOISE);
-            var dim = lookup.lookupOrThrow(net.minecraft.core.registries.Registries.DIMENSION_TYPE).getOrThrow(net.minecraft.world.level.dimension.BuiltinDimensionTypes.OVERWORLD).value();
-            var biomeSource = net.minecraft.world.level.biome.MultiNoiseBiomeSource.createFromPreset(net.minecraft.core.Holder.direct(
-                new net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList(net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes.asLookup())));
-            world = new TerrainHarness.World(registries, net.minecraft.core.Holder.direct(NoiseCellBoundsTest.withPerBlockNoise(overworld, noises)), biomeSource, noises, dim, 1234567L);
+            var overworld = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD).value();
+            var noises = lookup.lookupOrThrow(Registries.NOISE);
+            var dim = lookup.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
+            var biomeSource = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
+                new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes.asLookup())));
+            world = new TerrainHarness.World(registries, Holder.direct(NoiseCellBoundsTest.withPerBlockNoise(overworld, noises)), biomeSource, noises, dim, 1234567L);
         } else {
             world = dir == null || dir.isBlank() ? TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L) : GpuDatapack.world(Path.of(dir), 1234567L);
         }

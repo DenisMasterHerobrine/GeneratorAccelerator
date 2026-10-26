@@ -9,6 +9,7 @@ import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * The GPU's biomes under Lithostitched's biome injectors. Lithostitched wraps the dimension's biome source in its injector source
@@ -42,12 +43,12 @@ public final class LithostitchedGpuBiomes {
     /** Set once an injector source sampled through {@link #point}. Before that no thread has anything to reuse. */
     private static volatile boolean sampling;
     /** Climate samples the base lookup took from the injector source's own sample. */
-    public static final java.util.concurrent.atomic.LongAdder REUSED_POINTS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder REUSED_POINTS = new LongAdder();
 
     private static final ThreadLocal<Pending> PENDING = ThreadLocal.withInitial(Pending::new);
 
     /** Climate points the injector source took from the GPU instead of sampling them. */
-    public static final java.util.concurrent.atomic.LongAdder HANDED_POINTS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder HANDED_POINTS = new LongAdder();
 
     /** Whether {@code source} is Lithostitched's injector source. */
     public static boolean isInjector(@Nullable BiomeSource source) {

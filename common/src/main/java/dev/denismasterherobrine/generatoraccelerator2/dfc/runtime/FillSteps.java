@@ -9,9 +9,13 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -78,10 +82,8 @@ public final class FillSteps {
         CallbackInfoReturnable<BlockState> cir = new CallbackInfoReturnable<>("getInterpolatedState", true, state);
         try {
             handler.invoke(chunk, cir);
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
         return cir.getReturnValue();
     }
@@ -91,23 +93,6 @@ public final class FillSteps {
         return STATE.allowed() || known() != null;
     }
 
-    /** True when some known change acts in this chunk (or the changes are not all known). */
-    public static boolean actsIn(NoiseChunk chunk) {
-        if (STATE.allowed()) {
-            return false;
-        }
-        List<Known> steps = known();
-        if (steps == null) {
-            return true;
-        }
-        for (Known k : steps) {
-            if (k.acts().test(chunk)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * For a chunk the GPU would fill, which then gets no NoiseChunk of its own. Returns whether a known change may act there, so
      * the CPU fills the chunk. YUNG's acts where its pieces reach the chunk ({@code beardifier} holds them). Iron's acts where the
@@ -115,18 +100,18 @@ public final class FillSteps {
      * NoiseChunk. Here it is asked of Iron's own helper and config. A change that is not known, or a check that cannot run, reads
      * as acting.
      */
-    public static boolean mayActForGpu(net.minecraft.world.level.StructureManager structures, net.minecraft.world.level.ChunkPos pos,
-                                       net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker beardifier) {
+    public static boolean mayActForGpu(StructureManager structures, ChunkPos pos,
+                                       DensityFunctions.BeardifierOrMarker beardifier) {
         return mayActForGpu(structures, pos, beardifier, false);
     }
 
     /**
-     * As {@link #mayActForGpu(net.minecraft.world.level.StructureManager, net.minecraft.world.level.ChunkPos, net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker)}.
+     * As {@link #mayActForGpu(StructureManager, ChunkPos, DensityFunctions.BeardifierOrMarker)}.
      * With {@code yungMaskOnGpu}, YUNG's step does not count: the GPU computes its mask and its replacement with the chunk's enhanced
      * pieces ({@code beardifier.EnhancedBeard}).
      */
-    public static boolean mayActForGpu(net.minecraft.world.level.StructureManager structures, net.minecraft.world.level.ChunkPos pos,
-                                       net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker beardifier, boolean yungMaskOnGpu) {
+    public static boolean mayActForGpu(StructureManager structures, ChunkPos pos,
+                                       DensityFunctions.BeardifierOrMarker beardifier, boolean yungMaskOnGpu) {
         if (STATE.allowed()) {
             return false;
         }
@@ -149,14 +134,14 @@ public final class FillSteps {
     private static volatile boolean ironsResolved;
 
     /** Iron's Spellbooks' {@code NoiseChunkGeneratorMixin.detectAquifers} condition: detection on and a tracked structure's start in the chunk. */
-    private static boolean ironsStructures(net.minecraft.world.level.StructureManager structures, net.minecraft.world.level.ChunkPos pos) {
+    private static boolean ironsStructures(StructureManager structures, ChunkPos pos) {
         if (!ironsResolved) {
             synchronized (FillSteps.class) {
                 if (!ironsResolved) {
                     try {
                         ClassLoader loader = FillSteps.class.getClassLoader();
                         Class<?> helper = Class.forName("io.redspace.ironsspellbooks.worldgen.AquiferHelper", true, loader);
-                        ironsTracked = MethodHandles.publicLookup().unreflect(helper.getMethod("getOrCacheStructures", net.minecraft.world.level.StructureManager.class));
+                        ironsTracked = MethodHandles.publicLookup().unreflect(helper.getMethod("getOrCacheStructures", StructureManager.class));
                         Class<?> configs = Class.forName("io.redspace.ironsspellbooks.config.ServerConfigs", true, loader);
                         Object spec = configs.getField("SPEC").get(null);
                         Object detection = configs.getField("AQUIFER_DETECTION").get(null);
@@ -177,7 +162,7 @@ public final class FillSteps {
             if ((boolean) ironsSpecLoaded.invoke() && !Boolean.TRUE.equals(ironsDetection.invoke())) {
                 return false;
             }
-            java.util.Set<?> set = (java.util.Set<?>) tracked.invoke(structures);
+            Set<?> set = (Set<?>) tracked.invoke(structures);
             return !structures.startsForStructure(pos, set::contains).isEmpty();
         } catch (Throwable t) {
             return true;
@@ -224,18 +209,7 @@ public final class FillSteps {
 
     /** The NoiseChunk's handler method whose name ends with {@code suffix} and takes only a CallbackInfoReturnable, or null. */
     private static MethodHandle handler(String suffix) {
-        for (Method m : Reflect.declaredMethods(NoiseChunk.class)) {
-            if (m.getName().endsWith(suffix) && m.getReturnType() == void.class
-                && java.util.Arrays.equals(m.getParameterTypes(), new Class<?>[] {CallbackInfoReturnable.class})) {
-                try {
-                    m.setAccessible(true);
-                    return MethodHandles.lookup().unreflect(m);
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    return null;
-                }
-            }
-        }
-        return null;
+        return Reflect.mergedMethod(NoiseChunk.class, suffix, false, void.class, CallbackInfoReturnable.class);
     }
 
     /** The NoiseChunk's no-argument method {@code name} (a mixin's added interface method), or null. */

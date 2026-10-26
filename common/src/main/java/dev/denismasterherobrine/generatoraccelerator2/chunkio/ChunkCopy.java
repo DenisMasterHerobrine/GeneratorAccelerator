@@ -1,5 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
+import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import it.unimi.dsi.fastutil.shorts.ShortList;
@@ -13,6 +16,10 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A detached copy of a proto chunk between generation steps. Used to check a fast path against vanilla on the same input
@@ -56,10 +63,10 @@ public final class ChunkCopy {
         }
         copy.setPersistedStatus(chunk.getPersistedStatus());
         ((ChunkAccessAccessor) copy).ga2$setNoiseChunk(((ChunkAccessAccessor) chunk).ga2$noiseChunk());
-        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain terrain = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk);
+        GpuTerrain terrain = GpuTerrain.of(chunk);
         if (terrain != null) {
             // The GPU's surface levels and aquifer cells, read by the chunk instead of a NoiseChunk. The copy gets its own aquifer.
-            ((dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk) copy).ga2$setGpuTerrain(terrain.copy());
+            ((Ga2GpuChunk) copy).ga2$setGpuTerrain(terrain.copy());
         }
         return copy;
     }
@@ -71,18 +78,18 @@ public final class ChunkCopy {
      * change the state the fast path then starts from. Reference fields (the memoised caches) are left alone.
      */
     public static Runnable snapshot(Object o) {
-        java.util.List<java.lang.reflect.Field> fields = new java.util.ArrayList<>();
-        java.util.List<Object> values = new java.util.ArrayList<>();
+        List<Field> fields = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
         for (Class<?> c = o.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-            java.lang.reflect.Field[] declared;
+            Field[] declared;
             try {
                 declared = c.getDeclaredFields();
             } catch (LinkageError e) {
                 continue; // A field's type is a class missing on this side.
             }
-            for (java.lang.reflect.Field f : declared) {
+            for (Field f : declared) {
                 int m = f.getModifiers();
-                if (java.lang.reflect.Modifier.isStatic(m) || java.lang.reflect.Modifier.isFinal(m) || !f.getType().isPrimitive()) {
+                if (Modifier.isStatic(m) || Modifier.isFinal(m) || !f.getType().isPrimitive()) {
                     continue;
                 }
                 try {
@@ -119,7 +126,7 @@ public final class ChunkCopy {
             return rebuilt(from, size);
         }
         PalettedContainer<T> to = from.recreate();
-        PalettedContainer.Data<T> nd = ((dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker) (Object) to).ga2$createOrReuseData(null, bits);
+        PalettedContainer.Data<T> nd = ((PalettedContainerInvoker) (Object) to).ga2$createOrReuseData(null, bits);
         for (int i = 0; i < d.palette().getSize(); i++) {
             nd.palette().idFor(d.palette().valueFor(i));
         }
@@ -151,7 +158,7 @@ public final class ChunkCopy {
     private static void copyCounters(LevelChunkSection from, LevelChunkSection to) {
         for (String name : COUNTERS) {
             try {
-                java.lang.reflect.Field f = LevelChunkSection.class.getDeclaredField(Names.runtimeField("net/minecraft/world/level/chunk/LevelChunkSection", name));
+                Field f = LevelChunkSection.class.getDeclaredField(Names.runtimeField("net/minecraft/world/level/chunk/LevelChunkSection", name));
                 f.setAccessible(true);
                 f.setShort(to, f.getShort(from));
             } catch (ReflectiveOperationException | RuntimeException e) {

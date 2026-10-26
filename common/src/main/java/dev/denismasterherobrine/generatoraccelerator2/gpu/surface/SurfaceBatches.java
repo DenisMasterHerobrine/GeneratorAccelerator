@@ -5,12 +5,15 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.IntConsumer;
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -202,7 +205,7 @@ public final class SurfaceBatches {
     /** Published by the GPU thread: the requests waiting for a batch slot. */
     private volatile int waiting;
     /** The tests' slower GPU ({@code GpuDevice.debugSpin}): called with a batch's chunks before its work, or null. */
-    public java.util.function.IntConsumer spin;
+    public IntConsumer spin;
 
     /** Whether a full batch already waits for a slot, so a request made now would wait for a whole batch more. Any thread. */
     public boolean behind() {
@@ -283,7 +286,7 @@ public final class SurfaceBatches {
         s.hCpar.clear();
         s.hFlag.clear();
         // Write the sections in bulk through a view. The buffer's own position is updated below.
-        java.nio.LongBuffer store = s.hStore.asLongBuffer();
+        LongBuffer store = s.hStore.asLongBuffer();
         for (Request q : reqs) {
             for (int sec = 0; sec < nsec; sec++) {
                 long[] w = q.storage()[sec];
@@ -348,7 +351,7 @@ public final class SurfaceBatches {
     }
 
     /** Request {@code i}'s answer from the read-back buffers. */
-    private Result decode(java.nio.IntBuffer fl, java.nio.LongBuffer st, java.nio.IntBuffer me, java.nio.LongBuffer mk, java.nio.IntBuffer tp, int i) {
+    private Result decode(IntBuffer fl, LongBuffer st, IntBuffer me, LongBuffer mk, IntBuffer tp, int i) {
         int sm = SurfaceSpec.SECTION_META;
         boolean cpu = fl.get(i) != 0;
         int[][] pal = new int[nsec][];

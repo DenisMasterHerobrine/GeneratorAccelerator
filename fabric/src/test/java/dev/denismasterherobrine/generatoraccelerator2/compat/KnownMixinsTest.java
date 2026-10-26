@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +34,8 @@ class KnownMixinsTest {
         // MixinExtras' bridge for a handler with sugar carries the handler's name
         assertNotNull(KnownMixins.find(hook, BiolithMixins.SURFACE, List.of("wrapOperation$zzi000$biolith$injectSurfaceBuilders$mixinextras$bridge$15",
             "wrapOperation$zzi000$biolith$injectLateSurfaceBuilders")));
-        assertNotNull(KnownMixins.find(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.STRUCTURE_FOSSIL_PROBE,
-            dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.NETHER_FOSSIL, List.of("wrapOperation$zzj000$lithostitched$useTemplateList")));
+        assertNotNull(KnownMixins.find(HookTargets.STRUCTURE_FOSSIL_PROBE,
+            LithostitchedMixins.NETHER_FOSSIL, List.of("wrapOperation$zzj000$lithostitched$useTemplateList")));
         // another handler of the same mixin (a newer version of the mod) is not known: the hook must stand down
         assertNull(KnownMixins.find(hook, NaturesSpiritMixins.SURFACE, List.of("handler$zza000$natures_spirit$injectPillars", "handler$zzb000$natures_spirit$somethingNew")));
         // an overwrite is reported with the method's own name, which no entry names

@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
 import java.util.function.Supplier;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.levelgen.blending.Blender;
 
 /**
  * Thread markers for the chunk step hooks.
@@ -20,16 +22,16 @@ public final class StepThreads {
     private static final ThreadLocal<int[]> DEPTH = ThreadLocal.withInitial(() -> new int[1]);
     private static final ThreadLocal<int[]> VANILLA = ThreadLocal.withInitial(() -> new int[1]);
     /** The blender a parallel surface step computed on the worldgen thread (see {@code SurfaceBlenderMixin}). */
-    private static final ThreadLocal<net.minecraft.world.level.levelgen.blending.Blender[]> BLENDER =
-        ThreadLocal.withInitial(() -> new net.minecraft.world.level.levelgen.blending.Blender[1]);
+    private static final ThreadLocal<Blender[]> BLENDER =
+        ThreadLocal.withInitial(() -> new Blender[1]);
 
     /**
      * Runs {@code body} with {@code blender} standing in for {@code Blender.of(region)} in the generator's surface step. The thread's slot
      * is kept between steps. Setting and removing a thread local each time allocated a map entry per surface.
      */
-    public static void withBlender(net.minecraft.world.level.levelgen.blending.Blender blender, Runnable body) {
-        net.minecraft.world.level.levelgen.blending.Blender[] slot = BLENDER.get();
-        net.minecraft.world.level.levelgen.blending.Blender previous = slot[0];
+    public static void withBlender(Blender blender, Runnable body) {
+        Blender[] slot = BLENDER.get();
+        Blender previous = slot[0];
         slot[0] = blender;
         try {
             body.run();
@@ -38,7 +40,7 @@ public final class StepThreads {
         }
     }
 
-    public static net.minecraft.world.level.levelgen.blending.Blender stepBlender() {
+    public static Blender stepBlender() {
         return BLENDER.get()[0];
     }
 
@@ -52,7 +54,7 @@ public final class StepThreads {
     /**
      * Runs vanilla's generation task loop. Steps that run inline (on this thread) also use the fast paths' reused objects. Those
      * objects let go of their region when the loop returns
-     * ({@link dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs}).
+     * ({@link RegionRefs}).
      */
     public static <T> T runOnMailbox(Supplier<T> body) {
         int[] depth = DEPTH.get();
@@ -61,7 +63,7 @@ public final class StepThreads {
             return body.get();
         } finally {
             if (--depth[0] == 0) {
-                dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs.release();
+                RegionRefs.release();
             }
         }
     }

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -39,6 +40,6 @@ public final class Lat {
         if (n == 0) {
             return "-";
         }
-        return String.format(java.util.Locale.ROOT, "avg %.2f ms (max %.0f)", total.sum() / 1e6 / n, max.get() / 1e6);
+        return String.format(Locale.ROOT, "avg %.2f ms (max %.0f)", total.sum() / 1e6 / n, max.get() / 1e6);
     }
 }

@@ -2,12 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.FeatureWraps;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.Arrays;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.state.BlockState;
@@ -29,30 +26,20 @@ public final class CobblemonFeatures {
     }
 
     private static boolean setUp() {
-        Class<?>[] params = {FeaturePlaceContext.class, CallbackInfoReturnable.class, BlockState.class, BlockPos.class, WorldGenLevel.class};
-        for (Method m : dev.denismasterherobrine.generatoraccelerator2.compat.Reflect.declaredMethods(SimpleBlockFeature.class)) {
-            if (m.getName().endsWith("$cobblemon$place") && !Modifier.isStatic(m.getModifiers()) && m.getReturnType() == void.class
-                && Arrays.equals(m.getParameterTypes(), params)) {
-                try {
-                    m.setAccessible(true);
-                    MethodHandle handler = MethodHandles.lookup().unreflect(m);
-                    FeatureWraps.simpleBlock = (feature, ctx, state, pos, level) -> {
-                        CallbackInfoReturnable<Boolean> cir = new CallbackInfoReturnable<>("place", true);
-                        try {
-                            handler.invoke(feature, ctx, cir, state, pos, level);
-                        } catch (RuntimeException | Error e) {
-                            throw e;
-                        } catch (Throwable t) {
-                            throw new IllegalStateException(t);
-                        }
-                        return cir.isCancelled() ? cir.getReturnValue() : null;
-                    };
-                    return true;
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    return false;
-                }
-            }
+        MethodHandle handler = Reflect.mergedMethod(SimpleBlockFeature.class, "$cobblemon$place", false, void.class,
+            FeaturePlaceContext.class, CallbackInfoReturnable.class, BlockState.class, BlockPos.class, WorldGenLevel.class);
+        if (handler == null) {
+            return false;
         }
-        return false;
+        FeatureWraps.simpleBlock = (feature, ctx, state, pos, level) -> {
+            CallbackInfoReturnable<Boolean> cir = new CallbackInfoReturnable<>("place", true);
+            try {
+                handler.invoke(feature, ctx, cir, state, pos, level);
+            } catch (Throwable t) {
+                throw Reflect.unchecked(t);
+            }
+            return cir.isCancelled() ? cir.getReturnValue() : null;
+        };
+        return true;
     }
 }

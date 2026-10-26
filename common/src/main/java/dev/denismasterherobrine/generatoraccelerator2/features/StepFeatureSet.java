@@ -3,6 +3,9 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSpliterator;
+import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
 
 /**
  * The set {@code applyBiomeDecoration} collects a step's feature indexes into, for every biome around the chunk: vanilla's
@@ -50,17 +53,17 @@ public final class StepFeatureSet extends IntArraySet {
     }
 
     @Override
-    public it.unimi.dsi.fastutil.ints.IntSpliterator spliterator() {
+    public IntSpliterator spliterator() {
         return set.spliterator();
     }
 
     @Override
-    public void forEach(java.util.function.IntConsumer action) {
+    public void forEach(IntConsumer action) {
         set.forEach(action);
     }
 
     @Override
-    public boolean removeIf(java.util.function.IntPredicate filter) {
+    public boolean removeIf(IntPredicate filter) {
         return set.removeIf(filter);
     }
 

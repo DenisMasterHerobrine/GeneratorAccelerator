@@ -7,6 +7,8 @@ import net.minecraft.util.LinearCongruentialGenerator;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
+import java.lang.ref.WeakReference;
+import java.util.Arrays;
 
 /**
  * {@code BiomeManager.getBiome} for the blocks of one chunk with the per-quart-point work cached.
@@ -28,7 +30,7 @@ public final class BiomeZoom {
      * strong slot kept every thread's last region for good. While the thread's current region is alive, the instance is too, so
      * the next region on the thread still takes it over as before.
      */
-    private static final ThreadLocal<java.lang.ref.WeakReference<BiomeZoom>> REGION_CACHE = ThreadLocal.withInitial(() -> new java.lang.ref.WeakReference<>(null));
+    private static final ThreadLocal<WeakReference<BiomeZoom>> REGION_CACHE = ThreadLocal.withInitial(() -> new WeakReference<>(null));
 
     private static final int NXZ = 6;
     private static final int LAYER = NXZ * NXZ;
@@ -83,7 +85,7 @@ public final class BiomeZoom {
         BiomeZoom instance = REGION_CACHE.get().get();
         if (instance == null) {
             instance = new BiomeZoom();
-            REGION_CACHE.set(new java.lang.ref.WeakReference<>(instance));
+            REGION_CACHE.set(new WeakReference<>(instance));
         }
         BiomeZoom zoom = configure(instance, manager, minX, minZ, minY, maxY);
         zoom.owner = owner;
@@ -115,8 +117,8 @@ public final class BiomeZoom {
             zoom.stamp = 0;
         }
         if (++zoom.stamp == 0) {
-            java.util.Arrays.fill(zoom.pointStamp, 0);
-            java.util.Arrays.fill(zoom.fiddleStamp, 0);
+            Arrays.fill(zoom.pointStamp, 0);
+            Arrays.fill(zoom.fiddleStamp, 0);
             zoom.stamp = 1;
         }
         zoom.colX = Integer.MIN_VALUE;
@@ -143,7 +145,7 @@ public final class BiomeZoom {
         direct = null;
         owner = null;
         lastUniform = null;
-        java.util.Arrays.fill(biomes, null);
+        Arrays.fill(biomes, null);
     }
 
     /**

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.structure;
 
 import java.util.List;
+import dev.denismasterherobrine.generatoraccelerator2.structure.JigsawBlocks;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.levelgen.structure.pools.SinglePoolElement;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
@@ -32,7 +33,7 @@ public abstract class SinglePoolElementMixin {
             equal &= priority[i] == priority[0];
         }
         if (!equal) {
-            if (!dev.denismasterherobrine.generatoraccelerator2.structure.JigsawBlocks.ENABLED) {
+            if (!JigsawBlocks.ENABLED) {
                 return; // vanilla's sort, as before
             }
             // stable insertion sort, descending: an entry only moves past strictly lower priorities

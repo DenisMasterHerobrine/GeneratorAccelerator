@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.placement.ScanPlacement;
 import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
 import net.minecraft.world.level.levelgen.placement.EnvironmentScanPlacement;
@@ -23,7 +24,7 @@ public abstract class EnvironmentScanPredicateMixin implements ScanPlacement {
 
     @Shadow @Final private BlockPredicate targetCondition;
     @Shadow @Final private BlockPredicate allowedSearchCondition;
-    @Shadow @Final private net.minecraft.core.Direction directionOfSearch;
+    @Shadow @Final private Direction directionOfSearch;
     @Shadow @Final private int maxSteps;
 
     @Unique

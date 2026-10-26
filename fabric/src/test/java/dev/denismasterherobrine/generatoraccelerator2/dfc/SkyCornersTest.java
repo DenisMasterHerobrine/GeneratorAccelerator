@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import net.minecraft.core.Holder;
@@ -18,6 +19,8 @@ import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import org.junit.jupiter.api.Test;
+import java.util.Random;
+import java.util.function.Supplier;
 
 /**
  * The noise fill with sky corners ({@link SkyBounds}) leaves every chunk as the fill without them, and as vanilla's fill: sections
@@ -64,10 +67,10 @@ public class SkyCornersTest {
     /** The old blended noise stays within {@code BlendedSpec.bound()} (the sky bounds' leaf for it), at random blocks of every preset. */
     @Test
     void blendedNoiseStaysWithinItsBound() {
-        java.util.Random random = new java.util.Random(7);
+        Random random = new Random(7);
         int checked = 0;
         for (TerrainHarness.Preset preset : TerrainHarness.Preset.values()) {
-            var set = ((dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState) (Object) TerrainHarness.world(preset, 1234567L).randomState).ga2$programs();
+            var set = ((Ga2RandomState) (Object) TerrainHarness.world(preset, 1234567L).randomState).ga2$programs();
             for (var spec : set.blendedSpecs()) {
                 double bound = spec.bound();
                 double seen = 0.0;
@@ -87,7 +90,7 @@ public class SkyCornersTest {
         assertTrue(checked > 0, "an old blended noise was checked");
     }
 
-    private static int compare(java.util.function.Supplier<TerrainHarness.World> worlds, String what) {
+    private static int compare(Supplier<TerrainHarness.World> worlds, String what) {
         boolean was = SkyBounds.ENABLED;
         try {
             TerrainHarness.World off = worlds.get();

@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.features;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureHooks;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesCompat;
+import dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds;
 import java.util.function.Consumer;
 import net.minecraft.world.level.chunk.Palette;
 import net.minecraft.world.level.chunk.PalettedContainer;
@@ -34,14 +35,14 @@ public abstract class PalettedContainerMixin<T> {
             ci.cancel();
         } else if (size <= 64) {
             // a consumer that itself queries a container takes the next level's instance
-            dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds seen = dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds.take();
+            FirstSeenIds seen = FirstSeenIds.take();
             try {
                 data.storage().getAll(seen);
                 for (int i = 0, n = seen.count; i < n; i++) {
                     consumer.accept(palette.valueFor(seen.order[i]));
                 }
             } finally {
-                dev.denismasterherobrine.generatoraccelerator2.features.FirstSeenIds.give();
+                FirstSeenIds.give();
             }
             ci.cancel();
         }

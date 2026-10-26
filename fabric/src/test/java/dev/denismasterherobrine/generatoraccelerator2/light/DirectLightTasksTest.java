@@ -44,6 +44,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import org.junit.jupiter.api.Test;
+import sun.misc.Unsafe;
 
 /**
  * Light tasks handed straight to the light thread ({@link LightTasks}), with block light and sky light updated at once
@@ -301,8 +302,8 @@ public class DirectLightTasksTest {
      * would read. The direct path never reads it.
      */
     static ChunkMap chunkMap() throws Exception {
-        Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        Field f = Unsafe.class.getDeclaredField("theUnsafe");
         f.setAccessible(true);
-        return (ChunkMap) ((sun.misc.Unsafe) f.get(null)).allocateInstance(ChunkMap.class);
+        return (ChunkMap) ((Unsafe) f.get(null)).allocateInstance(ChunkMap.class);
     }
 }

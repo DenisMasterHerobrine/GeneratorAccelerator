@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.lift;
 
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -39,9 +40,9 @@ public final class StaticCalls {
         // The whitelist uses Mojang names. A lifted call has the running game's names ({@link Names}).
         return ALLOWED.contains(Names.mojangClass(owner) + "." + Names.mojangMethod(name) + Names.mojangDesc(desc))
             // other mods' samplers registered by compat lowerings (never in a mod's own bytecode)
-            || owner.equals(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.OWNER)
-                && name.equals(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.NAME)
-                && desc.equals(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.DESC);
+            || owner.equals(ExternSamplers.OWNER)
+                && name.equals(ExternSamplers.NAME)
+                && desc.equals(ExternSamplers.DESC);
     }
 
     public static Object invoke(String owner, String name, String desc, Object[] args) {

@@ -1,10 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 
 /**
@@ -301,11 +306,11 @@ public final class HookTargets {
      * in its fast path (see {@link CompatAdapters}). Any other mixin makes the hook stand down.
      */
     public static void recordChanges(String key, List<MergedMethods.Change> changes) {
-        java.util.Map<String, List<MergedMethods.Change>> byMixin = new java.util.LinkedHashMap<>();
+        Map<String, List<MergedMethods.Change>> byMixin = new LinkedHashMap<>();
         for (MergedMethods.Change c : changes) {
-            byMixin.computeIfAbsent(c.mixin(), k -> new java.util.ArrayList<>()).add(c);
+            byMixin.computeIfAbsent(c.mixin(), k -> new ArrayList<>()).add(c);
         }
-        List<String> foreign = new java.util.ArrayList<>();
+        List<String> foreign = new ArrayList<>();
         for (Map.Entry<String, List<MergedMethods.Change>> e : byMixin.entrySet()) {
             KnownMixins.Entry known = KnownMixins.find(key, e.getKey(), e.getValue().stream().map(c -> c.method().substring(0, c.method().indexOf('('))).toList());
             if (known == null) {
@@ -313,8 +318,8 @@ public final class HookTargets {
                 continue;
             }
             List<Handled> handled = e.getValue().stream().map(c -> new Handled(c.mixin(), c.method(), c.at(), known)).toList();
-            HANDLED.merge(key, handled, (a, b) -> java.util.stream.Stream.concat(a.stream(), b.stream())
-                .sorted(java.util.Comparator.comparingInt(Handled::at)).toList());
+            HANDLED.merge(key, handled, (a, b) -> Stream.concat(a.stream(), b.stream())
+                .sorted(Comparator.comparingInt(Handled::at)).toList());
             LOGGER.info("hook '{}' shared with {} ({}) -> kept, emulated: {}",
                 key, e.getKey(), known.modId(), known.what());
         }
@@ -341,7 +346,7 @@ public final class HookTargets {
     /** Iron's Spellbooks' change to the per-block state, which FastFill runs itself too ({@code dfc.runtime.FillSteps}). */
     public static final String IRONS_NOISE_CHUNK = "io.redspace.ironsspellbooks.mixin.NoiseChunkMixin";
     /** The changes to the per-block state that FastFill runs itself, in the chunks where those changes act (their fluid steps). */
-    private static final java.util.Set<String> FILL_STEP_MIXINS = java.util.Set.of(YUNG_NOISE_CHUNK, IRONS_NOISE_CHUNK);
+    private static final Set<String> FILL_STEP_MIXINS = Set.of(YUNG_NOISE_CHUNK, IRONS_NOISE_CHUNK);
 
     /** True when every change to the per-block state is one FastFill handles per chunk (YUNG's API, Iron's Spellbooks). */
     public static boolean fillStateKnown() {
@@ -352,13 +357,13 @@ public final class HookTargets {
     public static void record(String key, List<String> foreignMixins) {
         try {
             if (key.equals(NOISE_FILL_STATE) && !foreignMixins.isEmpty() && FILL_STEP_MIXINS.containsAll(foreignMixins) && !forced(key)) {
-                FOREIGN.merge(key, List.copyOf(foreignMixins), (a, b) -> java.util.stream.Stream.concat(a.stream(), b.stream()).distinct().toList());
+                FOREIGN.merge(key, List.copyOf(foreignMixins), (a, b) -> Stream.concat(a.stream(), b.stream()).distinct().toList());
                 LOGGER.info("hook '{}' shared with {} -> kept, fluid steps run in GA2 fill (chunks with their structures)", key, foreignMixins);
                 return;
             }
             if (!foreignMixins.isEmpty()) {
                 // a key may be recorded for several classes or methods: the findings add up
-                FOREIGN.merge(key, List.copyOf(foreignMixins), (a, b) -> java.util.stream.Stream.concat(a.stream(), b.stream()).distinct().toList());
+                FOREIGN.merge(key, List.copyOf(foreignMixins), (a, b) -> Stream.concat(a.stream(), b.stream()).distinct().toList());
                 if (forced(key)) {
                     LOGGER.warn("hook '{}' conflicts with {} -> kept (forced: -D{}=true)", key, foreignMixins, forceProperty(key));
                 } else {
@@ -423,7 +428,7 @@ public final class HookTargets {
 
     /** Hooks asked for whose classes were not inspected yet (not loaded, or loaded without GA2's mixin). These hooks read as off. Sorted. */
     public static List<String> undecided() {
-        List<String> out = new java.util.ArrayList<>();
+        List<String> out = new ArrayList<>();
         for (String key : HOOKS.keySet()) {
             if (!INSPECTED.containsKey(key) && !forced(key)) {
                 out.add(key);

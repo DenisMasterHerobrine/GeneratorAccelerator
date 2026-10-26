@@ -4,7 +4,10 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 
@@ -141,18 +144,18 @@ public final class CellBounds {
         }
         if (!covered(n, lerpIndex, new IdentityHashMap<>())) {
             // descend to name the deepest uncovered node
-            java.util.List<Node> children = switch (n) {
-                case Node.Ap2 a -> java.util.List.of(a.a(), a.b());
-                case Node.MulOrAdd m -> java.util.List.of(m.input());
-                case Node.Mapped m -> java.util.List.of(m.input());
-                case Node.Clamp c -> java.util.List.of(c.input());
-                case Node.RangeChoice r -> java.util.List.of(r.input(), r.inRange(), r.outRange());
-                case Node.ShiftedNoise s -> java.util.List.of(s.shiftX(), s.shiftY(), s.shiftZ());
-                case Node.Weird w -> java.util.List.of(w.input());
-                case Node.BlendDensity b -> java.util.List.of(b.input());
+            List<Node> children = switch (n) {
+                case Node.Ap2 a -> List.of(a.a(), a.b());
+                case Node.MulOrAdd m -> List.of(m.input());
+                case Node.Mapped m -> List.of(m.input());
+                case Node.Clamp c -> List.of(c.input());
+                case Node.RangeChoice r -> List.of(r.input(), r.inRange(), r.outRange());
+                case Node.ShiftedNoise s -> List.of(s.shiftX(), s.shiftY(), s.shiftZ());
+                case Node.Weird w -> List.of(w.input());
+                case Node.BlendDensity b -> List.of(b.input());
                 case Node.Marker m -> m.type() == Node.MarkerType.INTERPOLATED || m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D
-                    ? java.util.List.of(m.child()) : java.util.List.of();
-                default -> java.util.List.of();
+                    ? List.of(m.child()) : List.of();
+                default -> List.of();
             };
             for (Node c : children) {
                 String deeper = firstUncovered(c, lerpIndex, seen);
@@ -298,13 +301,13 @@ public final class CellBounds {
 
     /** The interpolated roots (their indexes) whose corners the first pass reads. */
     public int[] interpolatedRoots() {
-        java.util.TreeSet<Integer> out = new java.util.TreeSet<>();
+        TreeSet<Integer> out = new TreeSet<>();
         collectRoots(root, out, new IdentityHashMap<>());
         return out.stream().mapToInt(Integer::intValue).toArray();
     }
 
     /** The interpolated markers {@link #eval} reaches when not {@link #tight}, as it reaches them. */
-    private void collectRoots(Node n, java.util.Set<Integer> out, Map<Node, Boolean> seen) {
+    private void collectRoots(Node n, Set<Integer> out, Map<Node, Boolean> seen) {
         if (seen.put(n, Boolean.TRUE) != null) {
             return;
         }

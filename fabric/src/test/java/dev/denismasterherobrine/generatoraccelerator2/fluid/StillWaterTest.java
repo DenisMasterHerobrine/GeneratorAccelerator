@@ -22,6 +22,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -30,6 +31,7 @@ import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.alchemy.PotionBrewing;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.GameRules;
@@ -59,6 +61,7 @@ import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.ticks.LevelTickAccess;
 import net.minecraft.world.ticks.TickPriority;
 import org.junit.jupiter.api.Test;
+import sun.misc.Unsafe;
 
 /**
  * The still water skips leave out only work without effect. The post-processing test runs vanilla's fluid tick on random
@@ -154,7 +157,7 @@ class StillWaterTest {
         Method sameFluid = renderer.getDeclaredMethod("isNeighborSameFluid", FluidState.class, FluidState.class);
         Method renderFace = renderer.getDeclaredMethod("shouldRenderFace", BlockAndTintGetter.class, BlockPos.class, FluidState.class, BlockState.class,
             Direction.class, FluidState.class);
-        Method occluded = renderer.getDeclaredMethod("isFaceOccludedByNeighbor", net.minecraft.world.level.BlockGetter.class, BlockPos.class, Direction.class,
+        Method occluded = renderer.getDeclaredMethod("isFaceOccludedByNeighbor", BlockGetter.class, BlockPos.class, Direction.class,
             float.class, BlockState.class);
         sameFluid.setAccessible(true);
         renderFace.setAccessible(true);
@@ -212,14 +215,14 @@ class StillWaterTest {
         private GameRules rules;
 
         @SuppressWarnings("unused")
-        private StubLevel(WritableLevelData data, ResourceKey<Level> key, RegistryAccess access, Holder<DimensionType> type, Supplier<net.minecraft.util.profiling.ProfilerFiller> profiler) {
+        private StubLevel(WritableLevelData data, ResourceKey<Level> key, RegistryAccess access, Holder<DimensionType> type, Supplier<ProfilerFiller> profiler) {
             super(data, key, access, type, profiler, false, false, 0L, 0);
         }
 
         static StubLevel create() throws ReflectiveOperationException {
-            Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            Field f = Unsafe.class.getDeclaredField("theUnsafe");
             f.setAccessible(true);
-            StubLevel level = (StubLevel) ((sun.misc.Unsafe) f.get(null)).allocateInstance(StubLevel.class);
+            StubLevel level = (StubLevel) ((Unsafe) f.get(null)).allocateInstance(StubLevel.class);
             // fields of a constructor that never ran
             level.blocks = new HashMap<>();
             level.changes = new ArrayList<>();

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.pastel;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import java.util.List;
 import java.util.Set;
@@ -24,7 +25,7 @@ public final class PastelMixins {
     public static final String SERVER_LEVEL = "earth.terrarium.pastel.mixin.ServerLevelMixin";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
-        new KnownMixins.Entry(MOD_ID, dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.STATE_POI_SKIP, SERVER_LEVEL,
+        new KnownMixins.Entry(MOD_ID, HookTargets.STATE_POI_SKIP, SERVER_LEVEL,
             Set.of("emitBlockChangedEvent", "sleepThroughDay"),
             "Pastel's block-change events still fire on the main thread. GA2 skips them on generation threads, where Pastel ignores them anyway."),
         new KnownMixins.Entry(MOD_ID, FeatureTargets.compatKey("geode"), GEODE_ORES, Set.of("generate"),

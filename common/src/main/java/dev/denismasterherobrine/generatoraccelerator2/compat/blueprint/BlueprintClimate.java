@@ -1,12 +1,14 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.blueprint;
 
 import com.google.common.collect.MapMaker;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SamplerWrappers;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.biome.Climate;
@@ -36,7 +38,7 @@ public final class BlueprintClimate {
     public static final LongAdder ALIASED = new LongAdder();
     /** {@code -Dgeneratoraccelerator2.verify.blueprint=N}: every N-th target point GA2 serves is also computed Blueprint's way. */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.blueprint", 0);
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_COUNTER = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong VERIFY_COUNTER = new AtomicLong();
     public static final LongAdder VERIFIED = new LongAdder();
     public static final LongAdder DIFFERING = new LongAdder();
 
@@ -99,10 +101,8 @@ public final class BlueprintClimate {
     private static DensityFunction base(DensityFunction cache) {
         try {
             return (DensityFunction) base.invokeExact(cache);
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
     }
 }

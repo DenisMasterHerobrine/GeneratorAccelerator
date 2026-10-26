@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightEngine;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightStorage;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2Propagator;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightQueue;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import net.minecraft.core.SectionPos;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
+import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
@@ -24,6 +26,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -64,11 +67,11 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
         return keys;
     }
 
-    /** The increase and decrease queues keep their arrays from batch to batch ({@link dev.denismasterherobrine.generatoraccelerator2.light.LightQueue}). */
-    @org.spongepowered.asm.mixin.injection.Redirect(method = "<init>", require = 0,
+    /** The increase and decrease queues keep their arrays from batch to batch ({@link LightQueue}). */
+    @Redirect(method = "<init>", require = 0,
         at = @At(value = "NEW", target = "()Lit/unimi/dsi/fastutil/longs/LongArrayFIFOQueue;"))
     private LongArrayFIFOQueue ga2$lightQueue() {
-        return new dev.denismasterherobrine.generatoraccelerator2.light.LightQueue();
+        return new LightQueue();
     }
 
     @Inject(method = "getChunk", at = @At("HEAD"), cancellable = true)
@@ -91,7 +94,7 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
             this.ga2$kinds[slot] = kind;
             if (kind != FastLight.KIND_OTHER) {
                 this.ga2$sections[slot] = FastLight.sectionsOf(chunk);
-                this.ga2$minY[slot] = chunk instanceof net.minecraft.world.level.chunk.ImposterProtoChunk imposter
+                this.ga2$minY[slot] = chunk instanceof ImposterProtoChunk imposter
                     ? imposter.getWrapped().getMinBuildHeight() : chunk.getMinBuildHeight();
             } else {
                 this.ga2$sections[slot] = null;

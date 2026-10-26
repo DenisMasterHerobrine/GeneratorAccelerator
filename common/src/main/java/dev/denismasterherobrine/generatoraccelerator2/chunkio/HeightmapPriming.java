@@ -3,8 +3,10 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 import net.minecraft.core.BlockPos;
@@ -102,9 +104,9 @@ public final class HeightmapPriming {
 
     /** {@code -Dgeneratoraccelerator2.verify.prime=N} redoes every N-th priming with vanilla's scan and compares. Vanilla's result is kept. */
     private static final int VERIFY_EVERY = Integer.getInteger("generatoraccelerator2.verify.prime", 0);
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_SEEN = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong VERIFIED = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong VERIFY_SEEN = new AtomicLong();
+    public static final AtomicLong VERIFIED = new AtomicLong();
+    public static final AtomicLong DIFFERING = new AtomicLong();
 
     private static void verify(ChunkAccess chunk, Set<Heightmap.Types> types, BiConsumer<ChunkAccess, Set<Heightmap.Types>> vanilla) {
         Heightmap.Types[] order = types.toArray(new Heightmap.Types[0]);
@@ -116,7 +118,7 @@ public final class HeightmapPriming {
         VERIFIED.incrementAndGet();
         for (int i = 0; i < order.length; i++) {
             Heightmap theirs = chunk.getOrCreateHeightmapUnprimed(order[i]);
-            if (!java.util.Arrays.equals(mine[i], theirs.getRawData()) && DIFFERING.incrementAndGet() <= 10) {
+            if (!Arrays.equals(mine[i], theirs.getRawData()) && DIFFERING.incrementAndGet() <= 10) {
                 // Log the first differing columns, with both heights and the blocks at them.
                 StringBuilder sb = new StringBuilder();
                 Heightmap view = chunk.getOrCreateHeightmapUnprimed(order[i]);

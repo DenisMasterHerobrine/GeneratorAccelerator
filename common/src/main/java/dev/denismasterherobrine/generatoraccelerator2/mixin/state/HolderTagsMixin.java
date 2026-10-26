@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.state.DirectSets;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import dev.denismasterherobrine.generatoraccelerator2.state.TagBits;
 import java.util.Collection;
 import java.util.Set;
@@ -47,7 +48,7 @@ public abstract class HolderTagsMixin<T> implements DirectSets.Keyed {
     /** The body of {@code is(tag)}. Reads the holder's tag bits instead of hashing the key into the tag set. Same answer (see {@link TagBits}). */
     @Unique
     private boolean ga2$is(TagKey<T> tag) {
-        if (!(dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED && GA2$HOOK.allowed())) {
+        if (!(StateFast.ENABLED && GA2$HOOK.allowed())) {
             return this.tags.contains(tag);
         }
         int i = TagBits.index(tag);

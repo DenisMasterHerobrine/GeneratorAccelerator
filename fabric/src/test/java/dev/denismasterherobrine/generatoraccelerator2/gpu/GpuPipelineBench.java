@@ -10,12 +10,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.Util;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import java.lang.management.ManagementFactory;
 
 /**
  * Multi-threaded BIOMES, NOISE and SURFACE over regions of R x R chunks. SURFACE runs on each region's interior, which has all
@@ -38,7 +40,7 @@ public class GpuPipelineBench {
     void cpuScaling() throws Exception {
         GpuProbe.Setup s = GpuDatapack.setup(Long.getLong("ga2.gpu.seed", 1234567L));
         TerrainHarness.World w = s.world;
-        log("background executor: %s; available processors %d; max heap %d MB", net.minecraft.Util.backgroundExecutor(), Runtime.getRuntime().availableProcessors(),
+        log("background executor: %s; available processors %d; max heap %d MB", Util.backgroundExecutor(), Runtime.getRuntime().availableProcessors(),
             Runtime.getRuntime().maxMemory() >> 20);
         int region = 16;
         int origin = 40000;
@@ -60,7 +62,7 @@ public class GpuPipelineBench {
 
     private static long gcMillis() {
         long t = 0;
-        for (var gc : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+        for (var gc : ManagementFactory.getGarbageCollectorMXBeans()) {
             t += Math.max(0, gc.getCollectionTime());
         }
         return t;

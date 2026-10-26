@@ -12,6 +12,8 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -127,8 +129,8 @@ public final class SkyBounds {
 
         final CoordDeps deps = new CoordDeps(true);
         final List<Node> leafNodes = new ArrayList<>();
-        final java.util.Map<Node, Integer> leafIndex = new IdentityHashMap<>();
-        final java.util.Map<Node, Op> built = new IdentityHashMap<>();
+        final Map<Node, Integer> leafIndex = new IdentityHashMap<>();
+        final Map<Node, Op> built = new IdentityHashMap<>();
         /** The first node not covered, for the log. */
         String uncovered = "a node the bounds do not cover";
 
@@ -199,7 +201,7 @@ public final class SkyBounds {
                     case CACHE_ONCE -> build(m.child());
                     // a y-dependent 2D cache holds its child's value at some earlier height of the column
                     case CACHE_2D -> bounded(m.child().min(), m.child().max());
-                    default -> missing("a " + m.type().name().toLowerCase(java.util.Locale.ROOT) + " inside");
+                    default -> missing("a " + m.type().name().toLowerCase(Locale.ROOT) + " inside");
                 };
                 default -> missing(n.getClass().getSimpleName());
             };

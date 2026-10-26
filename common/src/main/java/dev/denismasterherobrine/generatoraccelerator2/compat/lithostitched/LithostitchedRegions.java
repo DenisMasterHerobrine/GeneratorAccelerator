@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
@@ -9,6 +10,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.util.CubicSpline;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import java.lang.ref.WeakReference;
 
 /**
  * Lithostitched's biome injector regions. For every noise biome whose biome has regions, the dimension's region function
@@ -49,7 +51,7 @@ public final class LithostitchedRegions {
      * worker thread outlives the world.
      */
     private static final class Memo {
-        java.lang.ref.WeakReference<DensityFunction> function = new java.lang.ref.WeakReference<>(null);
+        WeakReference<DensityFunction> function = new WeakReference<>(null);
         final int[] x = new int[16];
         final int[] z = new int[16];
         final double[] value = new double[16];
@@ -68,8 +70,8 @@ public final class LithostitchedRegions {
         int z = context.blockZ();
         int slot = ((x >> 2) & 3) << 2 | ((z >> 2) & 3);
         if (memo.function.get() != function) {
-            memo.function = new java.lang.ref.WeakReference<>(function);
-            java.util.Arrays.fill(memo.set, false);
+            memo.function = new WeakReference<>(function);
+            Arrays.fill(memo.set, false);
         } else if (memo.set[slot] && memo.x[slot] == x && memo.z[slot] == z) {
             REMEMBERED.increment();
             return memo.value[slot];

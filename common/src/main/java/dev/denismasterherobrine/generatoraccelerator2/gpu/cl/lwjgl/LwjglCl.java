@@ -6,11 +6,14 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.Version;
+import org.lwjgl.opencl.CL10;
 import org.lwjgl.opencl.CL11;
 import org.lwjgl.opencl.CL12;
 import org.lwjgl.opencl.CLEventCallback;
@@ -220,7 +223,7 @@ public final class LwjglCl implements ClApi {
                 throw new ClException("clEnqueueMapBuffer failed: OpenCL error " + err.get(0), err.get(0));
             }
             memOut[0] = mem;
-            return b.order(java.nio.ByteOrder.nativeOrder());
+            return b.order(ByteOrder.nativeOrder());
         }
     }
 
@@ -254,7 +257,7 @@ public final class LwjglCl implements ClApi {
     public long copy(long queue, long src, long dst, long srcOffset, long dstOffset, long bytes) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer event = stack.mallocPointer(1);
-            check(org.lwjgl.opencl.CL10.clEnqueueCopyBuffer(queue, src, dst, srcOffset, dstOffset, bytes, null, event), "clEnqueueCopyBuffer");
+            check(CL10.clEnqueueCopyBuffer(queue, src, dst, srcOffset, dstOffset, bytes, null, event), "clEnqueueCopyBuffer");
             return event.get(0);
         }
     }
@@ -414,7 +417,7 @@ public final class LwjglCl implements ClApi {
 
     @Override
     public String lwjglVersion() {
-        return org.lwjgl.Version.getVersion();
+        return Version.getVersion();
     }
 
     private static String platformString(long platform, int param) {

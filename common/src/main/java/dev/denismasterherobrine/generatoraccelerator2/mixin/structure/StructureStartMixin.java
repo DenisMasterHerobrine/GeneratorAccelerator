@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.structure;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
@@ -20,13 +21,13 @@ public abstract class StructureStartMixin {
     @WrapMethod(method = "placeInChunk")
     private void ga2$onePlacementAtATime(WorldGenLevel level, StructureManager structures, ChunkGenerator generator, RandomSource random, BoundingBox box,
                                          ChunkPos chunk, Operation<Void> original) {
-        long t0 = dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.structureStart();
+        long t0 = FeatureCensus.structureStart();
         try {
             synchronized (this) {
                 original.call(level, structures, generator, random, box, chunk);
             }
         } finally {
-            dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.structureEnd(t0);
+            FeatureCensus.structureEnd(t0);
         }
     }
 }

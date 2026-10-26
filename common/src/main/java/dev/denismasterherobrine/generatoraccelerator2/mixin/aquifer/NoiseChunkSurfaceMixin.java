@@ -1,6 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer;
 
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.SurfaceLevelCache;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
+import it.unimi.dsi.fastutil.longs.Long2IntMap;
+import net.minecraft.core.QuartPos;
+import net.minecraft.server.level.ColumnPos;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseChunk;
@@ -8,7 +14,9 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -23,15 +31,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(value = NoiseChunk.class, priority = 5000)
 public abstract class NoiseChunkSurfaceMixin {
-    @org.spongepowered.asm.mixin.Shadow @org.spongepowered.asm.mixin.Final private NoiseSettings noiseSettings;
-    @org.spongepowered.asm.mixin.Shadow @org.spongepowered.asm.mixin.Final private int cellHeight;
+    @Shadow @Final private NoiseSettings noiseSettings;
+    @Shadow @Final private int cellHeight;
 
     @Unique
     private SurfaceLevelCache ga2$surfaceLevels;
 
-    @org.spongepowered.asm.mixin.Shadow @org.spongepowered.asm.mixin.Final private it.unimi.dsi.fastutil.longs.Long2IntMap preliminarySurfaceLevel;
+    @Shadow @Final private Long2IntMap preliminarySurfaceLevel;
 
-    @org.spongepowered.asm.mixin.Shadow
+    @Shadow
     private int computePreliminarySurfaceLevel(long column) {
         throw new AssertionError();
     }
@@ -45,10 +53,10 @@ public abstract class NoiseChunkSurfaceMixin {
      */
     @Unique
     private int ga2$preliminarySurfaceLevel(int x, int z) {
-        int i = net.minecraft.core.QuartPos.toBlock(net.minecraft.core.QuartPos.fromBlock(x));
-        int j = net.minecraft.core.QuartPos.toBlock(net.minecraft.core.QuartPos.fromBlock(z));
-        long column = net.minecraft.server.level.ColumnPos.asLong(i, j);
-        it.unimi.dsi.fastutil.longs.Long2IntMap memo = this.preliminarySurfaceLevel;
+        int i = QuartPos.toBlock(QuartPos.fromBlock(x));
+        int j = QuartPos.toBlock(QuartPos.fromBlock(z));
+        long column = ColumnPos.asLong(i, j);
+        Long2IntMap memo = this.preliminarySurfaceLevel;
         int level = memo.getOrDefault(column, Integer.MIN_VALUE);
         if (level == Integer.MIN_VALUE) {
             level = this.computePreliminarySurfaceLevel(column);
@@ -75,10 +83,10 @@ public abstract class NoiseChunkSurfaceMixin {
             }
         }
         // On a miss, run vanilla's walk on the compiled surface level function, if the chunk has one bound.
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels program = (Object) this instanceof dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk f
+        SurfaceLevels program = (Object) this instanceof Ga2NoiseChunk f
             ? f.ga2$levelProgram() : null;
-        if (program != null && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks.enabled()) {
-            int level = program.level(net.minecraft.server.level.ColumnPos.getX(column), net.minecraft.server.level.ColumnPos.getZ(column),
+        if (program != null && DfcHooks.enabled()) {
+            int level = program.level(ColumnPos.getX(column), ColumnPos.getZ(column),
                 this.noiseSettings.minY(), this.noiseSettings.height(), this.cellHeight);
             if (cache != null) {
                 cache.put(column, level);

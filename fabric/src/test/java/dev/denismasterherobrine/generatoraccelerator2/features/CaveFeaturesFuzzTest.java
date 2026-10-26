@@ -3,12 +3,17 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
@@ -35,7 +40,7 @@ public class CaveFeaturesFuzzTest {
                 cases.add(c);
             }
         }
-        cases.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        cases.sort(Comparator.comparing(FeatureRun.ConfiguredCase::name));
         assertTrue(cases.size() >= 3, "too few cases: " + cases);
         List<String> failures = new ArrayList<>();
         int compared = 0;
@@ -83,7 +88,7 @@ public class CaveFeaturesFuzzTest {
                 cases.add(c);
             }
         }
-        cases.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        cases.sort(Comparator.comparing(FeatureRun.ConfiguredCase::name));
         assertTrue(!cases.isEmpty(), "no monster room case");
         List<String> failures = new ArrayList<>();
         int compared = 0;
@@ -121,7 +126,7 @@ public class CaveFeaturesFuzzTest {
         int x = FeatureRun.CENTER_X * 16 + 4 + (t * 7) % 8;
         int z = FeatureRun.CENTER_Z * 16 + 4 + (t * 11 + 3) % 8;
         BlockPos origin = new BlockPos(x, -45 + (t * 13) % 30, z);
-        net.minecraft.world.level.block.state.BlockState air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+        BlockState air = Blocks.AIR.defaultBlockState();
         int corridors = 1 + t % 3;
         for (int d = -6; d <= 6; d++) {
             for (int dy = 0; dy <= 1; dy++) {
@@ -154,7 +159,7 @@ public class CaveFeaturesFuzzTest {
     }
 
     private static long fast(String feature) {
-        java.util.concurrent.atomic.LongAdder a = FeatureStats.fastByFeature().get(feature);
+        LongAdder a = FeatureStats.fastByFeature().get(feature);
         return a == null ? 0 : a.sum();
     }
 
@@ -162,7 +167,7 @@ public class CaveFeaturesFuzzTest {
     private static FeatureRun.Result run(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, long terrainSeed, int t, boolean vanilla) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.DEEP_DARK);
+        Holder<Biome> biome = r.biomes.getHolderOrThrow(Biomes.DEEP_DARK);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
         }

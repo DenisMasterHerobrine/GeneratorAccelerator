@@ -1,7 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.parallellight;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.LockSupport;
@@ -11,6 +14,7 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -75,7 +79,7 @@ final class Propagator {
     private long[][] outbox = new long[0][];
     private int[] outCount = new int[0];
     /** Received and consumed batch arrays, reused for this worker's own sends. Only this worker's thread touches the deque. */
-    private final java.util.ArrayDeque<long[]> free = new java.util.ArrayDeque<>();
+    private final ArrayDeque<long[]> free = new ArrayDeque<>();
     private volatile Thread thread;
     private volatile boolean parked;
     private int phase;
@@ -85,7 +89,7 @@ final class Propagator {
     final LongOpenHashSet affected = new LongOpenHashSet();
     long processed;
     /** Entries taken per section. Diagnostics only: allocated only while {@code ParallelLightStats.TRACK} is set. */
-    it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap perSection;
+    Long2IntOpenHashMap perSection;
     long sent;
 
     private long lastCopied = Long.MAX_VALUE;
@@ -138,7 +142,7 @@ final class Propagator {
         this.sent = 0;
         if (ParallelLightStats.TRACK != null) {
             if (this.perSection == null) {
-                this.perSection = new it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap();
+                this.perSection = new Long2IntOpenHashMap();
             } else {
                 this.perSection.clear();
             }
@@ -708,7 +712,7 @@ final class Propagator {
                     this.sections[slot] = imposter.getWrapped().getSections();
                     this.minY[slot] = imposter.getWrapped().getMinBuildHeight();
                 } else {
-                    this.sections[slot] = ((net.minecraft.world.level.chunk.ChunkAccess) chunk).getSections();
+                    this.sections[slot] = ((ChunkAccess) chunk).getSections();
                     this.minY[slot] = chunk.getMinBuildHeight();
                 }
             } else {
@@ -751,13 +755,13 @@ final class Propagator {
                 return Blocks.VOID_AIR.defaultBlockState();
             }
             LevelChunkSection section = array[index];
-            return section.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+            return section.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : StateReads.get(section, x & 15, y & 15, z & 15);
         }
         // LevelChunk.getBlockState: air outside the sections
         if (index >= 0 && index < array.length) {
             LevelChunkSection section = array[index];
             if (!section.hasOnlyAir()) {
-                return dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, x & 15, y & 15, z & 15);
+                return StateReads.get(section, x & 15, y & 15, z & 15);
             }
         }
         return Blocks.AIR.defaultBlockState();

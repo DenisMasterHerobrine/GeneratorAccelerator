@@ -1,16 +1,22 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
@@ -80,7 +86,7 @@ public final class ProgramCache {
             return parts;
         }
         try {
-            List<String> command = dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader.workerCommand(Gpu.dataDir().resolve("gpu-lib"));
+            List<String> command = ClLoader.workerCommand(Gpu.dataDir().resolve("gpu-lib"));
             Files.createDirectories(dir);
             sweep(dir);
             Path optionsFile = Files.createTempFile(dir, "options", ".txt");
@@ -102,7 +108,7 @@ public final class ProgramCache {
                 parts.temps.add(log);
                 parts.outs[i] = out;
                 parts.logs[i] = log;
-                List<String> args = new java.util.ArrayList<>(command);
+                List<String> args = new ArrayList<>(command);
                 args.addAll(List.of(id[0], id[1], id[2], optionsFile.toString(), src.toString(), out.toString()));
                 parts.processes[i] = new ProcessBuilder(args).redirectErrorStream(true).redirectOutput(log.toFile()).start();
             }
@@ -151,7 +157,7 @@ public final class ProgramCache {
         private final Path[] outs;
         private final Path[] logs;
         private final Process[] processes;
-        private final List<Path> temps = new java.util.ArrayList<>();
+        private final List<Path> temps = new ArrayList<>();
         private final long t0 = System.nanoTime();
         /** How each part was made ("cache", "process", "here"), and when it was ready (ms after {@link #start}). */
         public final String[] how;
@@ -210,7 +216,7 @@ public final class ProgramCache {
         /** Null when the process wrote its binary, else why not. */
         private String waitFor(Process p, int i) {
             try {
-                if (!p.waitFor(PROCESS_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (!p.waitFor(PROCESS_TIMEOUT_S, TimeUnit.SECONDS)) {
                     p.destroyForcibly();
                     return "no answer after " + PROCESS_TIMEOUT_S + " s";
                 }
@@ -234,7 +240,7 @@ public final class ProgramCache {
         private void done(int i, String how) {
             this.how[i] = how;
             readyMs[i] = (System.nanoTime() - t0) / 1e6;
-            if (java.util.Arrays.stream(processes).allMatch(java.util.Objects::isNull)) {
+            if (Arrays.stream(processes).allMatch(Objects::isNull)) {
                 deleteTemps();
             }
         }
@@ -285,7 +291,7 @@ public final class ProgramCache {
 
     private static void touch(Path file) {
         try {
-            Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()));
+            Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis()));
         } catch (IOException ignored) {
             // the cache keeps working without it
         }

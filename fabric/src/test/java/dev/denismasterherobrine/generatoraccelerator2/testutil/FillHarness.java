@@ -8,6 +8,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
@@ -16,6 +17,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.TerrainAdjustment;
 import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
 import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
+import java.lang.reflect.Method;
 
 /** Runs NoiseBasedChunkGenerator.doFill's block loop on a bare NoiseChunk and records what it would place. */
 public final class FillHarness {
@@ -27,7 +29,7 @@ public final class FillHarness {
      */
     public static Aquifer.FluidPicker vanillaPicker(NoiseGeneratorSettings settings) {
         try {
-            java.lang.reflect.Method m = net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator.class.getDeclaredMethod("createFluidPicker", NoiseGeneratorSettings.class);
+            Method m = NoiseBasedChunkGenerator.class.getDeclaredMethod("createFluidPicker", NoiseGeneratorSettings.class);
             m.setAccessible(true);
             return (Aquifer.FluidPicker) m.invoke(null, settings);
         } catch (ReflectiveOperationException | RuntimeException e) {

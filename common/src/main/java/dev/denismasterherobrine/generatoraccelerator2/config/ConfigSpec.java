@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -44,7 +45,7 @@ public final class ConfigSpec {
     public static final class Builder {
         private final Deque<String> path = new ArrayDeque<>();
         private final List<ConfigValue<?>> values = new ArrayList<>();
-        private final Map<List<String>, List<String>> tableComments = new java.util.HashMap<>();
+        private final Map<List<String>, List<String>> tableComments = new HashMap<>();
         private List<String> comment = List.of();
 
         /** The comment of the next entry or table. Each string is one line. */
@@ -209,10 +210,6 @@ public final class ConfigSpec {
             super(path, comment, defaultValue);
             this.min = min;
             this.max = max;
-        }
-
-        public long getAsLong() {
-            return get();
         }
 
         @Override

@@ -3,7 +3,9 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.beardifier;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardBounds;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import it.unimi.dsi.fastutil.objects.ObjectListIterator;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -16,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import java.util.function.Function;
 
 /**
  * Exact piece index for {@code Beardifier.compute}.
@@ -155,10 +158,10 @@ public abstract class BeardifierMixin {
             int dy = y - j[b + 1];
             sum += getBeardContribution(x - j[b], dy, z - j[b + 2], dy) * 0.4;
         }
-        java.util.function.Function<net.minecraft.world.level.ChunkPos, dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk> test =
-            dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks;
+        Function<ChunkPos, EnhancedBeard.Chunk> test =
+            EnhancedBeard.testChunks;
         if (test != null) {
-            sum += dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.density(test.apply(new net.minecraft.world.level.ChunkPos(x >> 4, z >> 4)), x, y, z, null);
+            sum += EnhancedBeard.density(test.apply(new ChunkPos(x >> 4, z >> 4)), x, y, z, null);
         }
         BeardExtras.Plan plan = this.ga2$plan;
         return plan != null ? plan.apply((Beardifier) (Object) this, context, sum) : sum;

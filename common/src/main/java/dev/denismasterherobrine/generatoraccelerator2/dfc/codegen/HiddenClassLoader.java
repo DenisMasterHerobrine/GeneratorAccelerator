@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import java.util.concurrent.atomic.LongAdder;
 
 /** Defines generated classes as hidden nestmates of this package. */
 public final class HiddenClassLoader {
@@ -41,7 +42,7 @@ public final class HiddenClassLoader {
     }
 
     /** Classes defined so far (every generated program of GA2 comes through here). */
-    public static final java.util.concurrent.atomic.LongAdder DEFINED = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder DEFINED = new LongAdder();
 
     public static MethodHandles.Lookup define(byte[] bytes, String debugName) {
         try {

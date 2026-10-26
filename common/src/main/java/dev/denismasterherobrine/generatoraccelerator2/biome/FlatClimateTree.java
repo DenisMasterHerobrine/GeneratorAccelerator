@@ -2,7 +2,12 @@ package dev.denismasterherobrine.generatoraccelerator2.biome;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.world.level.biome.Climate;
 
 /**
@@ -441,7 +446,7 @@ public final class FlatClimateTree {
                 // The counter wrapped after 2^32 columns. No old stamp may ever match again.
                 for (int i = 0; i < SLOTS; i++) {
                     if (this.stamps[i] != null) {
-                        java.util.Arrays.fill(this.stamps[i], 0);
+                        Arrays.fill(this.stamps[i], 0);
                     }
                 }
                 this.stampCounter = 1;
@@ -479,11 +484,11 @@ public final class FlatClimateTree {
     /** Trees with fewer nodes always walk. */
     private static final int MIN_GROUP_NODES = 128;
     /** Counters: searches answered from the column answers, searches left to the walk (shared distances), column answers filled. */
-    public static final java.util.concurrent.atomic.LongAdder GROUP_ANSWERED = new java.util.concurrent.atomic.LongAdder(),
-        GROUP_WALKED = new java.util.concurrent.atomic.LongAdder(), GROUP_FILLS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder GROUP_ANSWERED = new LongAdder(),
+        GROUP_WALKED = new LongAdder(), GROUP_FILLS = new LongAdder();
     /** Diagnostics. Searches walked because the tree has no groups, the target is out of the small range, or the column is missing outside a biome fill. */
-    public static final java.util.concurrent.atomic.LongAdder WALK_NO_GROUPS = new java.util.concurrent.atomic.LongAdder(),
-        WALK_OUT_OF_RANGE = new java.util.concurrent.atomic.LongAdder(), WALK_OUTSIDE = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder WALK_NO_GROUPS = new LongAdder(),
+        WALK_OUT_OF_RANGE = new LongAdder(), WALK_OUTSIDE = new LongAdder();
     /** Whether the column answers are currently disabled for this tree. Read only, until the deadline passes. */
     private boolean off() {
         long until = this.offUntil;
@@ -498,9 +503,9 @@ public final class FlatClimateTree {
     }
 
     /** Times a tree's column answers were turned off for a while (diagnostics). */
-    public static final java.util.concurrent.atomic.LongAdder COLUMNS_OFF = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder COLUMNS_OFF = new LongAdder();
     /** Nodes the column fills entered (diagnostics). */
-    public static final java.util.concurrent.atomic.LongAdder FILL_NODES = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder FILL_NODES = new LongAdder();
 
     /**
      * The leaves grouped by their depth range. Depth is the one dimension that changes along a quart column. The other five are fixed
@@ -541,12 +546,12 @@ public final class FlatClimateTree {
     private static final int WINDOW = 4096, MIN_REUSE = 4;
     private static final long OFF_NANOS = 2_000_000_000L;
     /** Every flat tree built, weakly held, for the diagnostics. */
-    private static final java.util.Set<FlatClimateTree> ALL = java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+    private static final Set<FlatClimateTree> ALL = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     /** The flat trees made so far (diagnostics). */
-    public static java.util.List<FlatClimateTree> all() {
+    public static List<FlatClimateTree> all() {
         synchronized (ALL) {
-            return new java.util.ArrayList<>(ALL);
+            return new ArrayList<>(ALL);
         }
     }
 
@@ -615,7 +620,7 @@ public final class FlatClimateTree {
                 mask[id] = m;
             }
         }
-        return new Groups(n, java.util.Arrays.copyOf(lo, n), java.util.Arrays.copyOf(hi, n), leafGroup, mask);
+        return new Groups(n, Arrays.copyOf(lo, n), Arrays.copyOf(hi, n), leafGroup, mask);
     }
 
     /** One column's nearest leaves per group, over the five dimensions besides the depth, plus the offset. */
@@ -708,16 +713,16 @@ public final class FlatClimateTree {
 
         /** Releases every tree this cache refers to, and so the biomes of those trees. */
         void forget() {
-            java.util.Arrays.fill(slots, null);
-            java.util.Arrays.fill(used, 0);
+            Arrays.fill(slots, null);
+            Arrays.fill(used, 0);
             clock = 0;
             seed2Tree = null;
             seed2Keys = null;
-            java.util.Arrays.fill(recentTree, null);
-            java.util.Arrays.fill(recent, null);
+            Arrays.fill(recentTree, null);
+            Arrays.fill(recent, null);
             recentNext = 0;
             // the column slots keep their arrays for the next world. Without its tree a slot matches no lookup.
-            java.util.Arrays.fill(parts.trees, null);
+            Arrays.fill(parts.trees, null);
         }
 
         int[] walkStack(int size) {

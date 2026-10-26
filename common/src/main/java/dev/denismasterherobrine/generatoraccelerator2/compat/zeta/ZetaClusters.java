@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.zeta;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -41,8 +43,8 @@ public final class ZetaClusters {
      * {@code -Dgeneratoraccelerator2.verify.zetaClusters=N}: every N-th part also runs Zeta's whole loop without placing anything.
      * The blocks that Zeta's loop would place, in its order, are compared with the walk's blocks before they are placed.
      */
-    private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter VERIFY =
-        new dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter("zetaClusters");
+    private static final VerifyCounter VERIFY =
+        new VerifyCounter("zetaClusters");
 
     private ZetaClusters() {}
 
@@ -105,10 +107,8 @@ public final class ZetaClusters {
             broken = true;
             LOGGER.warn("Zeta cluster generator unreachable -> own loop", e);
             return false;
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
     }
 

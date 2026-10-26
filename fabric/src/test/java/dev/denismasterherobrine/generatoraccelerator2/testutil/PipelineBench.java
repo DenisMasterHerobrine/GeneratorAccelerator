@@ -1,11 +1,16 @@
 package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.LazyInterpolation;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MapAllMemo;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.blending.Blender;
@@ -32,7 +37,7 @@ public class PipelineBench {
         }
         int origin = 0;
         // -Dga2.bench.setups=0,4 runs only those setups (indexes into the list above)
-        java.util.Set<Integer> only = new java.util.HashSet<>();
+        Set<Integer> only = new HashSet<>();
         for (String part : System.getProperty("ga2.bench.setups", "").split(",")) {
             if (!part.isBlank()) {
                 only.add(Integer.parseInt(part.trim()));
@@ -72,9 +77,9 @@ public class PipelineBench {
         MapAllMemo.setEnabled(setup != 1);
         LazyInterpolation.ENABLED = setup != 2;
         FillHeights.ENABLED = setup != 3;
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.ENABLED = setup != 4;
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler.COLUMNS = setup != 5;
-        dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.ENABLED = setup != 6;
+        FastFill.ENABLED = setup != 4;
+        BoundSampler.COLUMNS = setup != 5;
+        SkyBounds.ENABLED = setup != 6;
     }
 
     /** @return nanoseconds spent in BIOMES and NOISE over a SIDE x SIDE grid of fresh chunks */

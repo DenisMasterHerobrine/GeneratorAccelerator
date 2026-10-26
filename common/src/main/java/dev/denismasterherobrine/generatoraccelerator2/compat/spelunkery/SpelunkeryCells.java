@@ -1,11 +1,14 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
+import dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import org.slf4j.Logger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Spelunkery's stone stripes ({@code BlockStripeFeature.place}) ask two FastNoiseLite cellular noises at the same domain-warped point for
@@ -21,8 +24,8 @@ public final class SpelunkeryCells {
     private static final Logger LOGGER = Ga2Log.get("Compat");
 
     /** The counts of threads that ended. */
-    private static final java.util.concurrent.atomic.LongAdder RETIRED_SEARCHED = new java.util.concurrent.atomic.LongAdder(),
-        RETIRED_SHARED = new java.util.concurrent.atomic.LongAdder();
+    private static final LongAdder RETIRED_SEARCHED = new LongAdder(),
+        RETIRED_SHARED = new LongAdder();
 
     /** Calls answered by a search made here. Counted per thread, since a shared counter costs more than a call saves. */
     public static long searched() {
@@ -38,8 +41,8 @@ public final class SpelunkeryCells {
         return n[0];
     }
     /** {@code -Dgeneratoraccelerator2.verify.spelunkery=N}: every N-th answer is compared with FastNoiseLite's own. */
-    private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter VERIFY =
-        new dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter("spelunkery");
+    private static final VerifyCounter VERIFY =
+        new VerifyCounter("spelunkery");
 
     private static final VarHandle SEED, FREQUENCY, NOISE_TYPE, TRANSFORM, FRACTAL, DISTANCE, RETURN, JITTER;
     private static final float[] VECS;
@@ -136,8 +139,8 @@ public final class SpelunkeryCells {
         long searched, shared;
     }
 
-    private static final dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<Last> LAST =
-        new dev.denismasterherobrine.generatoraccelerator2.memory.ThreadEntries<>(Last::new, l -> {
+    private static final ThreadEntries<Last> LAST =
+        new ThreadEntries<>(Last::new, l -> {
             RETIRED_SEARCHED.add(l.searched);
             RETIRED_SHARED.add(l.shared);
         });

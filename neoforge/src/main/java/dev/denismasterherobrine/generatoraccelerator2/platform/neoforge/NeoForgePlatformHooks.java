@@ -10,9 +10,13 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.neoforged.neoforge.common.MonsterRoomHooks;
 import net.neoforged.neoforge.common.extensions.IBlockExtension;
 
@@ -70,12 +74,12 @@ public final class NeoForgePlatformHooks implements PlatformHooks.Service {
 
     /** NeoForge's {@code processBlockInfos} calls {@code process}, which hands the template on and by default calls {@code processBlock}. */
     @Override
-    public net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo processTemplateBlock(
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor processor, net.minecraft.world.level.LevelReader level,
-            BlockPos offset, BlockPos pivot, net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo raw,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo placed,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings settings,
-            net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate template) {
+    public StructureTemplate.StructureBlockInfo processTemplateBlock(
+            StructureProcessor processor, LevelReader level,
+            BlockPos offset, BlockPos pivot, StructureTemplate.StructureBlockInfo raw,
+            StructureTemplate.StructureBlockInfo placed,
+            StructurePlaceSettings settings,
+            StructureTemplate template) {
         return processor.process(level, offset, pivot, raw, placed, settings, template);
     }
 }

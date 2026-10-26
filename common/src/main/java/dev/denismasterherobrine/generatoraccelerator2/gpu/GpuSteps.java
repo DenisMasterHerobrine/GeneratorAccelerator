@@ -1,19 +1,26 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.distanthorizons.DHThreads;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BeardCuller;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.BeardifierAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepLane;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectListIterator;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.LongAdder;
@@ -24,6 +31,7 @@ import net.minecraft.Util;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.ProtoChunk;
@@ -91,7 +99,7 @@ public final class GpuSteps {
      * fills such chunks. {@link #beard} leaves the other chunks to the CPU.
      */
     public static boolean noiseHooksAllowed() {
-        return NOISE_HOOK.allowed() && FILL_HOOK.allowed() && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps.allKnown() && RULES_HOOK.allowed()
+        return NOISE_HOOK.allowed() && FILL_HOOK.allowed() && FillSteps.allKnown() && RULES_HOOK.allowed()
             && VEIN_HOOK.allowed() && PICKER_HOOK.allowed() && FastFill.ENABLED;
     }
 
@@ -106,8 +114,8 @@ public final class GpuSteps {
         StringBuilder sb = new StringBuilder("other mods change the noise fill");
         for (String key : new String[] { HookTargets.GPU_NOISE, HookTargets.NOISE_FILL, HookTargets.NOISE_FILL_STATE, HookTargets.NOISE_MATERIAL_RULES,
             HookTargets.NOISE_VEIN_RULE, HookTargets.NOISE_FLUID_PICKER }) {
-            java.util.List<String> foreign = HookTargets.foreign(key);
-            if (!foreign.isEmpty() && !(key.equals(HookTargets.NOISE_FILL_STATE) && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps.allKnown())) {
+            List<String> foreign = HookTargets.foreign(key);
+            if (!foreign.isEmpty() && !(key.equals(HookTargets.NOISE_FILL_STATE) && FillSteps.allKnown())) {
                 sb.append(" (").append(key).append(": ").append(foreign).append(')');
             }
         }
@@ -263,7 +271,7 @@ public final class GpuSteps {
                     return cpuOnly(() -> generator.createBiomes(randomState, blender, structures, chunk));
                 }
                 Object[] start = GpuVerify.active() ? GpuVerify.handState(wg) : null;
-                CompletableFuture<ChunkAccess> f = dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fill(wg, chunk, res,
+                CompletableFuture<ChunkAccess> f = BiomeHand.fill(wg, chunk, res,
                     () -> cpuOnly(() -> generator.createBiomes(randomState, blender, structures, chunk)));
                 BIOMES_APPLY.since(t1);
                 BIOMES_HANDED.increment();
@@ -277,7 +285,7 @@ public final class GpuSteps {
         }
         // Ties go to the biome source through the chunk's own climate sampler. The sampler comes from the NoiseChunk that vanilla's
         // biome step makes, which is kept for NOISE.
-        Supplier<net.minecraft.world.level.biome.Climate.Sampler> tieSampler = () -> ((dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker)
+        Supplier<Climate.Sampler> tieSampler = () -> ((NoiseChunkSamplerInvoker)
             chunk.getOrCreateNoiseChunk(c -> ((NoiseChunkFactoryInvoker) (Object) generator).ga2$createNoiseChunk(c, structures, blender, randomState)))
             .ga2$cachedClimateSampler(randomState.router(), settings.value().spawnTarget());
         return onAnswer(gpu, res -> {
@@ -329,7 +337,7 @@ public final class GpuSteps {
     public static final int[] LIQUID_WITHOUT_ID = new int[0];
 
     /** Better Caves' liquid regions of the chunk, as the GPU's block kernels apply them ({@code aquifer.LiquidRegions.gpu}). Null without them. */
-    @javax.annotation.Nullable
+    @Nullable
     public static int[] liquids(GpuWorldgen wg, RandomState randomState, ChunkPos pos) {
         if (!wg.liquidRegions) {
             return null;
@@ -353,10 +361,10 @@ public final class GpuSteps {
         }
         Beardifier beardifier = Beardifier.forStructuresInChunk(structures, pos);
         // other mods' pieces (YUNG's API, Integrated API): their terrain adaptation goes to the GPU as data (beardifier.EnhancedBeard)
-        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk enhanced = null;
+        EnhancedBeard.Chunk enhanced = null;
         int overrideId = -1;
         if (!BeardCuller.mayCull(beardifier)) {
-            enhanced = dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras.enhancedFor(beardifier, pos);
+            enhanced = BeardExtras.enhancedFor(beardifier, pos);
             if (enhanced == null) {
                 return null;
             }
@@ -364,9 +372,9 @@ public final class GpuSteps {
                 enhanced = null;
             } else if (enhanced.override() != null) {
                 // YUNG's aquifer override at the marked blocks: the default block, or a named state the program must have an id for
-                dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Adaptation o = enhanced.override();
-                if (o.overrideKind() == dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.OVERRIDE_SOLIDIFY) {
-                    overrideId = dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter.ID_STONE;
+                EnhancedBeard.Adaptation o = enhanced.override();
+                if (o.overrideKind() == EnhancedBeard.OVERRIDE_SOLIDIFY) {
+                    overrideId = ClEmitter.ID_STONE;
                 } else {
                     for (int i = 0; i < wg.states.length; i++) {
                         if (wg.states[i] == o.overrideState()) {
@@ -380,7 +388,7 @@ public final class GpuSteps {
             }
             ENHANCED_CHUNKS.increment();
         }
-        if (!STATE_HOOK.allowed() && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps.mayActForGpu(structures, pos, beardifier, enhanced != null)) {
+        if (!STATE_HOOK.allowed() && FillSteps.mayActForGpu(structures, pos, beardifier, enhanced != null)) {
             return null; // Another mod's fluid step acts in the chunk (an Iron's Spellbooks structure). The CPU runs it.
         }
         BeardifierAccessor acc = (BeardifierAccessor) beardifier;

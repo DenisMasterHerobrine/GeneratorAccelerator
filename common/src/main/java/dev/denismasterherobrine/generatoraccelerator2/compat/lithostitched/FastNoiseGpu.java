@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import java.lang.reflect.Field;
+import java.util.Random;
 
 /**
  * GPU computation of Lithostitched's FastNoiseLite noises ({@code FNL}, FastNoiseLite by Jordan Peck, MIT). The settings are read
@@ -72,7 +73,7 @@ final class FastNoiseGpu {
             int[] ints = { seed, transform, dist, ret };
             float[] floats = { freq, jitter };
             // Checked against the live object on a spread of points: block-scale coordinates, fractions, far out, negative.
-            java.util.Random r = new java.util.Random(0x6E6F697365L);
+            Random r = new Random(0x6E6F697365L);
             for (int i = 0; i < 1024; i++) {
                 double span = i < 512 ? 4096.0 : 3.0e7;
                 double x = (r.nextDouble() * 2.0 - 1.0) * span, y = (r.nextDouble() * 2.0 - 1.0) * 512.0, z = (r.nextDouble() * 2.0 - 1.0) * span;

@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Mixin(NoiseChunk.NoiseInterpolator.class)
 public interface NoiseInterpolatorAccessor {
@@ -20,5 +21,5 @@ public interface NoiseInterpolatorAccessor {
     @Accessor("noise111") double ga2$noise111();
 
     /** Loads the cell's eight corners from the slices, as {@code NoiseChunk.selectCellYZ} does. */
-    @org.spongepowered.asm.mixin.gen.Invoker("selectCellYZ") void ga2$selectCellYZ(int cellY, int cellZ);
+    @Invoker("selectCellYZ") void ga2$selectCellYZ(int cellY, int cellZ);
 }

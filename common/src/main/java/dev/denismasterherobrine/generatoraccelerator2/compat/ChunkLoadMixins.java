@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import java.util.List;
 import java.util.Set;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 
 /**
  * Other mods' changes to {@code ChunkSerializer.read} that leave the section, palette and tick list tags of a loaded chunk
@@ -59,7 +60,7 @@ public final class ChunkLoadMixins {
     /** None of these mixins needs setup. The prepared parts are used as they are. */
     public static void register() {
         for (KnownMixins.Entry e : ENTRIES) {
-            if (dev.denismasterherobrine.generatoraccelerator2.dfc.Compat.isLoaded(e.modId())) {
+            if (Compat.isLoaded(e.modId())) {
                 CompatAdapters.register(e.hook(), e.mixin(), () -> true);
             }
         }

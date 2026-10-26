@@ -1,7 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -9,8 +12,12 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.levelgen.feature.OreFeature;
 import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Transcription of {@code OreFeature.doPlace}: same spheres, same sphere/x/y/z visit order, same
@@ -83,7 +90,7 @@ public final class OreFast {
             if (!seen) {
                 s.acquire();
                 if (acquiredCount == acquired.length) {
-                    acquired = java.util.Arrays.copyOf(acquired, acquiredCount * 2);
+                    acquired = Arrays.copyOf(acquired, acquiredCount * 2);
                 }
                 acquired[acquiredCount++] = s;
             }
@@ -97,7 +104,7 @@ public final class OreFast {
         /** {@code BulkSectionAccess.getBlockState}: AIR outside the build height. */
         BlockState state(int x, int y, int z) {
             LevelChunkSection s = section(x, y, z);
-            return s == null ? Blocks.AIR.defaultBlockState() : dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(s, x & 15, y & 15, z & 15);
+            return s == null ? Blocks.AIR.defaultBlockState() : StateReads.get(s, x & 15, y & 15, z & 15);
         }
 
         void close() {
@@ -113,11 +120,11 @@ public final class OreFast {
     }
 
     /** Exact {@code OreFeature.place}: the three random draws, the ocean-floor gate over the blob's columns (worldgen heightmap, read through the cursor), then {@link #doPlace}. */
-    public static boolean place(net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx, Ga2Region region) {
+    public static boolean place(FeaturePlaceContext<?> ctx, Ga2Region region) {
         return place(ctx.random(), ctx.origin(), (OreConfiguration) ctx.config(), region);
     }
 
-    /** {@link #place(net.minecraft.world.level.levelgen.feature.FeaturePlaceContext, Ga2Region)} without the context ({@code Fast.place}). */
+    /** {@link #place(FeaturePlaceContext, Ga2Region)} without the context ({@code Fast.place}). */
     public static boolean place(RandomSource random, BlockPos origin, OreConfiguration config, Ga2Region region) {
         float f = random.nextFloat() * (float) Math.PI;
         float f1 = (float) config.size / 8.0F;
@@ -135,14 +142,14 @@ public final class OreFast {
         int k1 = 2 * (2 + i);
         // a blob above every column of its box (upper ores, high in the air) fails the gate below on every column. The highest
         // column of each chunk the box covers answers that at once. The gate reads nothing else and changes nothing.
-        dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads reads = region.ga2$reads();
+        RegionReads reads = region.ga2$reads();
         if (reads != null) {
             int highest = Integer.MIN_VALUE;
             boolean known = true;
             for (int qx = k >> 4; known && qx <= (k + j1) >> 4; qx++) {
                 for (int qz = i1 >> 4; qz <= (i1 + j1) >> 4; qz++) {
                     int m = reads.oceanFloorMax(qx, qz);
-                    if (m == dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads.UNKNOWN) {
+                    if (m == RegionReads.UNKNOWN) {
                         known = false;
                         break;
                     }
@@ -156,12 +163,12 @@ public final class OreFast {
         }
         // the thread's cursor. The gate only reads heightmaps, and is done before doPlace.
         Cells cells = CELLS.get();
-        dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor cursor = cells.ownCursor.reset(region);
+        SectionCursor cursor = cells.ownCursor.reset(region);
         boolean gate = false;
         search:
         for (int l1 = k; l1 <= k + j1; l1++) {
             for (int i2 = i1; i2 <= i1 + j1; i2++) {
-                if (l <= cursor.height(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR_WG, l1, i2)) {
+                if (l <= cursor.height(Heightmap.Types.OCEAN_FLOOR_WG, l1, i2)) {
                     gate = true;
                     break search;
                 }
@@ -394,7 +401,7 @@ public final class OreFast {
             rows = new long[Math.max(n, rows.length * 2)];
             ROWS.set(rows);
         } else {
-            java.util.Arrays.fill(rows, 0, n, 0L);
+            Arrays.fill(rows, 0, n, 0L);
         }
         return rows;
     }
@@ -406,8 +413,8 @@ public final class OreFast {
         /** The thread's section access and position, reused by every placement. */
         final Sections ownSections = new Sections();
         final BlockPos.MutableBlockPos ownMutable = new BlockPos.MutableBlockPos();
-        final dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor ownCursor =
-            new dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor();
+        final SectionCursor ownCursor =
+            new SectionCursor();
         /** The spheres (four values each) and the squared quotients of a sphere's rows, grown as needed. */
         double[] spheres = new double[256];
         double[] ysq = new double[16];
@@ -469,7 +476,7 @@ public final class OreFast {
             int lx = bx & 15;
             int ly = by & 15;
             int lz = bz & 15;
-            BlockState state = dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(section, lx, ly, lz);
+            BlockState state = StateReads.get(section, lx, ly, lz);
             if (targets != null) {
                 int mask;
                 if (state == lastState) {
@@ -490,7 +497,7 @@ public final class OreFast {
                 }
             } else {
                 // By index, in the list's order. An iterator here was one object per block the ore visits.
-                java.util.List<OreConfiguration.TargetBlockState> targetStates = config.targetStates;
+                List<OreConfiguration.TargetBlockState> targetStates = config.targetStates;
                 for (int i = 0, n = targetStates.size(); i < n; i++) {
                     OreConfiguration.TargetBlockState target = targetStates.get(i);
                     if (target.target.test(state, random) && (shouldSkipAirCheck(random, discard) || !adjacentToAir(sections, bx, by, bz))) {
@@ -521,7 +528,7 @@ public final class OreFast {
             visited = new long[Math.max(words, visited.length * 2)];
             VISITED.set(visited);
         } else {
-            java.util.Arrays.fill(visited, 0, words, 0L);
+            Arrays.fill(visited, 0, words, 0L);
         }
         return visited;
     }

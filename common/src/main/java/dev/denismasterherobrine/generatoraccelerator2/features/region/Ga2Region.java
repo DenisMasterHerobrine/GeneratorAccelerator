@@ -1,9 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.region;
 
+import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import javax.annotation.Nullable;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.placement.PlacementContext;
 
 /**
  * What the feature fast paths need from a generation region, implemented by the {@code WorldGenRegion}
@@ -51,15 +57,15 @@ public interface Ga2Region {
     void ga2$onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState);
 
     /** The region's zoom cache for {@code BiomeManager.getBiome}, or null when its lookups go the vanilla way. */
-    @javax.annotation.Nullable
-    dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom ga2$zoom();
+    @Nullable
+    BiomeZoom ga2$zoom();
 
     /**
      * Every biome stored in the 3x3 chunks around the centre (each section's palette). This is a superset of what the zoom can
      * answer for a block its box covers ({@code BiomeZoom.covers}). Null when not known.
      */
-    @javax.annotation.Nullable
-    default net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>[] ga2$zoomBiomes() {
+    @Nullable
+    default Holder<Biome>[] ga2$zoomBiomes() {
         return null;
     }
 
@@ -68,13 +74,13 @@ public interface Ga2Region {
      * Optional.empty())}), made once for the region and handed out again (it holds only those three and changes nothing). Null
      * when the region keeps none.
      */
-    @javax.annotation.Nullable
-    default net.minecraft.world.level.levelgen.placement.PlacementContext ga2$placementContext(net.minecraft.world.level.chunk.ChunkGenerator generator) {
+    @Nullable
+    default PlacementContext ga2$placementContext(ChunkGenerator generator) {
         return null;
     }
 
     /** The region's block and fluid reads ({@link RegionReads}), or null when they go the vanilla way. */
-    @javax.annotation.Nullable
+    @Nullable
     default RegionReads ga2$reads() {
         return null;
     }

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import java.util.Arrays;
+import java.util.function.IntPredicate;
 
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
@@ -71,7 +72,7 @@ public final class ChunkCompare {
     }
 
     /** The first quart whose biome differs, or null. Ties are skipped ({@code tie} takes quart indices in y, x, z order). */
-    public static String biomes(ChunkAccess a, ChunkAccess b, java.util.function.IntPredicate tie) {
+    public static String biomes(ChunkAccess a, ChunkAccess b, IntPredicate tie) {
         int qx0 = a.getPos().x * 4, qz0 = a.getPos().z * 4, qy0 = a.getMinBuildHeight() >> 2;
         int quartsY = a.getHeight() / 4;
         boolean anyTie = false;

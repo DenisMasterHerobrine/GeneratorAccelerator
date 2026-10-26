@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.Fluids;
+import java.lang.reflect.Method;
 
 /**
  * The leaf rules of a tree's two passes, cheaper than asking each state ({@code TreeFast}).
@@ -94,7 +95,7 @@ final class LeafUpdates {
     };
 
     private static boolean declaresUpdateShape(Class<?> c) {
-        for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+        for (Method m : c.getDeclaredMethods()) {
             Class<?>[] p = m.getParameterTypes();
             if (p.length == 6 && p[0] == BlockState.class && p[1] == Direction.class && p[2] == BlockState.class && p[3] == LevelAccessor.class
                 && p[4] == BlockPos.class && p[5] == BlockPos.class && Names.mojangMethod(m.getName()).equals("updateShape")) {

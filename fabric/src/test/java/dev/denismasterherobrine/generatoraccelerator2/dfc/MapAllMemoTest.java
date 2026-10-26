@@ -3,14 +3,21 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.LazyInterpolation;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MapAllMemo;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import java.util.Arrays;
 import java.util.List;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseChunk;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -45,75 +52,75 @@ public class MapAllMemoTest {
 
     @Test
     void fastFillChangesNothing() {
-        long before = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.FILLS.sum();
+        long before = FastFill.FILLS.sum();
         for (TerrainHarness.Preset preset : TerrainHarness.Preset.values()) {
             for (long seed : new long[] { 1234567L, -42L }) {
                 TerrainHarness.World world = TerrainHarness.world(preset, seed);
                 for (int[] c : CHUNKS) {
                     ProtoChunk vanillaLoop;
                     try {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.ENABLED = false;
+                        FastFill.ENABLED = false;
                         vanillaLoop = world.noise(c[0], c[1]);
                     } finally {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.ENABLED = true;
+                        FastFill.ENABLED = true;
                     }
                     sameChunk(vanillaLoop, world.noise(c[0], c[1]), preset + " seed " + seed + " chunk " + c[0] + "," + c[1]);
                 }
             }
         }
         assertEquals(TerrainHarness.Preset.values().length * 2L * CHUNKS.length,
-            dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.FILLS.sum() - before, "chunks filled by FastFill");
+            FastFill.FILLS.sum() - before, "chunks filled by FastFill");
     }
 
     /** The whole-cell paths (all-air and all-solid cells from the corners, {@code CellBounds}) write what the per-block path writes. */
     @Test
     void cellClassificationChangesNothing() {
-        var fill = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.class;
-        long sky = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SKY.sum();
-        long solid = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SOLID.sum();
-        long solidVeins = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SOLID_VEINS.sum();
+        var fill = FastFill.class;
+        long sky = FastFill.CELLS_SKY.sum();
+        long solid = FastFill.CELLS_SOLID.sum();
+        long solidVeins = FastFill.CELLS_SOLID_VEINS.sum();
         for (TerrainHarness.Preset preset : TerrainHarness.Preset.values()) {
             for (long seed : new long[] { 1234567L, -42L }) {
                 TerrainHarness.World world = TerrainHarness.world(preset, seed);
                 for (int[] c : CHUNKS) {
                     ProtoChunk perBlock;
                     try {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CLASSIFY_CELLS = false;
+                        FastFill.CLASSIFY_CELLS = false;
                         perBlock = world.noise(c[0], c[1]);
                     } finally {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CLASSIFY_CELLS = true;
+                        FastFill.CLASSIFY_CELLS = true;
                     }
                     sameChunk(perBlock, world.noise(c[0], c[1]), preset + " seed " + seed + " chunk " + c[0] + "," + c[1]);
                 }
             }
         }
-        long skyNow = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SKY.sum() - sky;
-        long solidNow = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SOLID.sum() - solid;
-        long solidVeinsNow = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SOLID_VEINS.sum() - solidVeins;
+        long skyNow = FastFill.CELLS_SKY.sum() - sky;
+        long solidNow = FastFill.CELLS_SOLID.sum() - solid;
+        long solidVeinsNow = FastFill.CELLS_SOLID_VEINS.sum() - solidVeins;
         System.out.println("cells handled whole: " + skyNow + " air, " + solidNow + " solid, " + solidVeinsNow + " solid with the vein rule (" + fill.getSimpleName() + ")");
-        org.junit.jupiter.api.Assertions.assertTrue(skyNow > 0, "air cells");
-        org.junit.jupiter.api.Assertions.assertTrue(solidNow > 0, "solid cells");
-        org.junit.jupiter.api.Assertions.assertTrue(solidVeinsNow > 0, "solid cells with the vein rule");
+        Assertions.assertTrue(skyNow > 0, "air cells");
+        Assertions.assertTrue(solidNow > 0, "solid cells");
+        Assertions.assertTrue(solidVeinsNow > 0, "solid cells with the vein rule");
 
         // an aquifer in search mode (order-sensitive status fields) classifies neighbourhoods late. Air cells then come from that
         // late classification
         TerrainHarness.World searchWorld = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 99L);
-        dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath.registerRandomState(searchWorld.randomState.aquiferRandom(), false);
-        long skyBefore = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SKY.sum();
+        AquiferFastPath.registerRandomState(searchWorld.randomState.aquiferRandom(), false);
+        long skyBefore = FastFill.CELLS_SKY.sum();
         for (int[] c : CHUNKS) {
             ProtoChunk perBlock;
             try {
                 // every block searched, as vanilla does: no whole cells and no answers from known statuses
-                dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CLASSIFY_CELLS = false;
-                dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath.AIR_BOXES = false;
+                FastFill.CLASSIFY_CELLS = false;
+                AquiferFastPath.AIR_BOXES = false;
                 perBlock = searchWorld.noise(c[0], c[1]);
             } finally {
-                dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CLASSIFY_CELLS = true;
-                dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath.AIR_BOXES = true;
+                FastFill.CLASSIFY_CELLS = true;
+                AquiferFastPath.AIR_BOXES = true;
             }
             sameChunk(perBlock, searchWorld.noise(c[0], c[1]), "search-mode aquifer, chunk " + c[0] + "," + c[1]);
         }
-        org.junit.jupiter.api.Assertions.assertTrue(dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill.CELLS_SKY.sum() > skyBefore,
+        Assertions.assertTrue(FastFill.CELLS_SKY.sum() > skyBefore,
             "air cells with a search-mode aquifer (late classification)");
     }
 
@@ -125,10 +132,10 @@ public class MapAllMemoTest {
                 for (int[] c : CHUNKS) {
                     ProtoChunk perPoint;
                     try {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler.COLUMNS = false;
+                        BoundSampler.COLUMNS = false;
                         perPoint = world.noise(c[0], c[1]);
                     } finally {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler.COLUMNS = true;
+                        BoundSampler.COLUMNS = true;
                     }
                     sameChunk(perPoint, world.noise(c[0], c[1]), preset + " seed " + seed + " chunk " + c[0] + "," + c[1]);
                 }
@@ -144,10 +151,10 @@ public class MapAllMemoTest {
                 for (int[] c : CHUNKS) {
                     ProtoChunk perBlock;
                     try {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights.ENABLED = false;
+                        FillHeights.ENABLED = false;
                         perBlock = world.noise(c[0], c[1]);
                     } finally {
-                        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights.ENABLED = true;
+                        FillHeights.ENABLED = true;
                     }
                     sameChunk(perBlock, world.noise(c[0], c[1]), preset + " seed " + seed + " chunk " + c[0] + "," + c[1]);
                 }
@@ -170,7 +177,7 @@ public class MapAllMemoTest {
             for (int p = 0; p < da.palette().getSize(); p++) {
                 assertSame(da.palette().valueFor(p), db.palette().valueFor(p), "palette entry " + p + ", section " + s + ", " + where);
             }
-            org.junit.jupiter.api.Assertions.assertArrayEquals(da.storage().getRaw(), db.storage().getRaw(), "storage, section " + s + ", " + where);
+            Assertions.assertArrayEquals(da.storage().getRaw(), db.storage().getRaw(), "storage, section " + s + ", " + where);
             for (int y = 0; y < 16; y++) {
                 for (int z = 0; z < 16; z++) {
                     for (int x = 0; x < 16; x++) {
@@ -179,15 +186,15 @@ public class MapAllMemoTest {
                 }
             }
         }
-        for (var type : net.minecraft.world.level.levelgen.Heightmap.Types.values()) {
+        for (var type : Heightmap.Types.values()) {
             if (a.hasPrimedHeightmap(type) != b.hasPrimedHeightmap(type)) {
                 throw new AssertionError("heightmap presence " + type + ", " + where);
             }
             if (a.hasPrimedHeightmap(type)) {
-                org.junit.jupiter.api.Assertions.assertArrayEquals(a.getOrCreateHeightmapUnprimed(type).getRawData(), b.getOrCreateHeightmapUnprimed(type).getRawData(), "heightmap " + type + ", " + where);
+                Assertions.assertArrayEquals(a.getOrCreateHeightmapUnprimed(type).getRawData(), b.getOrCreateHeightmapUnprimed(type).getRawData(), "heightmap " + type + ", " + where);
             }
         }
-        org.junit.jupiter.api.Assertions.assertEquals(java.util.Arrays.deepToString(a.getPostProcessing()), java.util.Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
+        Assertions.assertEquals(Arrays.deepToString(a.getPostProcessing()), Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
     }
 
     @Test

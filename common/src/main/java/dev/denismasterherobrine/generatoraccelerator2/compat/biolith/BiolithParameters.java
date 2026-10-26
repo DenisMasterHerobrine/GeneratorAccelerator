@@ -7,6 +7,7 @@ import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import java.util.function.BiFunction;
 
 /**
  * Biolith's parameter list, read without Biolith's lock. On the first {@code MultiNoiseBiomeSource.parameters()} call,
@@ -45,11 +46,11 @@ public final class BiolithParameters {
      * Another mod's modifier of the {@code parameters()} return value, such as Spawn's restored biomes. GA2 applies it to
      * Biolith's built list the same way the method's own return applies it. Null when no modifier is installed.
      */
-    public static volatile java.util.function.BiFunction<MultiNoiseBiomeSource, Object, Object> finisher;
+    public static volatile BiFunction<MultiNoiseBiomeSource, Object, Object> finisher;
 
     /** {@code entries} as the method returns them, including other mods' modifier of the return value. */
     public static Object finish(MultiNoiseBiomeSource source, Object entries) {
-        java.util.function.BiFunction<MultiNoiseBiomeSource, Object, Object> f = finisher;
+        BiFunction<MultiNoiseBiomeSource, Object, Object> f = finisher;
         return f != null ? f.apply(source, entries) : entries;
     }
 

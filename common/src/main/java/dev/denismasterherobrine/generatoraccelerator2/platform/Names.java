@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
 import org.slf4j.Logger;
 
@@ -88,46 +89,6 @@ public final class Names {
         }
         String found = TABLE.findInHierarchy(owner, TABLE.methods, name + desc);
         return found != null ? found : name;
-    }
-
-    /**
-     * A method's name in the running game, without its descriptor. Returns the names of every method called {@code name} in
-     * {@code owner} and its supertypes. There is more than one name when such overloads map to different names.
-     */
-    public static Set<String> runtimeMethods(String owner, String name) {
-        if (TABLE == null) {
-            return Set.of(name);
-        }
-        Set<String> out = new HashSet<>();
-        TABLE.forHierarchy(owner, cls -> {
-            Map<String, String> members = TABLE.methods.get(cls);
-            if (members != null) {
-                for (Map.Entry<String, String> e : members.entrySet()) {
-                    String key = e.getKey();
-                    if (key.startsWith(name) && key.length() > name.length() && key.charAt(name.length()) == '(') {
-                        out.add(e.getValue());
-                    }
-                }
-            }
-        });
-        if (out.isEmpty()) {
-            out.add(name);
-        }
-        return out;
-    }
-
-    /** A method's name and descriptor ({@code "name(desc)ret"}, as GA2's tables write them) in the running game. */
-    public static String runtimeMethodKey(String owner, String key) {
-        if (TABLE == null) {
-            return key;
-        }
-        int paren = key.indexOf('(');
-        if (paren < 0) {
-            return key;
-        }
-        String name = key.substring(0, paren);
-        String desc = key.substring(paren);
-        return runtimeMethod(owner, name, desc) + runtimeDesc(desc);
     }
 
     /** A field's name in the running game, looked up in {@code owner} and its supertypes. */
@@ -275,7 +236,7 @@ public final class Names {
             return found[0];
         }
 
-        void forHierarchy(String owner, java.util.function.Consumer<String> action) {
+        void forHierarchy(String owner, Consumer<String> action) {
             Deque<String> queue = new ArrayDeque<>();
             Set<String> seen = new HashSet<>();
             queue.add(owner);

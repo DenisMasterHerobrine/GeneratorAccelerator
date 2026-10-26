@@ -10,6 +10,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -66,8 +67,8 @@ public class BiolithSearchBench {
         for (long[] q : queries) {
             flat.searchFittest(q[0], q[1], q[2], q[3], q[4], q[5], keys, u, p, ids, distance);
             flat.searchFittestColumns(q[0], q[1], q[2], q[3], q[4], q[5], keys, u, p, ids2, distance2);
-            org.junit.jupiter.api.Assertions.assertArrayEquals(ids, ids2);
-            org.junit.jupiter.api.Assertions.assertArrayEquals(distance, distance2);
+            Assertions.assertArrayEquals(ids, ids2);
+            Assertions.assertArrayEquals(distance, distance2);
             u = ids[0];
             p = ids[1];
         }

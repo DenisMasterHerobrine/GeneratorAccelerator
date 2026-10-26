@@ -5,12 +5,15 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import javax.annotation.Nullable;
+import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Rotation;
@@ -255,7 +258,7 @@ public final class EnhancedBeard {
         final Class<?> overrideNone, overrideSolidify, overrideReplace;
         final MethodHandle overrideState;
         /** Adaptations read so far, by identity: the same object every chunk. */
-        final Map<Object, Adaptation> adaptations = new java.util.concurrent.ConcurrentHashMap<>();
+        final Map<Object, Adaptation> adaptations = new ConcurrentHashMap<>();
 
         Access(Kind kind) throws ReflectiveOperationException {
             this.kind = kind;
@@ -420,8 +423,8 @@ public final class EnhancedBeard {
         }
     }
 
-    private static final Map<Kind, Access> ACCESS = new java.util.EnumMap<>(Kind.class);
-    private static final Map<Kind, Boolean> FAILED = new java.util.EnumMap<>(Kind.class);
+    private static final Map<Kind, Access> ACCESS = new EnumMap<>(Kind.class);
+    private static final Map<Kind, Boolean> FAILED = new EnumMap<>(Kind.class);
 
     @Nullable
     private static synchronized Access access(Kind kind) {
@@ -488,7 +491,7 @@ public final class EnhancedBeard {
     }
 
     private static void rewind(Iterator<?> it) {
-        if (it instanceof it.unimi.dsi.fastutil.objects.ObjectListIterator<?> li) {
+        if (it instanceof ObjectListIterator<?> li) {
             li.back(Integer.MAX_VALUE);
         }
     }

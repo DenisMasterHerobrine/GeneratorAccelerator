@@ -2,6 +2,8 @@ package dev.denismasterherobrine.generatoraccelerator2.beardifier;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.BeardifierChain;
+import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -10,7 +12,10 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 import javax.annotation.Nullable;
+import it.unimi.dsi.fastutil.objects.ObjectListIterator;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -127,7 +132,7 @@ public final class BeardExtras {
                     tfField = lookup.unreflectGetter(f);
                     Class<?> hooks = Class.forName(s.owner().replace('/', '.'), true, BeardExtras.class.getClassLoader());
                     tfDensity = MethodHandles.publicLookup().findStatic(hooks, "getCustomDensity",
-                        MethodType.methodType(double.class, double.class, DensityFunction.FunctionContext.class, it.unimi.dsi.fastutil.objects.ObjectListIterator.class));
+                        MethodType.methodType(double.class, double.class, DensityFunction.FunctionContext.class, ObjectListIterator.class));
                 } else {
                     Method m = Beardifier.class.getDeclaredMethod(s.name(), DensityFunction.FunctionContext.class, CallbackInfoReturnable.class);
                     m.setAccessible(true);
@@ -155,7 +160,7 @@ public final class BeardExtras {
         for (Provider p : PROVIDERS) {
             if (p.mixin().equals(mixin) && p.data() == null) {
                 // the mixin's own method, merged into the beardifier. It is private, so it is found by name. Mixin may prefix the name.
-                for (Method m : dev.denismasterherobrine.generatoraccelerator2.compat.Reflect.declaredMethods(Beardifier.class)) {
+                for (Method m : Reflect.declaredMethods(Beardifier.class)) {
                     if (m.getName().endsWith(p.pieces()) && m.getParameterCount() == 0 && m.getReturnType() == boolean.class) {
                         m.setAccessible(true);
                         return new Lists(MethodHandles.lookup().unreflect(m).asType(MethodType.methodType(boolean.class, Beardifier.class)), null);
@@ -209,7 +214,7 @@ public final class BeardExtras {
             try {
                 double v = sum;
                 if (tf) {
-                    v = (double) chain.tfDensity.invoke(v, context, (it.unimi.dsi.fastutil.objects.ObjectListIterator<?>) chain.tfField.invoke(beardifier));
+                    v = (double) chain.tfDensity.invoke(v, context, (ObjectListIterator<?>) chain.tfField.invoke(beardifier));
                 }
                 Callback[] callbacks = chain.callbacks;
                 for (int i = 0; i < callbacks.length; i++) {
@@ -223,10 +228,8 @@ public final class BeardExtras {
                     }
                 }
                 return v;
-            } catch (RuntimeException | Error e) {
-                throw e;
             } catch (Throwable t) {
-                throw new IllegalStateException(t);
+                throw Reflect.unchecked(t);
             }
         }
     }
@@ -271,10 +274,8 @@ public final class BeardExtras {
             }
             boolean vanilla = !extras;
             return new Plan(c, call, tf, vanilla, vanilla && outerNone);
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
     }
 
@@ -299,10 +300,8 @@ public final class BeardExtras {
                 inner = h;
             }
             return (double) h.invoke(beardifier, context);
-        } catch (RuntimeException | Error e) {
-            throw e;
         } catch (Throwable t) {
-            throw new IllegalStateException(t);
+            throw Reflect.unchecked(t);
         }
     }
 
@@ -314,12 +313,12 @@ public final class BeardExtras {
      * pieces, a provider GA2 cannot read (Moog's Structures), or overrides the mask could not hold. The test hook's chunk when set.
      */
     @Nullable
-    public static EnhancedBeard.Chunk enhancedFor(Beardifier beardifier, net.minecraft.world.level.ChunkPos pos) {
-        java.util.function.Function<net.minecraft.world.level.ChunkPos, EnhancedBeard.Chunk> test = EnhancedBeard.testChunks;
+    public static EnhancedBeard.Chunk enhancedFor(Beardifier beardifier, ChunkPos pos) {
+        Function<ChunkPos, EnhancedBeard.Chunk> test = EnhancedBeard.testChunks;
         if (test != null) {
             return test.apply(pos);
         }
-        if (!dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.beardCullingAllowed()) {
+        if (!MixinTargets.beardCullingAllowed()) {
             return null;
         }
         Chain c = chain();

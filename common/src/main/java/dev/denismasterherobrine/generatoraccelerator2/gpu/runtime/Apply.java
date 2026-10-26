@@ -2,8 +2,10 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import net.minecraft.core.BlockPos;
@@ -157,7 +159,7 @@ public final class Apply {
      * surface's order (columns x then z, y down), then the two worldgen heightmaps. Returns false, with nothing written, when a section
      * cannot be written as the GPU packed it.
      */
-    public static boolean surface(GpuWorldgen wg, ChunkAccess chunk, dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches.Result r) {
+    public static boolean surface(GpuWorldgen wg, ChunkAccess chunk, SurfaceBatches.Result r) {
         if (!fits(wg, chunk)) {
             return false;
         }
@@ -372,7 +374,7 @@ public final class Apply {
             if (injector == null) {
                 return base;
             }
-            return dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.inject(injector, x, y, z, s,
+            return LithostitchedGpuBiomes.inject(injector, x, y, z, s,
                 point != null ? point : s.sample(x, y, z), base);
         };
         chunk.fillBiomesFromNoise(resolver, sampler);

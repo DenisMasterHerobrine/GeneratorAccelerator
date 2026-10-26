@@ -12,6 +12,7 @@ import net.minecraft.core.HolderGetter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.CubicSpline;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
@@ -28,7 +29,7 @@ import org.junit.jupiter.api.Test;
  */
 public class RegionColumnTest {
     private static DensityFunction.NoiseHolder noise(RandomState state, HolderGetter<NormalNoise.NoiseParameters> noises,
-                                                     net.minecraft.resources.ResourceKey<NormalNoise.NoiseParameters> key) {
+                                                     ResourceKey<NormalNoise.NoiseParameters> key) {
         Holder<NormalNoise.NoiseParameters> holder = noises.getOrThrow(key);
         return new DensityFunction.NoiseHolder(holder, state.getOrCreateNoise(key));
     }

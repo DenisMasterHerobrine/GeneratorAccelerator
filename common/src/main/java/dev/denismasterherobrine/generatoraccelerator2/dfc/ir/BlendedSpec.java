@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.noise.FusedNoise;
 import net.minecraft.world.level.levelgen.synth.BlendedNoise;
 import net.minecraft.world.level.levelgen.synth.ImprovedNoise;
 import net.minecraft.world.level.levelgen.synth.PerlinNoise;
+import java.util.Arrays;
 
 /** Flattened {@link BlendedNoise}; {@link #compute} mirrors the vanilla method operation by operation. */
 public final class BlendedSpec {
@@ -122,12 +123,12 @@ public final class BlendedSpec {
         }
 
         public void prepare(int bx, int bz) {
-            java.util.Arrays.fill(mTy, Integer.MIN_VALUE);
-            java.util.Arrays.fill(nTy, Integer.MIN_VALUE);
-            java.util.Arrays.fill(xTy, Integer.MIN_VALUE);
-            java.util.Arrays.fill(mMiss, false);
-            java.util.Arrays.fill(nMiss, false);
-            java.util.Arrays.fill(xMiss, false);
+            Arrays.fill(mTy, Integer.MIN_VALUE);
+            Arrays.fill(nTy, Integer.MIN_VALUE);
+            Arrays.fill(xTy, Integer.MIN_VALUE);
+            Arrays.fill(mMiss, false);
+            Arrays.fill(nMiss, false);
+            Arrays.fill(xMiss, false);
             double d0 = (double) bx * s.xzMultiplier;
             double d2 = (double) bz * s.xzMultiplier;
             double d3 = d0 / s.xzFactor;

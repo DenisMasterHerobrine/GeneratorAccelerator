@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFlags;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -38,7 +39,7 @@ public abstract class SectionWriteMixin {
     @Unique
     private BlockState ga2$setBlockState(int x, int y, int z, BlockState state, boolean useLocks) {
         BlockState old = useLocks ? this.states.getAndSet(x, y, z, state) : this.states.getAndSetUnchecked(x, y, z, state);
-        if ((dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED && GA2$HOOK.allowed())) {
+        if ((StateFast.ENABLED && GA2$HOOK.allowed())) {
             int fo = StateFlags.of(old);
             int fn = StateFlags.of(state);
             if ((fo & StateFlags.NON_EMPTY) != 0) {

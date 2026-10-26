@@ -2,7 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.sun.management.ThreadMXBean;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
+import dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.ChunkCompare;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.features.ChunkGeneratorFeaturesAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
@@ -10,6 +12,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -30,7 +34,9 @@ import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.FeatureSorter;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
@@ -44,6 +50,7 @@ import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.ticks.ProtoChunkTicks;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import java.lang.management.ManagementFactory;
 
 /**
  * Whole decorations on real terrain (biomes, noise, surface and carvers of the overworld preset, no structures). A square of chunks
@@ -375,7 +382,7 @@ public class DecorationGridTest {
         int side = Integer.getInteger("ga2.decor.side", 36);
         int reps = Integer.getInteger("ga2.decor.reps", 6);
         String ab = System.getProperty("ga2.decor.ab");
-        java.util.function.Consumer<Boolean> toggle = SWITCHES.get(ab);
+        Consumer<Boolean> toggle = SWITCHES.get(ab);
         assertTrue(toggle != null, "no switch " + ab + " among " + SWITCHES.keySet());
         TerrainHarness.World w = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, seed);
         ExecutorService pool = Executors.newFixedThreadPool(Math.max(2, Runtime.getRuntime().availableProcessors() - 1));
@@ -426,7 +433,7 @@ public class DecorationGridTest {
 
     static double median(List<Long> v) {
         List<Long> s = new ArrayList<>(v);
-        java.util.Collections.sort(s);
+        Collections.sort(s);
         int n = s.size();
         return n == 0 ? 0 : (n % 2 == 1 ? s.get(n / 2) : (s.get(n / 2 - 1) + s.get(n / 2)) / 2.0);
     }
@@ -440,10 +447,10 @@ public class DecorationGridTest {
             for (int s = 0; s < sections.length; s++) {
                 LevelChunkSection sec = src.getSection(s);
                 @SuppressWarnings("unchecked")
-                var biomes = ((net.minecraft.world.level.chunk.PalettedContainer<Holder<Biome>>) sec.getBiomes()).copy();
+                var biomes = ((PalettedContainer<Holder<Biome>>) sec.getBiomes()).copy();
                 sections[s] = new LevelChunkSection(HarnessWorld.cloneStates(sec.getStates()), biomes);
             }
-            ProtoChunk c = new ProtoChunk(src.getPos(), net.minecraft.world.level.chunk.UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(),
+            ProtoChunk c = new ProtoChunk(src.getPos(), UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(),
                 new ProtoChunkTicks<>(), g.w.heights, g.w.registries.biomes, null);
             for (Map.Entry<Heightmap.Types, Heightmap> e : src.getHeightmaps()) {
                 c.setHeightmap(e.getKey(), e.getValue().getRawData().clone());
@@ -455,10 +462,10 @@ public class DecorationGridTest {
     }
 
     /** Switches the cost bench compares in one run ({@code -Dga2.decor.ab=<name>}): each square is decorated with the switch off and on. */
-    static final Map<String, java.util.function.Consumer<Boolean>> SWITCHES = Map.of("treeBees", on -> dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees.ENABLED = on);
+    static final Map<String, Consumer<Boolean>> SWITCHES = Map.of("treeBees", on -> TreeBees.ENABLED = on);
 
     /** Bytes the calling thread allocated so far (HotSpot's per-thread counter, exact up to the TLAB in use). */
-    private static final com.sun.management.ThreadMXBean ALLOCATED = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+    private static final ThreadMXBean ALLOCATED = (ThreadMXBean) ManagementFactory.getThreadMXBean();
 
     /** The {@code k} largest of a name-to-bytes map, as KB per chunk. */
     static String topBytes(Map<String, Long> m, int chunks, int k) {

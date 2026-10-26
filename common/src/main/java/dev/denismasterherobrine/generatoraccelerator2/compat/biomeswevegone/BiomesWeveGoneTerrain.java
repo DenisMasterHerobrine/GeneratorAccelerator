@@ -1,14 +1,20 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.biomeswevegone;
 
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepHandlers;
 import dev.denismasterherobrine.generatoraccelerator2.surface.NoiseBiomeMemo;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.StaticCache2D;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.status.ChunkStep;
 import net.minecraft.world.level.chunk.status.WorldGenContext;
@@ -46,13 +52,13 @@ public final class BiomesWeveGoneTerrain {
         StepHandlers.register(BiomesWeveGoneMixins.STEP, BiomesWeveGoneTerrain::handlers);
         // the handler writes a column only where the biome at its land height (through the biome source and vanilla's zoom) is one
         // of these two. The GPU's surface leaves chunks near them to the CPU, which builds the surface after the handler
-        dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.declareStepWriter(BiomesWeveGoneMixins.STEP, java.util.Set.of(
+        SurfaceSpec.declareStepWriter(BiomesWeveGoneMixins.STEP, Set.of(
             biome("crag_gardens"), biome("basalt_barrera")));
     }
 
-    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.biome.Biome> biome(String path) {
-        return net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.BIOME,
-            net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+    private static ResourceKey<Biome> biome(String path) {
+        return ResourceKey.create(Registries.BIOME,
+            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     /** The lock of a chunk's generator height cache ({@code mixin.ChunkAccessHeightsMixin}). */

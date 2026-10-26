@@ -11,6 +11,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.IntConsumer;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -115,7 +117,7 @@ public final class ChunkPackets {
      * the system has not scheduled. In singleplayer with ModernFix, the server thread and the worker pool run below
      * normal priority, and a thread of that priority can wait seconds for its turn while the client renders.
      */
-    public static boolean forEachParallel(int n, java.util.function.IntConsumer task) {
+    public static boolean forEachParallel(int n, IntConsumer task) {
         AtomicInteger next = new AtomicInteger();
         AtomicInteger left = new AtomicInteger(n);
         Runnable worker = () -> {
@@ -137,7 +139,7 @@ public final class ChunkPackets {
         }
         worker.run();
         while (left.get() > 0) {
-            java.util.concurrent.locks.LockSupport.parkNanos(20_000L);
+            LockSupport.parkNanos(20_000L);
         }
         return true;
     }

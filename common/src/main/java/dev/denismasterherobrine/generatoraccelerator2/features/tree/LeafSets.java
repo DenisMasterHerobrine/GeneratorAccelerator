@@ -3,13 +3,14 @@ package dev.denismasterherobrine.generatoraccelerator2.features.tree;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Random;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 /**
  * The seven distance sets of {@code TreeFeature.updateLeaves}. Vanilla keeps them as {@code HashSet<BlockPos>}s and takes the
- * first element again and again. These sets keep "the first element" equal to the one {@code java.util.HashSet} would give,
+ * first element again and again. These sets keep "the first element" equal to the one {@code HashSet} would give,
  * without its cost. A {@code HashSet} iterator finds its first element by scanning the table from bucket 0, so vanilla's loop
  * rescans the emptied low buckets on every step.
  *
@@ -331,12 +332,12 @@ final class LeafSets {
     }
 
     /**
-     * These sets against {@code java.util.HashSet<BlockPos>}: {@code runs} random runs of {@code ops} adds and takes over all seven
+     * These sets against {@code HashSet<BlockPos>}: {@code runs} random runs of {@code ops} adds and takes over all seven
      * sets, in boxes near the origin (where bins collide enough to reach tree bins) and far out. Null when every take matched.
      * {@code handedOver[0]}, when given, counts the sets that went to a real HashSet.
      */
     static String check(long seed, int runs, int ops, int[] handedOver) {
-        java.util.Random random = new java.util.Random(seed);
+        Random random = new Random(seed);
         LeafSets sets = new LeafSets();
         for (int run = 0; run < runs; run++) {
             boolean near = (run & 1) == 0;

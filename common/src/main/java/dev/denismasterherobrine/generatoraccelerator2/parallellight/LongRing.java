@@ -1,5 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.parallellight;
 
+import java.util.NoSuchElementException;
+
 /**
  * A first-in first-out queue of longs that only grows. fastutil's {@code LongArrayFIFOQueue} shrinks its array whenever it falls to a
  * quarter full and grows it again on the next burst. A propagation worker fills and drains its queue once per batch, so that queue
@@ -40,7 +42,7 @@ final class LongRing {
 
     long dequeueLong() {
         if (size == 0) {
-            throw new java.util.NoSuchElementException();
+            throw new NoSuchElementException();
         }
         long v = a[head];
         head = (head + 1) & (a.length - 1);

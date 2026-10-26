@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import net.minecraft.core.HolderLookup;
@@ -19,6 +20,8 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.NoiseRouter;
+import net.minecraft.world.level.levelgen.Noises;
 import net.minecraft.world.level.levelgen.RandomState;
 import org.junit.jupiter.api.Test;
 
@@ -181,21 +184,21 @@ public class AquiferExactnessTest {
         long conflicts = AquiferFastPath.CELLS_CONFLICT.sum() - conflictBefore;
         assertTrue(checked > 0, "no aquifer checked its cells");
         assertTrue(modeSeen[AquiferFastPath.CLASSIFY] > 0 && modeSeen[AquiferFastPath.SEARCH] > 0 && conflicts > 0,
-            "both outcomes of the check must be exercised: modes " + java.util.Arrays.toString(modeSeen) + ", conflicts " + conflicts);
+            "both outcomes of the check must be exercised: modes " + Arrays.toString(modeSeen) + ", conflicts " + conflicts);
         System.out.println("AquiferExactnessTest: " + blocks + " blocks and queries identical to vanilla with a column-cached floodedness ("
             + checked + " aquifers checked, " + conflicts + " kept vanilla's order)");
     }
 
     /** The preset's floodedness wrapped as Regions Unexplored 0.6 does, with a weight that is positive where an xz noise exceeds {@code threshold}. */
     static NoiseGeneratorSettings withColumnCachedFloodedness(NoiseGeneratorSettings s, HolderLookup.Provider lookup, double threshold) {
-        net.minecraft.world.level.levelgen.NoiseRouter r = s.noiseRouter();
+        NoiseRouter r = s.noiseRouter();
         DensityFunction weight = DensityFunctions.add(DensityFunctions.constant(-threshold), DensityFunctions.noise(
-            lookup.lookupOrThrow(Registries.NOISE).getOrThrow(net.minecraft.world.level.levelgen.Noises.SURFACE), 1.0, 0.0));
+            lookup.lookupOrThrow(Registries.NOISE).getOrThrow(Noises.SURFACE), 1.0, 0.0));
         DensityFunction below = DensityFunctions.rangeChoice(DensityFunctions.yClampedGradient(-4064, 4062, -4064.0, 4062.0), -4064.0, 0.0,
             DensityFunctions.mul(DensityFunctions.constant(5.0), weight), DensityFunctions.constant(0.0));
         DensityFunction inferno = DensityFunctions.flatCache(DensityFunctions.cache2d(below.clamp(0.0, 1.0)));
         DensityFunction flood = DensityFunctions.rangeChoice(inferno, 0.001, 64.0, DensityFunctions.constant(1.0), r.fluidLevelFloodednessNoise());
-        net.minecraft.world.level.levelgen.NoiseRouter router = new net.minecraft.world.level.levelgen.NoiseRouter(r.barrierNoise(),
+        NoiseRouter router = new NoiseRouter(r.barrierNoise(),
             flood, r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(), r.vegetation(), r.continents(), r.erosion(),
             r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), r.finalDensity(), r.veinToggle(), r.veinRidged(), r.veinGap());
         return new NoiseGeneratorSettings(s.noiseSettings(), s.defaultBlock(), s.defaultFluid(), router, s.surfaceRule(), s.spawnTarget(), s.seaLevel(),
@@ -209,13 +212,13 @@ public class AquiferExactnessTest {
 
     /** The y-reading {@code cache_2d} in the surface level function, and in the final density too when {@code shared}. */
     public static NoiseGeneratorSettings withYCache(NoiseGeneratorSettings s, boolean shared) {
-        net.minecraft.world.level.levelgen.NoiseRouter r = s.noiseRouter();
+        NoiseRouter r = s.noiseRouter();
         // equal markers: NoiseChunk.wrap gives both the same Cache2D, so the fill and the surface levels share it
         DensityFunction initial = DensityFunctions.add(r.initialDensityWithoutJaggedness(),
             DensityFunctions.mul(DensityFunctions.constant(0.25), DensityFunctions.cache2d(DensityFunctions.yClampedGradient(-64, 320, 1.0, -1.0))));
         DensityFunction fin = !shared ? r.finalDensity() : DensityFunctions.add(r.finalDensity(),
             DensityFunctions.mul(DensityFunctions.constant(0.02), DensityFunctions.cache2d(DensityFunctions.yClampedGradient(-64, 320, 1.0, -1.0))));
-        net.minecraft.world.level.levelgen.NoiseRouter router = new net.minecraft.world.level.levelgen.NoiseRouter(r.barrierNoise(),
+        NoiseRouter router = new NoiseRouter(r.barrierNoise(),
             r.fluidLevelFloodednessNoise(), r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(), r.vegetation(), r.continents(), r.erosion(),
             r.depth(), r.ridges(), initial, fin, r.veinToggle(), r.veinRidged(), r.veinGap());
         return new NoiseGeneratorSettings(s.noiseSettings(), s.defaultBlock(), s.defaultFluid(), router, s.surfaceRule(), s.spawnTarget(), s.seaLevel(),

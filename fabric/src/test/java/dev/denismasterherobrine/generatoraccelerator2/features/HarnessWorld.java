@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import com.google.common.collect.ImmutableList;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.VanillaTags;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.Block;
@@ -83,7 +84,7 @@ public final class HarnessWorld {
         }
 
         Registries2() {
-            dev.denismasterherobrine.generatoraccelerator2.testutil.VanillaTags.bind();
+            VanillaTags.bind();
             this.lookup = VanillaRegistries.createLookup();
             MappedRegistry<Biome> reg = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
             lookup.lookupOrThrow(Registries.BIOME).listElements().forEach(ref -> reg.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));

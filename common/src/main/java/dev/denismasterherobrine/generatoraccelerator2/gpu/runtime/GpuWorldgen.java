@@ -1,45 +1,81 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
+import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuConfig;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.BeardKernelAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.GpuBiomeSourceInspectMixin;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.JvmStalls;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Function;
+import java.util.function.IntConsumer;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
+import java.io.IOException;
+import javax.annotation.Nullable;
 
 /**
  * The GPU path for one dimension's generator and {@code RandomState}. It holds the generated program, the program's constant
@@ -56,13 +92,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     public enum State { PREPARING, READY, FAILED }
 
     /** The program's view of one chunk's structures: pieces (8 ints each) and junctions (3 ints each), as the GPU's beardifier reads them. */
-    public record Beard(int[] pieces, int[] junctions, @javax.annotation.Nullable int[] liquids,
-                        @javax.annotation.Nullable dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Chunk enhanced, int overrideId) {
+    public record Beard(int[] pieces, int[] junctions, @Nullable int[] liquids,
+                        @Nullable EnhancedBeard.Chunk enhanced, int overrideId) {
         public Beard(int[] pieces, int[] junctions) {
             this(pieces, junctions, null, null, -1);
         }
 
-        public Beard(int[] pieces, int[] junctions, @javax.annotation.Nullable int[] liquids) {
+        public Beard(int[] pieces, int[] junctions, @Nullable int[] liquids) {
             this(pieces, junctions, liquids, null, -1);
         }
 
@@ -182,7 +218,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Tests only: the GPU hands its answers to the CPU's lookups instead of deciding the biomes. Read when a dimension is prepared. */
     public static volatile boolean testHand;
     /** Tests only: the regions of a parameter list, in place of TerraBlender's. Read when a dimension is prepared. */
-    public static volatile java.util.function.Function<Climate.ParameterList<Holder<Biome>>, BiomeRegions> testRegions;
+    public static volatile Function<Climate.ParameterList<Holder<Biome>>, BiomeRegions> testRegions;
     /** TerraBlender's regions of the biome source, or null when the source searches the one tree. */
     private BiomeRegions tbRegions;
     /** The trees' leaves by the GPU's node index (null for inner nodes). */
@@ -265,7 +301,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     public static final LongAdder RECHECKED_CELLS = new LongAdder();
     public static final LongAdder RECHECKED_CORNERS = new LongAdder();
     /** Listed cells by reason ({@link ClEmitter#RECHECK_REASONS}). */
-    public static final LongAdder[] RECHECK_REASONS = java.util.stream.Stream.generate(LongAdder::new).limit(ClEmitter.RECHECK_REASONS.length).toArray(LongAdder[]::new);
+    public static final LongAdder[] RECHECK_REASONS = Stream.generate(LongAdder::new).limit(ClEmitter.RECHECK_REASONS.length).toArray(LongAdder[]::new);
     public static final LongAdder RECHECK_OVERFLOWS = new LongAdder();
     /** Latencies. Region: launch until its biomes reach the host. Queue: a noise request's wait for its batch. Batch: launch to results. */
     public static final Lat REGION_LAT = new Lat(), QUEUE_LAT = new Lat(), BATCH_LAT = new Lat();
@@ -275,7 +311,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** The program's parts ({@link #parts}). 0 where a part is not built yet. */
     long[] programs = new long[0];
     /** Each kernel's part. */
-    private final java.util.Map<String, Integer> kernelPart = new java.util.HashMap<>();
+    private final Map<String, Integer> kernelPart = new HashMap<>();
     /** The parts still building. Null once every part is taken. */
     private ProgramCache.Parts building;
     /** The surface part's index, or -1. It is taken after the dimension is ready ({@link #prepareSurface}). */
@@ -351,13 +387,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     // ---- setup ----------------------------------------------------------------------------------------------------
 
     /** The generator's global fluid picker, when known before {@link #prepare} (null: vanilla's). */
-    public net.minecraft.world.level.levelgen.Aquifer.FluidPicker fluidPicker;
+    public Aquifer.FluidPicker fluidPicker;
     /** {@link #fluidPicker} as the program writes it ({@link PickerShape}), or null for vanilla's. */
-    private java.util.List<int[]> pickerIntervals;
+    private List<int[]> pickerIntervals;
     /** The settings' default fluid is lava ({@link ClEmitter#fluidLava}). */
     private boolean fluidLava;
     /** The dimension's height, when known before {@link #prepare}. The noise range is clamped to it, as a NoiseChunk clamps it. */
-    public net.minecraft.world.level.LevelHeightAccessor levelHeights;
+    public LevelHeightAccessor levelHeights;
 
     /** Builds the program and its tables. Throws {@link ClEmitter.Unsupported} (or an OpenCL error) when the GPU cannot do this world. */
     void prepare(BiomeSource source) {
@@ -399,10 +435,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (aquifers && fluid != Blocks.WATER.defaultBlockState() && fluid != Blocks.LAVA.defaultBlockState()) {
             throw new ClEmitter.Unsupported("an aquifer with " + fluid + " as the default fluid");
         }
-        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.decideHooks();
-        if (aquifers && !dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferVanilla()) {
+        GpuSteps.decideHooks();
+        if (aquifers && !MixinTargets.aquiferVanilla()) {
             // the program decides every block's aquifer as vanilla's code does (YUNG's Better Caves changes it)
-            throw new ClEmitter.Unsupported("other mods change the aquifer " + dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferChanges());
+            throw new ClEmitter.Unsupported("other mods change the aquifer " + MixinTargets.aquiferChanges());
         }
         liquidRegions = aquifers && LiquidRegions.active() && LiquidRegions.usable();
         fluidLava = fluid == Blocks.LAVA.defaultBlockState();
@@ -435,7 +471,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             handsBiomes = handOff == null;
         }
         targetsOn = biomesOff == null && biomeInjector != null || handsBiomes;
-        String noiseOff = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps.noiseHooksOff();
+        String noiseOff = GpuSteps.noiseHooksOff();
         if (noiseOff != null && biomesOff != null && !handsBiomes) {
             // the GPU would never be asked for noise or biomes. The surface reads the GPU's terrain, so it would not be asked either.
             // Skip the program, its build on a CPU core and its device memory.
@@ -460,14 +496,14 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             surfaceOff = "no aquifers (no surface levels on the GPU)";
         } else if (surfaceGenerator == null) {
             surfaceOff = "no generator";
-        } else if ((surfaceOff = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob.disallowed()) != null) {
+        } else if ((surfaceOff = GpuSurfaceJob.disallowed()) != null) {
             // the surface step would never ask. Skip the surface program and its build time.
         } else {
             try {
-                surfaceSpec = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec(surfaceGenerator, settings, randomState, Arrays.asList(states),
+                surfaceSpec = new SurfaceSpec(surfaceGenerator, settings, randomState, Arrays.asList(states),
                     biomeList, worldSeed, minY, height, levelHeights);
                 surfaceOff = null;
-            } catch (dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.Unsupported e) {
+            } catch (SurfaceSpec.Unsupported e) {
                 surfaceOff = e.getMessage();
             }
         }
@@ -510,10 +546,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         String dump = System.getProperty("generatoraccelerator2.gpu.dumpSource");
         if (dump != null) {
             try {
-                java.nio.file.Path dir = java.nio.file.Path.of(dump);
-                java.nio.file.Files.createDirectories(dir);
-                java.nio.file.Files.writeString(dir.resolve(Integer.toHexString(src.hashCode()) + ".cl"), src);
-            } catch (java.io.IOException e) {
+                Path dir = Path.of(dump);
+                Files.createDirectories(dir);
+                Files.writeString(dir.resolve(Integer.toHexString(src.hashCode()) + ".cl"), src);
+            } catch (IOException e) {
                 // a debugging aid only
             }
         }
@@ -589,7 +625,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         bk = cl.createBuffer(device.context, ro, floats(beardKernel));
         checkExterns(g);
         if (surfaceSpec != null && surfacePart < 0) {
-            surfaces = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue,
+            surfaces = new SurfaceBatches(cl, device.context, device.queue, device.hostQueue,
                 programs[kernelPart.get("k_sbuild")], surfaceSpec, height, perm, od, oi, of, device::wake);
             surfaces.spin = debugSpin();
         }
@@ -686,7 +722,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         try {
             long prog = b.take(surfacePart, new StringBuilder());
             surfaceReadyMs = b.readyMs[surfacePart];
-            var s = new dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches(cl, device.context, device.queue, device.hostQueue, prog, surfaceSpec,
+            var s = new SurfaceBatches(cl, device.context, device.queue, device.hostQueue, prog, surfaceSpec,
                 height, perm, od, oi, of, device::wake);
             s.spin = debugSpin();
             CompletableFuture<Void> published = new CompletableFuture<>();
@@ -699,7 +735,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                     surfaces = s;
                     surfaceOff = null;
                     GpuDevice.LOGGER.info("{}: surface program ready {} s after the build started ({}) -> surface on GPU", name,
-                        String.format(java.util.Locale.ROOT, "%.1f", surfaceReadyMs / 1e3), b.how[surfacePart]);
+                        String.format(Locale.ROOT, "%.1f", surfaceReadyMs / 1e3), b.how[surfacePart]);
                 }
                 building = null;
                 published.complete(null);
@@ -722,7 +758,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         for (var e : g.externOffsets.entrySet()) {
             int index = e.getKey(), n = 2048;
             int[] off = e.getValue();
-            java.util.Random r = new java.util.Random(0x657874L + index);
+            Random r = new Random(0x657874L + index);
             double[] xyz = new double[n * 3];
             for (int i = 0; i < n; i++) {
                 double span = i < n / 2 ? 4096.0 : 3.0e7;
@@ -736,8 +772,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 }
             }
             // each kind's function has a test kernel. FastNoiseLite's returns floats, Lithostitched's cellular function doubles
-            var form = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.gpu(index);
-            boolean wide = form.kind() == dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.GpuForm.LITHO_CELLULAR;
+            var form = ExternSamplers.gpu(index);
+            boolean wide = form.kind() == ExternSamplers.GpuForm.LITHO_CELLULAR;
             int size = wide ? 8 : 4;
             long k = kernel(wide ? "k_litho_cellular_test" : "k_fnl_cellular_test");
             long in = cl.createBuffer(device.context, ClApi.MEM_READ_ONLY, doubles(xyz));
@@ -752,10 +788,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 cl.argInt(k, 6, n);
                 cl.argMem(k, 7, out);
                 cl.releaseEvent(cl.launch(device.queue, k, n, 64));
-                java.nio.ByteBuffer b = java.nio.ByteBuffer.allocateDirect(n * size).order(java.nio.ByteOrder.nativeOrder());
+                ByteBuffer b = ByteBuffer.allocateDirect(n * size).order(ByteOrder.nativeOrder());
                 cl.releaseEvent(cl.read(device.queue, out, true, 0, b));
                 for (int i = 0; i < n; i++) {
-                    double sampled = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.sample(index, xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]);
+                    double sampled = ExternSamplers.sample(index, xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]);
                     double want = wide ? sampled : (double) (float) sampled;
                     double got = wide ? b.getDouble(i * 8) : (double) b.getFloat(i * 4);
                     if (Double.doubleToRawLongBits(want) != Double.doubleToRawLongBits(got)) {
@@ -792,7 +828,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     }
 
     private ClEmitter emitter(ProgramSet set, Node cellRoot, boolean aquifers, boolean veins, int motion, int nonAir, int fluids) {
-        List<dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec> specs = set.specs();
+        List<NoiseSpec> specs = set.specs();
         var sf = surfaceSpec;
         if (sf != null) {
             // the surface's noises after the router's, in the same tables
@@ -835,15 +871,15 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
         BiomeSource outer = source;
         BiomeSource injector = null;
-        if (dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.isInjector(source)) {
+        if (LithostitchedGpuBiomes.isInjector(source)) {
             // Lithostitched's injectors run on the CPU after the GPU's search, with the GPU's climate points
-            MultiNoiseBiomeSource base = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.base(source);
+            MultiNoiseBiomeSource base = LithostitchedGpuBiomes.base(source);
             if (base == null) {
                 return "Lithostitched's biome injectors over a biome source other than vanilla's multi-noise source";
             }
             if (!hand) {
                 Holder<Biome> any = base.possibleBiomes().iterator().next();
-                if (!dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.takesHandedLookups(source, randomState.sampler(), any)) {
+                if (!LithostitchedGpuBiomes.takesHandedLookups(source, randomState.sampler(), any)) {
                     return "Lithostitched's biome injectors: GA2's hooks into this Lithostitched version did not apply";
                 }
                 injector = source;
@@ -854,19 +890,19 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             return "biome source " + (source == null ? "unknown" : source.getClass().getName());
         }
         if (hand) {
-            if (!dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_CLIMATE_POINTS)) {
-                return "other mods change the climate sample " + dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.foreign(
-                    dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_CLIMATE_POINTS);
+            if (!HookTargets.allowed(HookTargets.GPU_CLIMATE_POINTS)) {
+                return "other mods change the climate sample " + HookTargets.foreign(
+                    HookTargets.GPU_CLIMATE_POINTS);
             }
-        } else if (!dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_BIOMES)) {
-            return "other mods change the biome step or biome source " + dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.foreign(
-                dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_BIOMES);
+        } else if (!HookTargets.allowed(HookTargets.GPU_BIOMES)) {
+            return "other mods change the biome step or biome source " + HookTargets.foreign(
+                HookTargets.GPU_BIOMES);
         }
         MultiNoiseBiomeSource multi = (MultiNoiseBiomeSource) source;
         Climate.ParameterList<Holder<Biome>> list = ((GpuBiomeSourceInspectMixin) multi).ga2$gpuParameters();
         BiomeRegions tb;
         try {
-            tb = testRegions != null ? testRegions.apply(list) : dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes.of(list);
+            tb = testRegions != null ? testRegions.apply(list) : TerraBlenderBiomes.of(list);
         } catch (IllegalStateException e) {
             return e.getMessage();
         }
@@ -954,7 +990,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (hand) {
             // the handed second answers compare biomes as Biolith does, by id
             treeKey = new int[n];
-            Map<Object, Integer> numbers = new java.util.HashMap<>();
+            Map<Object, Integer> numbers = new HashMap<>();
             for (int id = 0; id < n; id++) {
                 if (ls[id] != null) {
                     Object key = ls[id].value.unwrapKey().<Object>map(k -> k.location()).orElse(ls[id].value);
@@ -1087,8 +1123,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * deadline's hold on the answer.
      */
     public static void deadline(CompletableFuture<?> answer, long ms, Runnable late) {
-        Deadline d = new Deadline(answer, late, new JvmStalls.Wait(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(ms)));
-        d.task = DEADLINES.schedule(d, ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+        Deadline d = new Deadline(answer, late, new JvmStalls.Wait(TimeUnit.MILLISECONDS.toNanos(ms)));
+        d.task = DEADLINES.schedule(d, ms, TimeUnit.MILLISECONDS);
         answer.whenComplete((r, e) -> d.task.cancel(false));
     }
 
@@ -1097,7 +1133,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         private final CompletableFuture<?> answer;
         private final Runnable late;
         private final JvmStalls.Wait wait;
-        private volatile java.util.concurrent.ScheduledFuture<?> task;
+        private volatile ScheduledFuture<?> task;
 
         Deadline(CompletableFuture<?> answer, Runnable late, JvmStalls.Wait wait) {
             this.answer = answer;
@@ -1116,7 +1152,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 return;
             }
             // the JVM stood still during the wait: the answer gets that time once more
-            task = DEADLINES.schedule(this, left, java.util.concurrent.TimeUnit.NANOSECONDS);
+            task = DEADLINES.schedule(this, left, TimeUnit.NANOSECONDS);
             if (answer.isDone()) {
                 // the answer came during this run and cancelled the earlier task
                 task.cancel(false);
@@ -1125,10 +1161,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     }
 
     /** Every dimension's answer deadlines ({@link #deadline}), on one daemon thread. A cancelled deadline leaves the queue at once. */
-    private static final java.util.concurrent.ScheduledThreadPoolExecutor DEADLINES = deadlines();
+    private static final ScheduledThreadPoolExecutor DEADLINES = deadlines();
 
-    private static java.util.concurrent.ScheduledThreadPoolExecutor deadlines() {
-        java.util.concurrent.ScheduledThreadPoolExecutor e = new java.util.concurrent.ScheduledThreadPoolExecutor(1, r -> {
+    private static ScheduledThreadPoolExecutor deadlines() {
+        ScheduledThreadPoolExecutor e = new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "GA2 GPU deadlines");
             t.setDaemon(true);
             return t;
@@ -1160,8 +1196,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         /** What the log names: the answers counted, and the GPU work a pause keeps on the CPU. */
         private final String answers, work;
         private final long pauseNs, firstPauseNs;
-        private final java.util.concurrent.atomic.AtomicInteger windowAsked = new java.util.concurrent.atomic.AtomicInteger();
-        private final java.util.concurrent.atomic.AtomicInteger windowLate = new java.util.concurrent.atomic.AtomicInteger();
+        private final AtomicInteger windowAsked = new AtomicInteger();
+        private final AtomicInteger windowLate = new AtomicInteger();
         private volatile long pausedUntil;
         private volatile boolean paused;
         /** Late windows in a row, each ending in a pause. A window with few late answers sets it back to 0. */
@@ -1221,7 +1257,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                     paused = true;
                     PAUSES.increment();
                     GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s ({} late window(s) in a row)",
-                        lateOnes, answers, name, ANSWER_MS, work, String.format(java.util.Locale.ROOT, "%.1f", pause / 1e9), inRow + 1);
+                        lateOnes, answers, name, ANSWER_MS, work, String.format(Locale.ROOT, "%.1f", pause / 1e9), inRow + 1);
                 } else {
                     lateWindows = 0;
                 }
@@ -1246,7 +1282,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Steps the CPU did because the GPU was behind: biomes of a new region, blocks, surfaces. */
     public static final LongAdder SHARED_BIOMES = new LongAdder(), SHARED_BLOCKS = new LongAdder(), SHARED_SURFACES = new LongAdder();
     /** Keys of {@link #regions}, for the requesting threads. */
-    private final java.util.Set<Long> live = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<Long> live = ConcurrentHashMap.newKeySet();
     /** Regions launched whose work was not seen done, in launch order (GPU thread). */
     private final ArrayDeque<Region> busy = new ArrayDeque<>();
     /** Published by the GPU thread: {@link #busy}'s size, and the requests whose region is done that wait for a free batch slot. */
@@ -1276,7 +1312,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     }
 
     /** The surface batches' share of the tests' slower GPU ({@link GpuDevice#debugSpin}), or null. */
-    private java.util.function.IntConsumer debugSpin() {
+    private IntConsumer debugSpin() {
         return GpuDevice.DEBUG_SPIN_US > 0 ? n -> device.debugSpin(device.queue, n * 0.35) : null;
     }
 
@@ -1350,10 +1386,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private volatile String terrainOff;
 
     /** The SURFACE step on the GPU ({@code gpu.surface}), or null with the reason in {@link #surfaceOff}. */
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec surfaceSpec;
-    public volatile dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches surfaces;
+    public SurfaceSpec surfaceSpec;
+    public volatile SurfaceBatches surfaces;
     public volatile String surfaceOff = "not set up";
-    private net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator surfaceGenerator;
+    private NoiseBasedChunkGenerator surfaceGenerator;
     private long worldSeed;
     /** The GPU's biome index of each biome the source returns. */
     public Map<Holder<Biome>, Integer> biomeIndex = Map.of();
@@ -1361,28 +1397,28 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     private static final boolean SURFACE = !"false".equals(System.getProperty("generatoraccelerator2.gpu.surface"));
 
     /** What the GPU surface needs besides the router: the generator (its vertical anchors) and the world seed (the biome zoom). */
-    public void surfaceInputs(net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator generator, long seed) {
+    public void surfaceInputs(NoiseBasedChunkGenerator generator, long seed) {
         this.surfaceGenerator = generator;
         this.worldSeed = seed;
     }
 
     /**
      * The spec that turns a chunk's GPU aquifer cells and surface levels into what the chunk's SURFACE and CARVERS steps read
-     * ({@link dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain}). Null when this dimension's chunks keep their NoiseChunk.
+     * ({@link GpuTerrain}). Null when this dimension's chunks keep their NoiseChunk.
      */
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.Spec terrainSpec(java.util.function.Supplier<net.minecraft.world.level.levelgen.Aquifer.FluidPicker> picker) {
+    public GpuTerrain.Spec terrainSpec(Supplier<Aquifer.FluidPicker> picker) {
         Object s = terrainSpec;
         if (s == null) {
             // a walk-only cache_2d (ClEmitter.C2d.WALK) gives the walk's first value at a column. The GPU's levels are computed that
             // way, and so are the spec's walks beyond the chunk (GpuTerrain.Spec#walkLevels).
-            s = gen.aquifers ? dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.Spec.of(randomState, gen.cellsPerChunk,
+            s = gen.aquifers ? GpuTerrain.Spec.of(randomState, gen.cellsPerChunk,
                 gen.minGridY(), minY, height, cellHeight, settings.defaultFluid(), picker.get(), gen.flatCachesXz("barrier")) : null;
             if (s == null) {
-                terrainOff = !gen.aquifers ? "no aquifers" : dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.Spec.unsupported(randomState, gen.flatCachesXz("barrier"));
+                terrainOff = !gen.aquifers ? "no aquifers" : GpuTerrain.Spec.unsupported(randomState, gen.flatCachesXz("barrier"));
             }
             terrainSpec = s = s == null ? Boolean.FALSE : s;
         }
-        return s instanceof dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.Spec spec ? spec : null;
+        return s instanceof GpuTerrain.Spec spec ? spec : null;
     }
 
     /** The biomes of a chunk. Completes with null when the GPU cannot give them exactly, and exceptionally on a GPU failure. */
@@ -1984,7 +2020,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 return n;
             }
             if (running == runningRegions.length) {
-                runningRegions = java.util.Arrays.copyOf(runningRegions, running * 2);
+                runningRegions = Arrays.copyOf(runningRegions, running * 2);
             }
             runningRegions[running++] = k;
         }
@@ -2032,7 +2068,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     private void prefetch(ChunkPos pos) {
         // a prefetch only fills a region queue that would otherwise idle
-        if (PREFETCH <= 0 || dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high()
+        if (PREFETCH <= 0 || MemoryPressure.high()
             || SHARE && busy.size() >= Math.min(device.regionQueues.length, regionLimit())) {
             return;
         }
@@ -2055,7 +2091,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * because the generation front has passed them. A chunk that does ask still launches its region, as any request does. The keys are
      * forgotten past a few thousand.
      */
-    private final it.unimi.dsi.fastutil.longs.LongOpenHashSet doneRegions = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+    private final LongOpenHashSet doneRegions = new LongOpenHashSet();
 
     /** Launches the region holding chunk {@code x, z} unless it was let go. */
     private void prefetchRegion(int x, int z) {
@@ -2409,7 +2445,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** {@code -Dgeneratoraccelerator2.gpu.profile=true}: device time per kernel (the queue then records it). */
     static final boolean PROFILE = Boolean.getBoolean("generatoraccelerator2.gpu.profile");
     private final ArrayDeque<long[]> profiled = new ArrayDeque<>();
-    public final Map<String, LongAdder> deviceNanos = new java.util.concurrent.ConcurrentHashMap<>();
+    public final Map<String, LongAdder> deviceNanos = new ConcurrentHashMap<>();
 
     /** Releases a launch's event. When profiling, keeps the event until it completes, then adds its device time to the kernel's total. */
     private void prof(long kernel, long event) {
@@ -2446,7 +2482,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         cl.releaseEvent(r.readEvent);
         r.readEvent = 0;
         int per = 16 * (height / 4);
-        java.nio.IntBuffer answers = r.biomeHost.clear().asIntBuffer();
+        IntBuffer answers = r.biomeHost.clear().asIntBuffer();
         if (leaves.length <= 0x8000) {
             char[] q = new char[side * side * per];
             for (int i = 0; i < q.length; i++) {
@@ -2483,7 +2519,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             tiesPerChunk = Math.min(TIES_MAX, Math.max(tiesPerChunk * 2, had * 2));
         }
         listed = Math.min(listed, r.tieCap);
-        java.nio.LongBuffer tl = r.host.ties.clear().asLongBuffer();
+        LongBuffer tl = r.host.ties.clear().asLongBuffer();
         int[] count = new int[side * side];
         for (int k = 0; k < listed; k++) {
             count[(int) tl.get(k * 7) / per]++;
@@ -2579,7 +2615,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * The batch's pieces (vanilla's and other mods' entries, which go into {@code entries} and {@code adaptations}) in the high
      * half, its junctions in the low half. Adds each request's queue time.
      */
-    private static long beardSizes(List<NoiseReq> reqs, int[][] entries, dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations) {
+    private static long beardSizes(List<NoiseReq> reqs, int[][] entries, EnhancedBeard.Table adaptations) {
         long now = System.nanoTime();
         int pieces = 0, junctions = 0;
         int qi = 0;
@@ -2588,8 +2624,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             pieces += q.beard.pieces().length / 8;
             junctions += q.beard.junctions().length / 3;
             if (q.beard.enhanced() != null) {
-                entries[qi] = dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.entries(q.beard.enhanced(), adaptations);
-                pieces += entries[qi].length / dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.ENTRY_STRIDE;
+                entries[qi] = EnhancedBeard.entries(q.beard.enhanced(), adaptations);
+                pieces += entries[qi].length / EnhancedBeard.ENTRY_STRIDE;
             }
             qi++;
         }
@@ -2609,7 +2645,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             s.lstHost.putInt((q.pos.x - r.cx0) * h + (q.pos.z - r.cz0));
             int np = q.beard.pieces().length / 8, nj = q.beard.junctions().length / 3;
             int[] en = entries[qi++];
-            int ne = en == null ? 0 : en.length / dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.ENTRY_STRIDE;
+            int ne = en == null ? 0 : en.length / EnhancedBeard.ENTRY_STRIDE;
             s.bidxHost.putInt(p).putInt(np).putInt(jn).putInt(nj).putInt(ne).putInt(q.beard.overrideId()).putInt(0).putInt(0);
             for (int v : q.beard.pieces()) {
                 s.bpHost.putInt(v);
@@ -2654,7 +2690,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int bx0 = r.cx0 * 16, bz0 = r.cz0 * 16, qx0 = bx0 >> 2, qz0 = bz0 >> 2;
         BATCH_CHUNKS.add(n);
         // other mods' pieces follow the chunk's vanilla pieces in the piece buffer, 8 ints each, over the batch's adaptation table
-        dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table adaptations = new dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.Table();
+        EnhancedBeard.Table adaptations = new EnhancedBeard.Table();
         int[][] entries = new int[n][];
         // The loops over the requests are methods of their own. A batch is launched rarely, so the JIT compiles its loops while
         // they run. The compile then holds one loop, not the whole launch.
@@ -3063,7 +3099,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         // Each cached region also keeps its biome answers on the heap. A nearly full heap keeps only a few regions.
-        int cap = dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure.high() ? Math.min(maxRegions, PRESSURE_REGIONS) : maxRegions;
+        int cap = MemoryPressure.high() ? Math.min(maxRegions, PRESSURE_REGIONS) : maxRegions;
         if (regions.size() <= cap) {
             return;
         }
@@ -3207,9 +3243,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
                     : "on CPU (" + biomesOff + "; not handed: " + handOff + ")")
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
-                + String.format(java.util.Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
-                + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(java.util.Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")
-                + String.format(java.util.Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions)
+                + String.format(Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)
+                + (programs.length > 1 ? " (" + programs.length + " parts" + (surfaceReadyMs > 0 ? String.format(Locale.ROOT, ", surface in %.1f s", surfaceReadyMs / 1e3) : "") + ")" : "")
+                + String.format(Locale.ROOT, ", %d regions cached (at most %d)", regions.size(), maxRegions)
                 + (SHARE ? ", " + regionLimit() + " at once" : "");
         };
     }

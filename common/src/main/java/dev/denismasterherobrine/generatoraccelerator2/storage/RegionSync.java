@@ -6,12 +6,16 @@ import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
+import javax.annotation.Nullable;
 
 /**
  * Region files synced in batches instead of on every chunk write.
@@ -99,7 +103,7 @@ public final class RegionSync {
      * {@code DSYNC} and claimed for batching, when a probe in {@code folder} finds write-through writes slow: the constructor
      * that follows on this thread takes the claim ({@link #consumeClaim}). Without a folder nothing is probed and batching is on.
      */
-    public static boolean openUnsynced(boolean sync, @javax.annotation.Nullable Path folder) {
+    public static boolean openUnsynced(boolean sync, @Nullable Path folder) {
         if (!sync || !enabled()) {
             return sync;
         }
@@ -129,14 +133,14 @@ public final class RegionSync {
         }
         Path file = folder.resolve(".ga2-sync-probe");
         try {
-            java.nio.file.Files.createDirectories(folder);
+            Files.createDirectories(folder);
             ByteBuffer buffer = ByteBuffer.allocate(8192);
             for (int i = 0; i < buffer.capacity(); i++) {
                 buffer.put(i, (byte) (i * 31));
             }
             double ms;
-            try (FileChannel channel = FileChannel.open(file, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
-                java.nio.file.StandardOpenOption.DSYNC)) {
+            try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                StandardOpenOption.DSYNC)) {
                 buffer.position(0);
                 channel.write(buffer, 0L); // the file's first write, which also makes it
                 int writes = 4;
@@ -147,11 +151,11 @@ public final class RegionSync {
                 }
                 ms = (System.nanoTime() - start) / 1e6 / writes;
             } finally {
-                java.nio.file.Files.deleteIfExists(file);
+                Files.deleteIfExists(file);
             }
             probedMs = ms;
             boolean worth = ms >= PROBE_THRESHOLD_MS;
-            LOGGER.info("region write-through costs {} ms per write -> {}", String.format(java.util.Locale.ROOT, "%.2f", ms),
+            LOGGER.info("region write-through costs {} ms per write -> {}", String.format(Locale.ROOT, "%.2f", ms),
                 worth ? "files synced in batches" : "vanilla's write-through kept");
             return worth;
         } catch (IOException e) {
@@ -289,7 +293,7 @@ public final class RegionSync {
         return "region writes synced in batches: " + WRITES.sum() + " writes, " + FORCES.sum() + " forces (batch full " + FORCES_FULL.sum()
             + ", time up " + FORCES_DUE.sum() + "), vanilla flushes " + FLUSHES.sum() + ", files waiting " + dirty()
             + (enabled() ? ", delay " + delayMs() + " ms" : ", off")
-            + (Double.isNaN(probedMs) ? "" : "; write-through probe " + String.format(java.util.Locale.ROOT, "%.2f", probedMs) + " ms per write -> "
+            + (Double.isNaN(probedMs) ? "" : "; write-through probe " + String.format(Locale.ROOT, "%.2f", probedMs) + " ms per write -> "
             + (Boolean.TRUE.equals(worthIt) ? "batching" : "vanilla's write-through"));
     }
 }

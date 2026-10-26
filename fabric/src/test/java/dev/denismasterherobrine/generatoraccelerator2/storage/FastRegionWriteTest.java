@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.storage.RegionFileAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.ByteArrayTag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.DoubleTag;
@@ -25,12 +27,17 @@ import net.minecraft.nbt.LongArrayTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Region file writes through {@link FastRegionWrite} put the same bytes on disk as vanilla's stream chain: real chunk
@@ -40,12 +47,12 @@ import org.junit.jupiter.api.Test;
  */
 public class FastRegionWriteTest {
     /** Vanilla's bytes come from its default level, 6. */
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void vanillaLevel() {
         FastRegionWrite.LEVEL = 6;
     }
 
-    @org.junit.jupiter.api.AfterEach
+    @AfterEach
     void configLevel() {
         FastRegionWrite.LEVEL = 0;
     }
@@ -55,7 +62,7 @@ public class FastRegionWriteTest {
      * chunk is the same tag, in the deflate format. A chunk past a region file's 1 MB limit goes to vanilla's external file.
      */
     @Test
-    void fastLevelReadsBackInVanilla(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
+    void fastLevelReadsBackInVanilla(@TempDir Path dir) throws IOException {
         FastRegionWrite.LEVEL = 1;
         List<CompoundTag> tags = new ArrayList<>(synthetic());
         Path region = RegionChunks.defaultRegion();
@@ -68,20 +75,20 @@ public class FastRegionWriteTest {
         CompoundTag huge = new CompoundTag();
         huge.put("noise", new ByteArrayTag(noise));
         tags.add(huge);
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
-            net.minecraft.resources.ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
+            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
         try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
             for (int i = 0; i < tags.size(); i++) {
                 ByteBuffer buffer = FastRegionWrite.encode(tags.get(i), RegionFileVersion.VERSION_DEFLATE.getId());
-                org.junit.jupiter.api.Assertions.assertEquals(RegionFileVersion.VERSION_DEFLATE.getId(), buffer.get(4), "format of tag " + i);
+                Assertions.assertEquals(RegionFileVersion.VERSION_DEFLATE.getId(), buffer.get(4), "format of tag " + i);
                 ((RegionFileAccessor) file).ga2$write(new ChunkPos(i % 32, i / 32), buffer);
             }
         }
         assertTrue(Files.list(dir).anyMatch(p -> p.toString().endsWith(".mcc")), "the huge chunk went to an external file");
         try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
             for (int i = 0; i < tags.size(); i++) {
-                try (java.io.DataInputStream in = file.getChunkDataInputStream(new ChunkPos(i % 32, i / 32))) {
-                    org.junit.jupiter.api.Assertions.assertNotNull(in, "chunk " + i);
+                try (DataInputStream in = file.getChunkDataInputStream(new ChunkPos(i % 32, i / 32))) {
+                    Assertions.assertNotNull(in, "chunk " + i);
                     // as NBT bytes: a NaN tag never equals itself
                     assertArrayEquals(nbt(tags.get(i)), nbt(NbtIo.read(in)), "tag " + i);
                 }
@@ -104,14 +111,14 @@ public class FastRegionWriteTest {
     }
 
     @Test
-    void sameRegionFile(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
+    void sameRegionFile(@TempDir Path dir) throws IOException {
         List<CompoundTag> tags = new ArrayList<>(synthetic());
         Path region = RegionChunks.defaultRegion();
         if (region != null) {
             tags.addAll(RegionChunks.readTags(region, 200));
         }
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
-            net.minecraft.resources.ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
+            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         Files.createDirectories(a);
@@ -142,7 +149,7 @@ public class FastRegionWriteTest {
         ChunkPos pos = new ChunkPos(3, -7);
         pre.submit(pos, tags.get(0));
         pre.submit(pos, tags.get(1));
-        org.junit.jupiter.api.Assertions.assertNull(pre.take(pos, tags.get(0)), "a replaced tag is compressed by the writer");
+        Assertions.assertNull(pre.take(pos, tags.get(0)), "a replaced tag is compressed by the writer");
         ByteBuffer taken = null;
         for (int tries = 0; tries < 200 && taken == null; tries++) {
             pre.submit(pos, tags.get(1));
@@ -153,9 +160,9 @@ public class FastRegionWriteTest {
             }
             taken = pre.take(pos, tags.get(1));
         }
-        org.junit.jupiter.api.Assertions.assertNotNull(taken, "a finished result is taken");
+        Assertions.assertNotNull(taken, "a finished result is taken");
         assertArrayEquals(vanilla(tags.get(1)), Arrays.copyOfRange(taken.array(), 0, taken.limit()), "precompressed bytes");
-        org.junit.jupiter.api.Assertions.assertNull(pre.take(pos, tags.get(1)), "taken once");
+        Assertions.assertNull(pre.take(pos, tags.get(1)), "taken once");
     }
 
     /** What {@code RegionFile.ChunkBuffer} holds when closed for this tag. */

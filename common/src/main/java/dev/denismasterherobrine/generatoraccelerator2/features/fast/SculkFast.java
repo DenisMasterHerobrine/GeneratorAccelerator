@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
@@ -31,6 +32,9 @@ import net.minecraft.world.level.levelgen.feature.SculkPatchFeature;
 import net.minecraft.world.level.levelgen.feature.configurations.SculkPatchConfiguration;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Transcription of {@code SculkPatchFeature.place} with the world generation {@code SculkSpreader} it runs. Covered: the charge
@@ -67,7 +71,7 @@ public final class SculkFast {
         for (Direction d : DIRS) {
             FACE[d.ordinal()] = MultifaceBlock.getFaceProperty(d);
         }
-        java.util.List<BlockPos> list = new java.util.ArrayList<>(18);
+        List<BlockPos> list = new ArrayList<>(18);
         BlockPos.betweenClosedStream(new BlockPos(-1, -1, -1), new BlockPos(1, 1, 1))
             .filter(p -> (p.getX() == 0 || p.getY() == 0 || p.getZ() == 0) && !p.equals(BlockPos.ZERO))
             .map(BlockPos::immutable)
@@ -92,7 +96,7 @@ public final class SculkFast {
         int a = applies;
         if (a == 0) {
             boolean ok = Blocks.SCULK.getClass() == SculkBlock.class && Blocks.SCULK_VEIN.getClass() == SculkVeinBlock.class
-                && java.util.Arrays.equals(MultifaceSpreader.DEFAULT_SPREAD_ORDER, new MultifaceSpreader.SpreadType[] {
+                && Arrays.equals(MultifaceSpreader.DEFAULT_SPREAD_ORDER, new MultifaceSpreader.SpreadType[] {
                     MultifaceSpreader.SpreadType.SAME_POSITION, MultifaceSpreader.SpreadType.SAME_PLANE, MultifaceSpreader.SpreadType.WRAP_AROUND });
             boolean any = false;
             for (Block block : BuiltInRegistries.BLOCK) {
@@ -241,8 +245,8 @@ public final class SculkFast {
      * {@code -Dgeneratoraccelerator2.verify.sculk=N}: every N-th lookup of the default behaviour checks that the block has no other
      * mod's sculk behaviour. {@link #othersOutOfReach} keeps such blocks out of every patch this code runs.
      */
-    private static final dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter VERIFY =
-        new dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter("sculk");
+    private static final VerifyCounter VERIFY =
+        new VerifyCounter("sculk");
 
     private static int behaviour(BlockState state) {
         Block b = state.getBlock();

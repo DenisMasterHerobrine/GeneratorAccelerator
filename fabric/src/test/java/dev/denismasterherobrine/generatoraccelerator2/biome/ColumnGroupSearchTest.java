@@ -6,12 +6,15 @@ import com.mojang.datafixers.util.Pair;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.function.IntUnaryOperator;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -51,7 +54,7 @@ public class ColumnGroupSearchTest {
         long answered = FlatClimateTree.GROUP_ANSWERED.sum() - before;
         System.out.printf("ColumnGroupSearchTest overworld: %d queries, %d answered per column (both searches), %d walked, %d fills%n", queries.size(), answered,
             FlatClimateTree.GROUP_WALKED.sum(), FlatClimateTree.GROUP_FILLS.sum());
-        org.junit.jupiter.api.Assertions.assertTrue(answered > queries.size(), "the column answers ran");
+        Assertions.assertTrue(answered > queries.size(), "the column answers ran");
     }
 
     @Test
@@ -150,9 +153,9 @@ public class ColumnGroupSearchTest {
         FlatClimateTree.enterFill();
         int n = trees.size();
         int[] last = new int[n], u = new int[n], p = new int[n];
-        java.util.Arrays.fill(last, -1);
-        java.util.Arrays.fill(u, -1);
-        java.util.Arrays.fill(p, -1);
+        Arrays.fill(last, -1);
+        Arrays.fill(u, -1);
+        Arrays.fill(p, -1);
         int[] ids = new int[2], ids2 = new int[2];
         long[] distance = new long[2], distance2 = new long[2];
         // many more columns than the thread's slots, every one asked by every tree: slots move between trees all the time
@@ -193,7 +196,7 @@ public class ColumnGroupSearchTest {
         return ((Ga2ClimateTree) (Object) list.index).ga2$flat();
     }
 
-    private static int[] keys(FlatClimateTree flat, int ignored, java.util.function.IntUnaryOperator key) {
+    private static int[] keys(FlatClimateTree flat, int ignored, IntUnaryOperator key) {
         int[] keys = new int[flat.nodes() + 1];
         for (int id = 0; id < flat.nodes(); id++) {
             if (flat.leaf(id) != null) {
@@ -231,12 +234,12 @@ public class ColumnGroupSearchTest {
             }
             int expected = flat.search(q[0], q[1], q[2], q[3], q[4], q[5], last);
             int actual = flat.searchColumns(q[0], q[1], q[2], q[3], q[4], q[5], last);
-            assertEquals(expected, actual, "nearest leaf at query " + n + " " + java.util.Arrays.toString(q) + " from " + last);
+            assertEquals(expected, actual, "nearest leaf at query " + n + " " + Arrays.toString(q) + " from " + last);
             last = expected;
             flat.searchFittest(q[0], q[1], q[2], q[3], q[4], q[5], keys, u, p, ids, distance);
             flat.searchFittestColumns(q[0], q[1], q[2], q[3], q[4], q[5], keys, u, p, ids2, distance2);
             assertEquals(ids[0], ids2[0], "Biolith's nearest at query " + n);
-            assertEquals(ids[1], ids2[1], "Biolith's other at query " + n + " " + java.util.Arrays.toString(q) + " from " + u + ", " + p);
+            assertEquals(ids[1], ids2[1], "Biolith's other at query " + n + " " + Arrays.toString(q) + " from " + u + ", " + p);
             assertEquals(distance[0], distance2[0], "Biolith's nearest distance at query " + n);
             assertEquals(distance[1], distance2[1], "Biolith's other distance at query " + n);
             u = ids[0];

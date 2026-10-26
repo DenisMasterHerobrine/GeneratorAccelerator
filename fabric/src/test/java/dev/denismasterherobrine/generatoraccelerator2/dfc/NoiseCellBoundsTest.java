@@ -20,11 +20,13 @@ import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.Noises;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import org.junit.jupiter.api.Test;
+import java.util.Arrays;
 
 /**
  * Whole cells decided with noise leaves bounded over the cell ({@link CellBounds}, second pass) leave the chunk as vanilla's
@@ -101,12 +103,12 @@ public class NoiseCellBoundsTest {
             }
             assertArrayEquals(da.storage().getRaw(), db.storage().getRaw(), "storage, section " + s + ", " + where);
         }
-        for (var type : net.minecraft.world.level.levelgen.Heightmap.Types.values()) {
+        for (var type : Heightmap.Types.values()) {
             assertEquals(a.hasPrimedHeightmap(type), b.hasPrimedHeightmap(type), "heightmap presence " + type + ", " + where);
             if (a.hasPrimedHeightmap(type)) {
                 assertArrayEquals(a.getOrCreateHeightmapUnprimed(type).getRawData(), b.getOrCreateHeightmapUnprimed(type).getRawData(), "heightmap " + type + ", " + where);
             }
         }
-        assertEquals(java.util.Arrays.deepToString(a.getPostProcessing()), java.util.Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
+        assertEquals(Arrays.deepToString(a.getPostProcessing()), Arrays.deepToString(b.getPostProcessing()), "post-processing, " + where);
     }
 }

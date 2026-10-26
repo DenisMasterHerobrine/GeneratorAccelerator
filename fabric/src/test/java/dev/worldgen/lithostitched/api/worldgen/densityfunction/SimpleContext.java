@@ -1,5 +1,6 @@
 package dev.worldgen.lithostitched.api.worldgen.densityfunction;
 
+import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
 /** Stand-in for Lithostitched's position context (same class name and factories), for GA2's tests without the mod. */
@@ -22,7 +23,7 @@ public class SimpleContext implements DensityFunction.FunctionContext {
         return new SimpleContext((int) x, (int) y, (int) z);
     }
 
-    public static SimpleContext of(net.minecraft.core.Vec3i pos) {
+    public static SimpleContext of(Vec3i pos) {
         return new SimpleContext(pos.getX(), pos.getY(), pos.getZ());
     }
 

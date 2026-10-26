@@ -2,10 +2,17 @@ package dev.denismasterherobrine.generatoraccelerator2.carver;
 
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuAquifer;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.carver.CarvingContextAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateIndex;
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
@@ -15,6 +22,8 @@ import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.levelgen.carver.CarverConfiguration;
 import net.minecraft.world.level.levelgen.carver.CarvingContext;
 import net.minecraft.world.level.material.Fluids;
@@ -50,13 +59,13 @@ final class Carving {
      * {@code SurfaceSystem.topMaterial}'s rule context and the surface rules built against it, made on the first top material of this
      * chunk ({@link #topMaterial}). Null until then.
      */
-    private net.minecraft.world.level.levelgen.SurfaceRules.Context topContext;
-    private net.minecraft.world.level.levelgen.SurfaceRules.SurfaceRule topRule;
-    private static final dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.Hook TOP_MATERIAL =
-        dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.hook(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.CARVER_TOP_MATERIAL);
+    private SurfaceRules.Context topContext;
+    private SurfaceRules.SurfaceRule topRule;
+    private static final HookTargets.Hook TOP_MATERIAL =
+        HookTargets.hook(HookTargets.CARVER_TOP_MATERIAL);
     /** Top materials answered by the chunk's rules built once, and by vanilla's call (which builds them per call). */
-    static final java.util.concurrent.atomic.LongAdder TOP_REUSED = new java.util.concurrent.atomic.LongAdder();
-    static final java.util.concurrent.atomic.LongAdder TOP_VANILLA = new java.util.concurrent.atomic.LongAdder();
+    static final LongAdder TOP_REUSED = new LongAdder();
+    static final LongAdder TOP_VANILLA = new LongAdder();
 
     // per carver
     private CarverConfiguration config;
@@ -101,7 +110,7 @@ final class Carving {
         if (this.config != config) {
             this.config = config;
             this.lastState = null;
-            java.util.Arrays.fill(this.knownStates, null);
+            Arrays.fill(this.knownStates, null);
         }
         this.nether = nether;
         this.lavaLevel = config.lavaLevel.resolveY(context);
@@ -112,7 +121,7 @@ final class Carving {
         if (state == lastState) {
             return lastReplaceable;
         }
-        int slot = dev.denismasterherobrine.generatoraccelerator2.state.StateIndex.id(state) & 63;
+        int slot = StateIndex.id(state) & 63;
         boolean r;
         if (knownStates[slot] == state) {
             r = knownReplaceable[slot];
@@ -257,15 +266,15 @@ final class Carving {
      * mod's change to either {@code topMaterial} keeps vanilla's call.
      */
     private Optional<BlockState> topMaterial(int x, int y, int z, boolean fluid) {
-        if (!TOP_MATERIAL.allowed() || !(context instanceof dev.denismasterherobrine.generatoraccelerator2.mixin.carver.CarvingContextAccessor access)
+        if (!TOP_MATERIAL.allowed() || !(context instanceof CarvingContextAccessor access)
             || context.getClass() != CarvingContext.class) {
             TOP_VANILLA.increment();
             return context.topMaterial(biomes, chunk, below.set(x, y, z), fluid);
         }
         if (topRule == null) {
-            net.minecraft.world.level.levelgen.RandomState randomState = context.randomState();
-            topContext = new net.minecraft.world.level.levelgen.SurfaceRules.Context(randomState.surfaceSystem(), randomState, chunk, access.ga2$noiseChunk(),
-                biomes, context.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME), context);
+            RandomState randomState = context.randomState();
+            topContext = new SurfaceRules.Context(randomState.surfaceSystem(), randomState, chunk, access.ga2$noiseChunk(),
+                biomes, context.registryAccess().registryOrThrow(Registries.BIOME), context);
             topRule = access.ga2$surfaceRule().apply(topContext);
         }
         TOP_REUSED.increment();
@@ -284,7 +293,7 @@ final class Carving {
             return coords.ga2$substanceAt(x, y, z, 0.0);
         }
         // the GPU's aquifer makes the block's context only for the few blocks whose barrier noise it samples
-        return aquifer instanceof dev.denismasterherobrine.generatoraccelerator2.gpu.GpuAquifer gpu ? gpu.substanceAt(x, y, z, null, 0.0)
+        return aquifer instanceof GpuAquifer gpu ? gpu.substanceAt(x, y, z, null, 0.0)
             : aquifer.computeSubstance(new DensityFunction.SinglePointContext(x, y, z), 0.0);
     }
 

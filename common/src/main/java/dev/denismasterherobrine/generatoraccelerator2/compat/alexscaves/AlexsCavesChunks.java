@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.biome.BiomeSource;
 
 /**
@@ -36,13 +37,11 @@ public final class AlexsCavesChunks {
                 BiomeSource source = cache.getGenerator().getBiomeSource();
                 if (accessor.isInstance(source)) {
                     try {
-                        net.minecraft.server.level.ServerLevel level = (net.minecraft.server.level.ServerLevel) cache.getLevel();
+                        ServerLevel level = (ServerLevel) cache.getLevel();
                         seed.invoke(source, level.getSeed());
                         dimension.invoke(source, level.dimension());
-                    } catch (RuntimeException | Error e) {
-                        throw e;
                     } catch (Throwable t) {
-                        throw new IllegalStateException(t);
+                        throw Reflect.unchecked(t);
                     }
                 }
             };

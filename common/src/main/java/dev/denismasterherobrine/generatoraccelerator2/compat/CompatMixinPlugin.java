@@ -1,6 +1,11 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 import java.util.List;
 import java.util.Map;
@@ -38,28 +43,28 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (active && mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.INJECTOR_LIST_MIXIN)
-            && !dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.injectorListShapeOk()) {
+        if (active && mixinClassName.equals(LithostitchedMixins.INJECTOR_LIST_MIXIN)
+            && !LithostitchedMixins.injectorListShapeOk()) {
             Ga2Log.get("Compat").info(
                 "Lithostitched injector source: unknown shape -> partial replacements walked as-is");
             return false;
         }
-        if (active && mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.INJECTOR_VERIFY_MIXIN)) {
+        if (active && mixinClassName.equals(LithostitchedMixins.INJECTOR_VERIFY_MIXIN)) {
             // the check of the noted biome, only for a verification run
             return Boolean.getBoolean("generatoraccelerator2.verify.injectors")
-                && dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins.injectorListShapeOk();
+                && LithostitchedMixins.injectorListShapeOk();
         }
-        if (active && mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins.STRIPES_MIXIN)) {
+        if (active && mixinClassName.equals(SpelunkeryMixins.STRIPES_MIXIN)) {
             // the fused noise relies on the FastNoiseLite code it was written against
-            return dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins.codeKnown();
+            return SpelunkeryMixins.codeKnown();
         }
-        if (active && dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins.MIXINS.contains(mixinClassName)) {
+        if (active && ZetaMixins.MIXINS.contains(mixinClassName)) {
             // the cluster walk is for Quark's big stone clusters and relies on the code it was written against
-            return Compat.isLoaded("quark") && dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins.codeKnown();
+            return Compat.isLoaded("quark") && ZetaMixins.codeKnown();
         }
-        if (active && dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins.MIXINS.contains(mixinClassName)) {
+        if (active && SupplementariesMixins.MIXINS.contains(mixinClassName)) {
             // the barnacle search relies on the code it was written against
-            return dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins.codeKnown();
+            return SupplementariesMixins.codeKnown();
         }
         return active;
     }
@@ -84,8 +89,8 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
      */
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-        if (mixinClassName.equals(dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.REGION_SEARCH_MIXIN)) {
-            dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.check(targetClass);
+        if (mixinClassName.equals(TerraBlenderMixins.REGION_SEARCH_MIXIN)) {
+            TerraBlenderMixins.check(targetClass);
         }
         // these configs' hooks are inspected like the main config's hooks. The main config's plugin registered the late inspection
         if (LateInspection.registered()) {

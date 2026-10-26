@@ -3,11 +3,13 @@ package dev.denismasterherobrine.generatoraccelerator2.features.verify;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import it.unimi.dsi.fastutil.shorts.ShortList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -15,8 +17,10 @@ import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.ProtoChunkTicks;
 import net.minecraft.world.ticks.SavedTick;
+import java.lang.reflect.Field;
 
 /**
  * Compares two proto chunks that should be identical after the same decoration: every block state,
@@ -70,7 +74,7 @@ public final class FeatureCompare {
             CarvingMask mb = actual.getCarvingMask(step);
             if ((ma == null) != (mb == null)) {
                 out.add(where + " carving mask " + step + " present: expected " + (ma != null) + " got " + (mb != null));
-            } else if (ma != null && !java.util.Arrays.equals(ma.toArray(), mb.toArray())) {
+            } else if (ma != null && !Arrays.equals(ma.toArray(), mb.toArray())) {
                 out.add(where + " carving mask " + step + " differs");
             }
         }
@@ -82,7 +86,7 @@ public final class FeatureCompare {
             } else if (ha) {
                 long[] da = expected.getOrCreateHeightmapUnprimed(type).getRawData();
                 long[] db = actual.getOrCreateHeightmapUnprimed(type).getRawData();
-                if (!java.util.Arrays.equals(da, db)) {
+                if (!Arrays.equals(da, db)) {
                     out.add(where + " heightmap " + type + " data differs");
                 }
             }
@@ -118,7 +122,7 @@ public final class FeatureCompare {
         StringBuilder sb = new StringBuilder();
         for (String name : COUNTER_FIELDS) {
             try {
-                java.lang.reflect.Field f = LevelChunkSection.class.getDeclaredField(Names.runtimeField("net/minecraft/world/level/chunk/LevelChunkSection", name));
+                Field f = LevelChunkSection.class.getDeclaredField(Names.runtimeField("net/minecraft/world/level/chunk/LevelChunkSection", name));
                 f.setAccessible(true);
                 sb.append(name).append('=').append(f.getShort(section)).append(' ');
             } catch (ReflectiveOperationException | RuntimeException e) {
@@ -148,8 +152,8 @@ public final class FeatureCompare {
                 break;
             }
             Object type = t.type();
-            String name = type instanceof net.minecraft.world.level.block.Block block ? BuiltInRegistries.BLOCK.getKey(block).toString()
-                : type instanceof net.minecraft.world.level.material.Fluid fluid ? BuiltInRegistries.FLUID.getKey(fluid).toString() : String.valueOf(type);
+            String name = type instanceof Block block ? BuiltInRegistries.BLOCK.getKey(block).toString()
+                : type instanceof Fluid fluid ? BuiltInRegistries.FLUID.getKey(fluid).toString() : String.valueOf(type);
             sb.append(name).append('@').append(t.pos().toShortString()).append('/').append(t.delay()).append('/').append(t.priority());
         }
         return sb.append(']').toString();

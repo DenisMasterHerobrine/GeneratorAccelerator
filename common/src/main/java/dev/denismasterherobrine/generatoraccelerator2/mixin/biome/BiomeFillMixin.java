@@ -3,6 +3,8 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.biome;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
 import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -16,13 +18,13 @@ import org.spongepowered.asm.mixin.Mixin;
 public abstract class BiomeFillMixin {
     @WrapMethod(method = "fillBiomesFromNoise(Lnet/minecraft/world/level/biome/BiomeResolver;Lnet/minecraft/world/level/biome/Climate$Sampler;)V")
     private void ga2$markBiomeFill(BiomeResolver resolver, Climate.Sampler sampler, Operation<Void> original) {
-        dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.bind((ChunkAccess) (Object) this, sampler);
+        BiomeHand.bind((ChunkAccess) (Object) this, sampler);
         FlatClimateTree.enterFill();
         try {
             original.call(resolver, sampler);
         } finally {
             FlatClimateTree.exitFill();
-            dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler.release(sampler);
+            BoundSampler.release(sampler);
         }
     }
 }

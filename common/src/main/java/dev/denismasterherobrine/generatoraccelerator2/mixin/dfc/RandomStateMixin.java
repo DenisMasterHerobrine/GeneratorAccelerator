@@ -24,6 +24,8 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.util.Map;
+import java.util.Set;
 
 /** Compiles the router and climate sampler as soon as a {@link RandomState} is built, and binds its own sampler to the program. */
 @Mixin(RandomState.class)
@@ -44,15 +46,15 @@ public abstract class RandomStateMixin implements Ga2RandomState {
         if (this.ga2$programs != null && this.ga2$programs.globalSampler() != null) {
             this.ga2$sharedSampler = BoundSampler.bindShared(this.sampler, this.ga2$programs.globalSampler());
         }
-        java.util.Map<String, Node> roots = this.ga2$programs != null ? this.ga2$programs.routerRoots() : null;
+        Map<String, Node> roots = this.ga2$programs != null ? this.ga2$programs.routerRoots() : null;
         boolean classifySafe = roots != null && StateDependence.orderIndependent(roots, AquiferFastPath.STATUS_FIELDS);
         // a cache_2d over y below the floodedness alone (Regions Unexplored's inferno weight) is ruled out aquifer by aquifer,
         // over the columns of the aquifer's cells. The other fields decide the mode as if the cache were not there.
-        java.util.Map<Node, DensityFunction> cellCaches = classifySafe || roots == null ? null : StateDependence.cellCentreCaches(roots);
+        Map<Node, DensityFunction> cellCaches = classifySafe || roots == null ? null : StateDependence.cellCentreCaches(roots);
         if (cellCaches != null && cellCaches.isEmpty()) {
             cellCaches = null;
         }
-        java.util.Set<Node> checked = cellCaches != null ? cellCaches.keySet() : java.util.Set.of();
+        Set<Node> checked = cellCaches != null ? cellCaches.keySet() : Set.of();
         if (!classifySafe && cellCaches != null) {
             classifySafe = StateDependence.orderIndependent(roots, checked, AquiferFastPath.STATUS_FIELDS);
         }

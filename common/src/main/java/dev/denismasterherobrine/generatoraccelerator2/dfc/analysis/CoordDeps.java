@@ -4,6 +4,8 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -94,7 +96,7 @@ public final class CoordDeps {
         return c.kind() == Node.CmpKind.ICMP ? ofInt(c.intA()).join(ofInt(c.intB())) : of(c.a()).join(of(c.b()));
     }
 
-    private Dep args(java.util.List<Object> args) {
+    private Dep args(List<Object> args) {
         Dep d = Dep.CONST;
         for (Object a : args) {
             d = d.join(a instanceof Node n ? of(n) : ofInt((INode) a));
@@ -158,7 +160,7 @@ public final class CoordDeps {
             case Node.Beardifier b -> "beardifier";
             case Node.Unsupported u -> "an uncompiled " + u.vanilla().getClass().getName();
             case Node.Marker m when chunkMode && m.type() != Node.MarkerType.CACHE_ONCE && m.type() != Node.MarkerType.FLAT_CACHE
-                && m.type() != Node.MarkerType.CACHE_2D -> m.type().name().toLowerCase(java.util.Locale.ROOT) + " inside";
+                && m.type() != Node.MarkerType.CACHE_2D -> m.type().name().toLowerCase(Locale.ROOT) + " inside";
             default -> null;
         };
         if (own != null) {

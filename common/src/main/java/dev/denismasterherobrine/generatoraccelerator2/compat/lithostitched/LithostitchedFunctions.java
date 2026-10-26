@@ -5,7 +5,9 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.CoordSubstitution;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import net.minecraft.util.InclusiveRange;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
@@ -50,7 +52,7 @@ public final class LithostitchedFunctions {
         add(PKG + "CosDensityFunction", (fn, ctx) -> transform(fn, ctx, a -> call(ctx, "cos", a)));
         add(PKG + "SqrtDensityFunction", (fn, ctx) -> transform(fn, ctx, a -> sqrt(ctx, a)));
         add(LithostitchedCellular.CELLULAR, LithostitchedCellular::lower);
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers.addGpuSource(LithostitchedCellular.CL);
+        ExternSamplers.addGpuSource(LithostitchedCellular.CL);
     }
 
     @SuppressWarnings("unchecked")
@@ -232,7 +234,7 @@ public final class LithostitchedFunctions {
     // ---- math functions --------------------------------------------------------------------------
 
     /** {@code TransformerDensityFunction.compute}: {@code transform(argument.compute(context))}. */
-    private static Node transform(DensityFunction fn, DensityFunctionLowering.Context ctx, java.util.function.UnaryOperator<Node> transform) {
+    private static Node transform(DensityFunction fn, DensityFunctionLowering.Context ctx, UnaryOperator<Node> transform) {
         Object argument;
         try {
             argument = fn.getClass().getMethod("argument").invoke(fn);

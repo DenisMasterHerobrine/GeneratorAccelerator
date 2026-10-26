@@ -3,17 +3,24 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
+import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -34,7 +41,7 @@ public class OreFastFuzzTest {
             }
         }
         // by name, seeded by name: the registry's listing order (and so the cases' indices) can change between runs
-        ores.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        ores.sort(Comparator.comparing(FeatureRun.ConfiguredCase::name));
         assertTrue(ores.size() >= 20, "too few ore features: " + ores.size());
         List<String> failures = new ArrayList<>();
         int compared = 0;
@@ -61,7 +68,7 @@ public class OreFastFuzzTest {
                 }
             }
         }
-        System.out.println("OreFastFuzzTest: " + compared + " placements compared over " + ores.size() + " ores, " + placed + " placed something; vanilla checksum " + Long.toHexString(checksum) + "; state shortcuts " + dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED);
+        System.out.println("OreFastFuzzTest: " + compared + " placements compared over " + ores.size() + " ores, " + placed + " placed something; vanilla checksum " + Long.toHexString(checksum) + "; state shortcuts " + StateFast.ENABLED);
         assertTrue(placed > compared / 4, "too few placements placed anything: " + placed + " of " + compared);
         assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
     }
@@ -76,8 +83,8 @@ public class OreFastFuzzTest {
         List<String> failures = new ArrayList<>();
         int compared = 0;
         for (int size : new int[] { 32, 64, 9 }) {
-            net.minecraft.world.level.levelgen.feature.ConfiguredFeature<?, ?> ore = new net.minecraft.world.level.levelgen.feature.ConfiguredFeature<>(Feature.ORE,
-                new net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration(List.of(), size, 0.0F));
+            ConfiguredFeature<?, ?> ore = new ConfiguredFeature<>(Feature.ORE,
+                new OreConfiguration(List.of(), size, 0.0F));
             FeatureRun.ConfiguredCase c = new FeatureRun.ConfiguredCase("empty ore " + size, Holder.direct(ore), 0, HarnessWorld.Kind.OVERWORLD, 0);
             for (int t = 0; t < TRIALS; t++) {
                 FeatureRun.Result ref = run(r, c, 20261026L, t, true);
@@ -102,9 +109,9 @@ public class OreFastFuzzTest {
             if (Math.abs(c.getPos().x * 16 + 8 - x0) > 24 || Math.abs(c.getPos().z * 16 + 8 - z0) > 24) {
                 continue;
             }
-            for (net.minecraft.world.level.chunk.LevelChunkSection s : c.getSections()) {
+            for (LevelChunkSection s : c.getSections()) {
                 for (int i = 0; i < 4096; i++) {
-                    h = h * 1000003 + net.minecraft.world.level.block.Block.getId(s.getBlockState(i & 15, i >> 8, (i >> 4) & 15));
+                    h = h * 1000003 + Block.getId(s.getBlockState(i & 15, i >> 8, (i >> 4) & 15));
                 }
             }
         }
@@ -115,8 +122,8 @@ public class OreFastFuzzTest {
     private static FeatureRun.Result run(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, long terrainSeed, int t, boolean vanilla) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? net.minecraft.world.level.biome.Biomes.NETHER_WASTES
-            : net.minecraft.world.level.biome.Biomes.PLAINS);
+        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
+            : Biomes.PLAINS);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
         }

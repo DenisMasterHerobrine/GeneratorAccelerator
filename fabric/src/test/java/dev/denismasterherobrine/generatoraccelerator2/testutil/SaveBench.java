@@ -2,8 +2,11 @@ package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
 import com.mojang.serialization.Codec;
 import dev.denismasterherobrine.generatoraccelerator2.storage.FastPack;
+import dev.denismasterherobrine.generatoraccelerator2.storage.FastRegionWrite;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -26,6 +29,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
+import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -97,16 +101,16 @@ public class SaveBench {
             long t0 = System.nanoTime();
             long bytes = 0;
             for (CompoundTag tag : chunks) {
-                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(8096);
+                ByteArrayOutputStream out = new ByteArrayOutputStream(8096);
                 out.write(new byte[5]);
-                try (java.io.DataOutputStream data = new java.io.DataOutputStream(net.minecraft.world.level.chunk.storage.RegionFileVersion.VERSION_DEFLATE.wrap(out))) {
+                try (DataOutputStream data = new DataOutputStream(RegionFileVersion.VERSION_DEFLATE.wrap(out))) {
                     NbtIo.write(tag, data);
                 }
                 bytes += out.size();
             }
             long t1 = System.nanoTime();
             for (CompoundTag tag : chunks) {
-                bytes += dev.denismasterherobrine.generatoraccelerator2.storage.FastRegionWrite.encode(tag, 2).limit();
+                bytes += FastRegionWrite.encode(tag, 2).limit();
             }
             long t2 = System.nanoTime();
             if (round >= rounds / 2) {

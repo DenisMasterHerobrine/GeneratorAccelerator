@@ -2,10 +2,15 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
+import java.net.URI;
 import java.net.URL;
+import java.nio.file.FileSystemNotFoundException;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -20,11 +25,13 @@ import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 
 /**
@@ -50,29 +57,29 @@ public final class GpuDatapack {
             throw new IllegalStateException("vanilla worldgen data not on the classpath");
         }
         // .../data/minecraft/worldgen/noise_settings/overworld.json -> the pack root above data/
-        java.net.URI uri = u.toURI();
+        URI uri = u.toURI();
         if (uri.getScheme().equals("jar")) {
             // the game jar's file system, opened once
             try {
-                java.nio.file.FileSystems.getFileSystem(uri);
-            } catch (java.nio.file.FileSystemNotFoundException e) {
-                java.nio.file.FileSystems.newFileSystem(uri, java.util.Map.of());
+                FileSystems.getFileSystem(uri);
+            } catch (FileSystemNotFoundException e) {
+                FileSystems.newFileSystem(uri, Map.of());
             }
         }
         Path vanillaRoot = Path.of(uri).getParent().getParent().getParent().getParent().getParent();
         PackResources vanilla = new PathPackResources(new PackLocationInfo("vanilla", Component.literal("vanilla"), PackSource.BUILT_IN, Optional.empty()), vanillaRoot);
         PackResources pack = new PathPackResources(new PackLocationInfo("datapack", Component.literal("datapack"), PackSource.WORLD, Optional.empty()), dataRoot);
         RegistryAccess.Frozen loaded;
-        net.minecraft.world.level.biome.BiomeSource dimensionSource = null;
+        BiomeSource dimensionSource = null;
         try (MultiPackResourceManager rm = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanilla, pack))) {
             RegistryAccess.Frozen builtIn = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
             loaded = RegistryDataLoader.load(rm, builtIn, RegistryDataLoader.WORLDGEN_REGISTRIES);
             // the overworld's level stem, as the game loads it after the worldgen registries (Terralith places its biomes there
             // when Lithostitched is absent)
             RegistryAccess.Frozen dims = RegistryDataLoader.load(rm, new RegistryAccess.ImmutableRegistryAccess(
-                java.util.stream.Stream.concat(builtIn.registries(), loaded.registries()).map(RegistryAccess.RegistryEntry::value).toList()).freeze(),
+                Stream.concat(builtIn.registries(), loaded.registries()).map(RegistryAccess.RegistryEntry::value).toList()).freeze(),
                 RegistryDataLoader.DIMENSION_REGISTRIES);
-            var stem = dims.registryOrThrow(Registries.LEVEL_STEM).get(net.minecraft.world.level.dimension.LevelStem.OVERWORLD);
+            var stem = dims.registryOrThrow(Registries.LEVEL_STEM).get(LevelStem.OVERWORLD);
             if (stem != null) {
                 dimensionSource = stem.generator().getBiomeSource();
             }
@@ -80,7 +87,7 @@ public final class GpuDatapack {
         Registry<Biome> biomes = loaded.registryOrThrow(Registries.BIOME);
         Holder<MultiNoiseBiomeSourceParameterList> params = loaded.registryOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
             .getHolderOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD);
-        net.minecraft.world.level.biome.BiomeSource source = dimensionSource instanceof MultiNoiseBiomeSource ? dimensionSource
+        BiomeSource source = dimensionSource instanceof MultiNoiseBiomeSource ? dimensionSource
             : MultiNoiseBiomeSource.createFromPreset(params);
         Holder<NoiseGeneratorSettings> settings = loaded.registryOrThrow(Registries.NOISE_SETTINGS).getHolderOrThrow(NoiseGeneratorSettings.OVERWORLD);
         DimensionType dim = loaded.registryOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD);

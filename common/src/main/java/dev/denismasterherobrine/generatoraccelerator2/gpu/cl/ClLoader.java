@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.cl;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -8,8 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Loads the OpenCL binding ({@code gpu.cl.lwjgl.LwjglCl} over LWJGL's {@code lwjgl-opencl}) without putting it on GA2's class
@@ -107,8 +111,8 @@ public final class ClLoader {
         Path opencl = extract(libDir, "lwjgl-opencl-" + LWJGL_VERSION + ".jar");
         Path core = extract(libDir, "lwjgl-" + LWJGL_VERSION + ".jar");
         Path nativeDir = libDir.resolve(natives);
-        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(Files.newInputStream(extract(libDir, "lwjgl-" + LWJGL_VERSION + "-" + natives + ".jar")))) {
-            for (java.util.zip.ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(extract(libDir, "lwjgl-" + LWJGL_VERSION + "-" + natives + ".jar")))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
                 String n = e.getName();
                 if (!e.isDirectory() && (n.endsWith(".dll") || n.endsWith(".so") || n.endsWith(".dylib"))) {
                     writeOnce(nativeDir, n.substring(n.lastIndexOf('/') + 1), zip.readAllBytes());
@@ -127,7 +131,7 @@ public final class ClLoader {
         }
         boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         Path jvm = Path.of(System.getProperty("java.home"), "bin", windows ? "javaw.exe" : "java");
-        String cp = String.join(java.io.File.pathSeparator, classes.toString(), core.toString(), opencl.toString());
+        String cp = String.join(File.pathSeparator, classes.toString(), core.toString(), opencl.toString());
         return List.of(jvm.toString(), "-XX:+IgnoreUnrecognizedVMOptions", "-Xmx64m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Djava.awt.headless=true",
             "-Dorg.lwjgl.librarypath=" + nativeDir, "-cp", cp, worker);
     }
@@ -147,7 +151,7 @@ public final class ClLoader {
     /** Writes {@code bytes} to {@code dir/name} unless the file already holds them. */
     private static Path writeOnce(Path dir, String name, byte[] bytes) throws IOException {
         Path out = dir.resolve(name);
-        if (Files.isRegularFile(out) && Files.size(out) == bytes.length && java.util.Arrays.equals(Files.readAllBytes(out), bytes)) {
+        if (Files.isRegularFile(out) && Files.size(out) == bytes.length && Arrays.equals(Files.readAllBytes(out), bytes)) {
             return out;
         }
         Files.createDirectories(dir);

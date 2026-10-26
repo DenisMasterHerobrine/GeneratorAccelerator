@@ -2,7 +2,10 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.pastel;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.FeatureWraps;
+import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
@@ -24,8 +27,8 @@ public final class PastelGeodes {
     public static void register() {
         CompatAdapters.register(FeatureTargets.compatKey("geode"), PastelMixins.GEODE_ORES, PastelGeodes::bindTail);
         // Pastel's block change event acts on the server thread only. There, the POI skip then keeps the call.
-        CompatAdapters.register(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.STATE_POI_SKIP, PastelMixins.SERVER_LEVEL, () -> {
-            dev.denismasterherobrine.generatoraccelerator2.state.PoiStates.keepOnServerThread();
+        CompatAdapters.register(HookTargets.STATE_POI_SKIP, PastelMixins.SERVER_LEVEL, () -> {
+            PoiStates.keepOnServerThread();
             return true;
         });
     }
@@ -37,7 +40,7 @@ public final class PastelGeodes {
     public static boolean bindTail() {
         Class<?>[] params = {FeaturePlaceContext.class, CallbackInfoReturnable.class};
         Method found = null;
-        for (Method m : dev.denismasterherobrine.generatoraccelerator2.compat.Reflect.declaredMethods(GeodeFeature.class)) {
+        for (Method m : Reflect.declaredMethods(GeodeFeature.class)) {
             if (m.getName().endsWith("$generate") && !Modifier.isStatic(m.getModifiers()) && m.getReturnType() == void.class
                 && Arrays.equals(m.getParameterTypes(), params)) {
                 if (found != null) {
@@ -55,10 +58,8 @@ public final class PastelGeodes {
             FeatureWraps.geodeTail = (feature, ctx) -> {
                 try {
                     handler.invoke(feature, ctx, new CallbackInfoReturnable<Boolean>("place", false, Boolean.TRUE));
-                } catch (RuntimeException | Error e) {
-                    throw e;
                 } catch (Throwable t) {
-                    throw new IllegalStateException(t);
+                    throw Reflect.unchecked(t);
                 }
             };
             return true;

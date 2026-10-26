@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import net.minecraft.world.level.material.FluidState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -25,7 +26,7 @@ public abstract class FluidStateEmptyMixin {
             return e == 1;
         }
         boolean empty = ((FluidInvoker) ((FluidState) (Object) this).getType()).ga2$isEmpty();
-        if ((dev.denismasterherobrine.generatoraccelerator2.state.StateFast.ENABLED && GA2$HOOK.allowed())) {
+        if ((StateFast.ENABLED && GA2$HOOK.allowed())) {
             this.ga2$empty = empty ? (byte) 1 : (byte) 2;
         }
         return empty;

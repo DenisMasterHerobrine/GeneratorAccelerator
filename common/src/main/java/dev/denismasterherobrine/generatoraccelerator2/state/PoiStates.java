@@ -1,7 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -43,11 +45,11 @@ public final class PoiStates {
     }
 
     /** True when {@code level.onBlockStateChange(pos, oldState, newState)} can be left out (it would do nothing). */
-    public static boolean skip(net.minecraft.server.level.ServerLevel level, BlockState oldState, BlockState newState) {
+    public static boolean skip(ServerLevel level, BlockState oldState, BlockState newState) {
         if (!ENABLED || !HOOK.allowed() || poi(oldState) || poi(newState) || keepOnServerThread && level.getServer().isSameThread()) {
             return false;
         }
-        if (dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats.DETAILED) {
+        if (FeatureStats.DETAILED) {
             SKIPPED.increment();
         }
         return true;

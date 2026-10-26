@@ -12,6 +12,7 @@ import java.util.Set;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import org.junit.jupiter.api.Test;
@@ -58,7 +59,7 @@ public class TagBitsTest {
     @Test
     void absentKeyFindsItsIndexLater() {
         HarnessWorld.registries();
-        TagKey<Block> key = TagKey.create(Registries.BLOCK, net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("ga2test", "late_tag"));
+        TagKey<Block> key = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("ga2test", "late_tag"));
         assertEquals(-1, TagBits.index(key));
         assertEquals(-1, TagBits.index(key));
         TagBits.bits(Set.of(key));

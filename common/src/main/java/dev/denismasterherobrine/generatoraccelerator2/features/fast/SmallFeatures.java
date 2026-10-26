@@ -1,12 +1,14 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
+import com.google.common.collect.MapMaker;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor;
-import java.util.List;
+import java.util.concurrent.ConcurrentMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
@@ -20,7 +22,9 @@ import net.minecraft.world.level.block.TallSeagrassBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
 import net.minecraft.world.level.levelgen.feature.DiskFeature;
+import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.levelgen.feature.KelpFeature;
 import net.minecraft.world.level.levelgen.feature.MultifaceGrowthFeature;
@@ -33,6 +37,7 @@ import net.minecraft.world.level.levelgen.feature.configurations.MultifaceGrowth
 import net.minecraft.world.level.levelgen.feature.configurations.ProbabilityFeatureConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.SimpleBlockConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.SpringConfiguration;
+import javax.annotation.Nullable;
 
 /**
  * Transcriptions of the small vanilla features. Each keeps the vanilla read/write/random order and
@@ -83,8 +88,8 @@ public final class SmallFeatures {
     }
 
     /** Each disk target's program ({@link PredicatePrograms#programFor}), by predicate. */
-    private static final java.util.concurrent.ConcurrentMap<net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate, Object> TARGETS =
-        new com.google.common.collect.MapMaker().weakKeys().makeMap();
+    private static final ConcurrentMap<BlockPredicate, Object> TARGETS =
+        new MapMaker().weakKeys().makeMap();
 
     /** Exact {@code SpringFeature.place}. */
     public static boolean spring(FeaturePlaceContext<?> ctx, Ga2Region region) {
@@ -149,7 +154,7 @@ public final class SmallFeatures {
     }
 
     /** Exact {@code SnowAndFreezeFeature.place}. */
-    public static boolean snowAndFreeze(FeaturePlaceContext<?> ctx, Ga2Region region, net.minecraft.world.level.levelgen.feature.Feature<?> feature) {
+    public static boolean snowAndFreeze(FeaturePlaceContext<?> ctx, Ga2Region region, Feature<?> feature) {
         WorldGenLevel level = ctx.level();
         BlockPos origin = ctx.origin();
         SectionCursor cursor = SectionCursor.mine(SectionCursor.SNOW, region);
@@ -261,15 +266,15 @@ public final class SmallFeatures {
     }
 
     /** Exact {@code SimpleBlockFeature.place}. */
-    public static boolean simpleBlock(net.minecraft.world.level.levelgen.feature.Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
+    public static boolean simpleBlock(Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
         return simpleBlock(feature, ctx, (SimpleBlockConfiguration) ctx.config(), ctx.level(), ctx.random(), ctx.origin(), region);
     }
 
     /**
-     * {@link #simpleBlock(net.minecraft.world.level.levelgen.feature.Feature, FeaturePlaceContext, Ga2Region)} with the context made only
+     * {@link #simpleBlock(Feature, FeaturePlaceContext, Ga2Region)} with the context made only
      * for another mod's callback ({@code ctx} null: {@code Fast.place}, which comes here only without such a callback).
      */
-    static boolean simpleBlock(net.minecraft.world.level.levelgen.feature.Feature<?> feature, @javax.annotation.Nullable FeaturePlaceContext<?> ctx,
+    static boolean simpleBlock(Feature<?> feature, @Nullable FeaturePlaceContext<?> ctx,
                                SimpleBlockConfiguration config, WorldGenLevel level, RandomSource random, BlockPos pos, Ga2Region region) {
         FeatureStats.fast(SimpleBlockFeature.class);
         BlockState state = config.toPlace().getState(random, pos);
@@ -354,7 +359,7 @@ public final class SmallFeatures {
      * {@code out}: the valid directions in their order without {@code except}, then {@code Util.shuffle}'s swaps with the same draws.
      * Returns how many. A configuration class another mod changes is asked itself.
      */
-    private static int shuffledDirections(MultifaceGrowthConfiguration config, RandomSource random, @javax.annotation.Nullable Direction except, Direction[] out) {
+    private static int shuffledDirections(MultifaceGrowthConfiguration config, RandomSource random, @Nullable Direction except, Direction[] out) {
         int n = 0;
         if (!MULTIFACE_DIRECTIONS.allowed()) {
             for (Direction d : except == null ? config.getShuffledDirections(random) : config.getShuffledDirectionsExcept(random, except)) {
@@ -362,7 +367,7 @@ public final class SmallFeatures {
             }
             return n;
         }
-        it.unimi.dsi.fastutil.objects.ObjectArrayList<Direction> valid = config.validDirections;
+        ObjectArrayList<Direction> valid = config.validDirections;
         for (int i = 0, size = valid.size(); i < size; i++) {
             Direction d = valid.get(i);
             if (d != except) {

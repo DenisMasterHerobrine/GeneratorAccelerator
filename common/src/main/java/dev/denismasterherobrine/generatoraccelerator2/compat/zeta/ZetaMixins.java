@@ -2,8 +2,10 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.zeta;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CodeShape;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 
@@ -23,7 +25,7 @@ public final class ZetaMixins {
     public static final String QUARK_STONE_CONTEXT = QUARK_STONE + "$1";
     public static final String LAMBDA = "lambda$generateChunkPart$0";
     /** The walk's mixin and the two mixins that inspect what the walk relies on. Applied only with Quark loaded and {@link #codeKnown}. */
-    public static final java.util.Set<String> MIXINS = java.util.Set.of("dev.denismasterherobrine.generatoraccelerator2.compat.zeta.mixin.ClusterBasedGeneratorMixin",
+    public static final Set<String> MIXINS = Set.of("dev.denismasterherobrine.generatoraccelerator2.compat.zeta.mixin.ClusterBasedGeneratorMixin",
         "dev.denismasterherobrine.generatoraccelerator2.compat.zeta.mixin.ZetaClustersInspectMixin",
         "dev.denismasterherobrine.generatoraccelerator2.compat.quark.mixin.StoneClustersInspectMixin");
 
@@ -59,7 +61,7 @@ public final class ZetaMixins {
     }
 
     private static boolean check() {
-        Map<String, ClassNode> nodes = new java.util.HashMap<>();
+        Map<String, ClassNode> nodes = new HashMap<>();
         for (Known k : KNOWN) {
             ClassNode node = nodes.computeIfAbsent(k.owner(), CodeShape::classNode);
             String got = CodeShape.fingerprint(CodeShape.method(node, k.method(), null));

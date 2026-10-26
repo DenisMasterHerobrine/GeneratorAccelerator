@@ -8,6 +8,7 @@ import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
@@ -28,8 +29,8 @@ final class PredicateCodegen {
     static final int MAX_NODES = 400;
 
     private static final AtomicInteger COUNTER = new AtomicInteger();
-    static final java.util.concurrent.atomic.LongAdder GENERATED = new java.util.concurrent.atomic.LongAdder();
-    static final java.util.concurrent.atomic.LongAdder FAILED = new java.util.concurrent.atomic.LongAdder();
+    static final LongAdder GENERATED = new LongAdder();
+    static final LongAdder FAILED = new LongAdder();
     static volatile Throwable lastFailure;
     private static final MethodType CTOR = MethodType.methodType(void.class, Object[].class);
 

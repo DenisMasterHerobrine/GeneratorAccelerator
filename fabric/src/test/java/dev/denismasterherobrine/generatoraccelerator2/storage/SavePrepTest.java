@@ -15,9 +15,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -30,6 +33,11 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.ticks.LevelChunkTicks;
+import net.minecraft.world.ticks.ProtoChunkTicks;
+import net.minecraft.world.ticks.SavedTick;
+import net.minecraft.world.ticks.ScheduledTick;
+import net.minecraft.world.ticks.TickPriority;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -176,14 +184,14 @@ public class SavePrepTest {
 
     @Test
     void tickLists() {
-        java.util.function.Function<Block, String> id = b -> net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b).toString();
+        Function<Block, String> id = b -> BuiltInRegistries.BLOCK.getKey(b).toString();
         Random random = new Random(9);
         Block[] blocks = { Blocks.WATER, Blocks.LAVA, Blocks.REDSTONE_WIRE, Blocks.SAND, Blocks.REPEATER };
-        net.minecraft.world.ticks.TickPriority[] priorities = net.minecraft.world.ticks.TickPriority.values();
+        TickPriority[] priorities = TickPriority.values();
         // a full chunk's queue, prepared at one game time and saved at a later one: the delays count from the save's time
-        net.minecraft.world.ticks.LevelChunkTicks<Block> queue = new net.minecraft.world.ticks.LevelChunkTicks<>();
+        LevelChunkTicks<Block> queue = new LevelChunkTicks<>();
         for (int i = 0; i < 300; i++) {
-            queue.schedule(new net.minecraft.world.ticks.ScheduledTick<>(blocks[random.nextInt(blocks.length)],
+            queue.schedule(new ScheduledTick<>(blocks[random.nextInt(blocks.length)],
                 new BlockPos(random.nextInt(16), random.nextInt(300) - 60, random.nextInt(16)), 1000 + random.nextInt(50),
                 priorities[random.nextInt(priorities.length)], i));
         }
@@ -194,17 +202,17 @@ public class SavePrepTest {
             same(queue.save(saveTime, id), tag, "queue at " + saveTime);
         }
         // pending ticks (loaded from a save, not scheduled yet) come first
-        List<net.minecraft.world.ticks.SavedTick<Block>> saved = new ArrayList<>();
+        List<SavedTick<Block>> saved = new ArrayList<>();
         for (int i = 0; i < 40; i++) {
-            saved.add(new net.minecraft.world.ticks.SavedTick<>(blocks[i % blocks.length], new BlockPos(i % 16, i, (i * 7) % 16), i % 9, priorities[i % priorities.length]));
+            saved.add(new SavedTick<>(blocks[i % blocks.length], new BlockPos(i % 16, i, (i * 7) % 16), i % 9, priorities[i % priorities.length]));
         }
-        net.minecraft.world.ticks.LevelChunkTicks<Block> loaded = new net.minecraft.world.ticks.LevelChunkTicks<>(saved);
+        LevelChunkTicks<Block> loaded = new LevelChunkTicks<>(saved);
         SavePrep.prepareTicks(loaded, id, 0);
         same(loaded.save(7, id), SavePrep.takeTicks(loaded, 7, () -> null), "pending ticks");
         // a generating chunk's list
-        net.minecraft.world.ticks.ProtoChunkTicks<Block> proto = new net.minecraft.world.ticks.ProtoChunkTicks<>();
+        ProtoChunkTicks<Block> proto = new ProtoChunkTicks<>();
         for (int i = 0; i < 120; i++) {
-            proto.schedule(new net.minecraft.world.ticks.ScheduledTick<>(blocks[i % blocks.length], new BlockPos(i % 16, i - 60, (i * 3) % 16), 0,
+            proto.schedule(new ScheduledTick<>(blocks[i % blocks.length], new BlockPos(i % 16, i - 60, (i * 3) % 16), 0,
                 priorities[i % priorities.length], 0));
         }
         SavePrep.prepareTicks(proto, id, 0);
@@ -212,10 +220,10 @@ public class SavePrepTest {
         // a tick scheduled after the encoding: refused
         long changed = SavePrep.TICKS_CHANGED.sum();
         SavePrep.prepareTicks(queue, id, 990);
-        queue.schedule(new net.minecraft.world.ticks.ScheduledTick<>(Blocks.STONE, new BlockPos(1, 2, 3), 2000, 7));
+        queue.schedule(new ScheduledTick<>(Blocks.STONE, new BlockPos(1, 2, 3), 2000, 7));
         assertNull(SavePrep.takeTicks(queue, 990, () -> null), "queue changed");
         SavePrep.prepareTicks(proto, id, 0);
-        proto.schedule(new net.minecraft.world.ticks.ScheduledTick<>(Blocks.STONE, new BlockPos(1, 2, 3), 0, 8));
+        proto.schedule(new ScheduledTick<>(Blocks.STONE, new BlockPos(1, 2, 3), 0, 8));
         assertNull(SavePrep.takeTicks(proto, 0, () -> null), "proto changed");
         assertEquals(changed + 2, SavePrep.TICKS_CHANGED.sum());
     }
@@ -225,7 +233,7 @@ public class SavePrepTest {
     }
 
     /** Vanilla's encoding: the codec with GA2's pack and section codec off. */
-    private static Tag vanilla(java.util.function.Supplier<Tag> encode) {
+    private static Tag vanilla(Supplier<Tag> encode) {
         boolean pack = FastPack.ENABLED, codec = SectionCodec.ENABLED;
         try {
             FastPack.ENABLED = false;

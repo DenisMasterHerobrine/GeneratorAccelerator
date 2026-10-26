@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /** {@link GpuWorldgen.Governor}: many late answers pause a dimension's asks, and answers from before a pause do not pause it again. */
@@ -61,7 +62,7 @@ class GovernorTest {
         for (long pause : expected) {
             lateWindow(g);
             assertFalse(g.asking(), "paused");
-            org.junit.jupiter.api.Assertions.assertEquals(pause, g.lastPauseNs, "pause after another late window");
+            Assertions.assertEquals(pause, g.lastPauseNs, "pause after another late window");
             waitOut(g);
         }
         // a clean window, then a late one: the pause is the first one again
@@ -69,7 +70,7 @@ class GovernorTest {
             g.answered(false);
         }
         lateWindow(g);
-        org.junit.jupiter.api.Assertions.assertEquals(first, g.lastPauseNs, "after a clean window");
+        Assertions.assertEquals(first, g.lastPauseNs, "after a clean window");
     }
 
     /** The pause this rule exists for still comes: a GPU late in every window is paused for the longest time within a few windows. */

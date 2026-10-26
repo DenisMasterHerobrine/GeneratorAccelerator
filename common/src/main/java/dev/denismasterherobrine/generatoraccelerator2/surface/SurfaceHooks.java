@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -12,9 +14,8 @@ public final class SurfaceHooks {
 
     private static final ThreadLocal<Boolean> DISABLED = ThreadLocal.withInitial(() -> Boolean.FALSE);
     /** Threads inside {@link #runVanilla}. While there are none, the override is not looked up (see {@code DfcHooks}). */
-    private static final java.util.concurrent.atomic.AtomicInteger OVERRIDES = new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger OVERRIDES = new AtomicInteger();
     private static final HookTargets.Hook BUILD = HookTargets.hook(HookTargets.SURFACE_BUILD);
-    private static final HookTargets.Hook TOP_MATERIAL = HookTargets.hook(HookTargets.SURFACE_TOP_MATERIAL);
     private static final HookTargets.Hook BIOME_ZOOM = HookTargets.hook(HookTargets.SURFACE_BIOME_ZOOM);
 
     public static final LongAdder CHUNKS_FAST = new LongAdder();
@@ -26,7 +27,7 @@ public final class SurfaceHooks {
     public static final LongAdder SECTIONS_BULK = new LongAdder();
     public static final LongAdder COLUMNS_DEEP = new LongAdder();
     /** {@code -Dgeneratoraccelerator2.verify.surface=N}: every N-th chunk GA2 builds is checked against vanilla on a copy. */
-    public static final dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify VERIFY = new dev.denismasterherobrine.generatoraccelerator2.chunkio.StepVerify("surface");
+    public static final StepVerify VERIFY = new StepVerify("surface");
 
     private static boolean overridden() {
         return OVERRIDES.get() != 0 && DISABLED.get();
@@ -34,10 +35,6 @@ public final class SurfaceHooks {
 
     public static boolean enabled() {
         return !overridden() && SurfaceConfig.enabled() && BUILD.allowed();
-    }
-
-    public static boolean topMaterialEnabled() {
-        return !overridden() && SurfaceConfig.enabled() && TOP_MATERIAL.allowed();
     }
 
     public static boolean zoomAllowed() {

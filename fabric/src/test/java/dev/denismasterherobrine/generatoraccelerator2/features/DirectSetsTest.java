@@ -13,6 +13,7 @@ import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Field;
 
 /**
  * {@code HolderSet.Direct.contains} by bits ({@code state.DirectSets}) against membership by vanilla's comparison, for random
@@ -77,7 +78,7 @@ public class DirectSetsTest {
         HarnessWorld.registries();
         Holder.Reference<Block> stone = BuiltInRegistries.BLOCK.holders().toList().get(1);
         HolderSet<Block> set = HolderSet.direct(List.of(stone));
-        java.lang.reflect.Field bits = HolderSet.Direct.class.getDeclaredField("ga2$bits");
+        Field bits = HolderSet.Direct.class.getDeclaredField("ga2$bits");
         bits.setAccessible(true);
         assertTrue(set.contains(stone));
         assertTrue(bits.get(set) != null, "bits kept");

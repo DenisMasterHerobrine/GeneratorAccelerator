@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import it.unimi.dsi.fastutil.doubles.DoubleList;
+import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -95,7 +97,7 @@ public final class GeodeFast {
     }
 
     private static boolean nonNegativeAmplitudes(NormalNoise noise) {
-        it.unimi.dsi.fastutil.doubles.DoubleList amplitudes = noise.parameters().amplitudes();
+        DoubleList amplitudes = noise.parameters().amplitudes();
         for (int i = 0, n = amplitudes.size(); i < n; i++) {
             if (!(amplitudes.getDouble(i) >= 0.0)) {
                 return false;
@@ -104,7 +106,7 @@ public final class GeodeFast {
         return true;
     }
 
-    public static boolean place(net.minecraft.world.level.levelgen.feature.Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
+    public static boolean place(Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
         GeodeConfiguration config = (GeodeConfiguration) ctx.config();
         RandomSource random = ctx.random();
         BlockPos origin = ctx.origin();
@@ -244,7 +246,7 @@ public final class GeodeFast {
         }
         List<BlockState> inner = blocks.innerPlacements;
         for (BlockPos pos : placements) {
-            BlockState state = net.minecraft.Util.getRandom(inner, random);
+            BlockState state = Util.getRandom(inner, random);
             for (Direction direction : DIRECTIONS) {
                 if (state.hasProperty(BlockStateProperties.FACING)) {
                     state = state.setValue(BlockStateProperties.FACING, direction);

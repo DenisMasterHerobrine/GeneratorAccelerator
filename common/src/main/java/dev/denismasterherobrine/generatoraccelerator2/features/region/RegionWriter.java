@@ -1,5 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.region;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesConfig;
 import java.util.EnumSet;
@@ -23,8 +25,8 @@ import net.minecraft.world.level.levelgen.Heightmap;
  * entity and post-processing side effects. Any other chunk class or status delegates to the chunk.
  */
 public final class RegionWriter {
-    private static final dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.Hook UNLOCKED =
-        dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.hook(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.SECTION_WRITE_UNLOCKED);
+    private static final HookTargets.Hook UNLOCKED =
+        HookTargets.hook(HookTargets.SECTION_WRITE_UNLOCKED);
 
     private RegionWriter() {}
 
@@ -127,7 +129,7 @@ public final class RegionWriter {
             }
         }
         if (missing != null) {
-            dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming.primeForWrite(chunk, missing, Heightmap::primeHeightmaps);
+            HeightmapPriming.primeForWrite(chunk, missing, Heightmap::primeHeightmaps);
         }
         Heightmap[] maps = new Heightmap[ChunkStatus.FINAL_HEIGHTMAPS.size()];
         int i = 0;

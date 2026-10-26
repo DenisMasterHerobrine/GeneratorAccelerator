@@ -3,7 +3,9 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellCacheOnce;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CoordDeps;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.RefCount;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.CellTemplate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.ColumnTemplate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.DfcCompileException;
@@ -17,6 +19,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.IrBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -167,23 +170,23 @@ public final class Compiler {
         // The surface level walk (NoiseChunk.computePreliminarySurfaceLevel) evaluates the chunk-wrapped surface level function at
         // points up to three chunks away. So its program keeps the chunk marker policy but evaluates flat caches as their
         // children. This requires every flat cache in the function to read x and z only.
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.Templates surfaceLevels = null;
+        SurfaceLevels.Templates surfaceLevels = null;
         Node levels = routerRoots.get("initial_density_without_jaggedness");
-        List<Node.Marker> levelFlats = levels == null ? null : dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.flatCaches(levels);
-        if (DfcConfig.pointPrograms() && dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.ENABLED && levelFlats != null) {
+        List<Node.Marker> levelFlats = levels == null ? null : SurfaceLevels.flatCaches(levels);
+        if (DfcConfig.pointPrograms() && SurfaceLevels.ENABLED && levelFlats != null) {
             try {
                 PointTemplate walk = ProgramCompiler.compilePointTemplate("surface-levels", List.of(levels), builder.specs(), builder.blendedSpecs(), Emitter.Mode.COLUMN);
                 PointTemplate flats = null;
-                java.util.Map<net.minecraft.world.level.levelgen.DensityFunction, Integer> flatIndex = new java.util.IdentityHashMap<>();
+                Map<DensityFunction, Integer> flatIndex = new IdentityHashMap<>();
                 if (!levelFlats.isEmpty()) {
-                    List<Node> children = new java.util.ArrayList<>();
+                    List<Node> children = new ArrayList<>();
                     for (Node.Marker m : levelFlats) {
                         flatIndex.put(m.vanilla(), children.size());
                         children.add(m.child());
                     }
                     flats = ProgramCompiler.compilePointTemplate("surface-flats", children, builder.specs(), builder.blendedSpecs(), Emitter.Mode.POINT);
                 }
-                surfaceLevels = new dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.Templates(walk, flats, flatIndex);
+                surfaceLevels = new SurfaceLevels.Templates(walk, flats, flatIndex);
             } catch (DfcCompileException e) {
                 if (DfcConfig.failOnCodegenError()) {
                     throw e;
@@ -194,10 +197,10 @@ public final class Compiler {
         }
 
         // Sky corners: only the chunk's own final density is classified, and only a position-pure column can be computed in parts
-        dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds sky = null;
+        SkyBounds sky = null;
         if (column != null && column.statefulMarkers.isEmpty() && !column.readsBeardifier && cells.size() == 1 && cells.get(0).marker == null
             && cells.get(0).bounds != null && cells.get(0).statefulMarkers.isEmpty()) {
-            var result = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.of(column.rootMarkers, cells.get(0).bounds,
+            var result = SkyBounds.of(column.rootMarkers, cells.get(0).bounds,
                 builder.specs(), builder.blendedSpecs());
             sky = result.bounds();
             if (sky == null) {
@@ -230,7 +233,7 @@ public final class Compiler {
         if (m.type() != Node.MarkerType.CACHE_2D) {
             return "";
         }
-        String y = new dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CoordDeps(true).firstReadingY(m.child());
+        String y = new CoordDeps(true).firstReadingY(m.child());
         if (y != null) {
             return "its child reads y (" + y + ")";
         }

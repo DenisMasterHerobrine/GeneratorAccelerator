@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkload;
 
 import dev.denismasterherobrine.generatoraccelerator2.config.ConfigSpec;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 
 /**
  * Config for loading and sending chunks ({@code config/generatoraccelerator2/chunk-loading.toml}). Loaded chunks and the
@@ -40,8 +41,8 @@ public final class ChunkLoadConfig {
     public static boolean otherChunkSystem() {
         Boolean other = otherChunkSystem;
         if (other == null) {
-            other = dev.denismasterherobrine.generatoraccelerator2.dfc.Compat.isLoaded("c2me")
-                || dev.denismasterherobrine.generatoraccelerator2.dfc.Compat.isLoaded("moonrise");
+            other = Compat.isLoaded("c2me")
+                || Compat.isLoaded("moonrise");
             otherChunkSystem = other;
         }
         return other;

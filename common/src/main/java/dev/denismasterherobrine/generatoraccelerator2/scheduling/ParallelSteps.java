@@ -1,10 +1,22 @@
 package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkGeneratorStructureStateAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.structure.RingBounds;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Supplier;
 import net.minecraft.CrashReport;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
@@ -15,13 +27,18 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.chunk.status.ChunkStep;
 import net.minecraft.world.level.chunk.status.WorldGenContext;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import javax.annotation.Nullable;
+import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
 
 /**
  * Runs the SURFACE and CARVERS chunk steps on the worker pool, the way vanilla already runs NOISE.
@@ -79,14 +96,14 @@ public final class ParallelSteps {
         }
         ChunkGenerator generator = ctx.generator();
         if (generator.getClass() == NoiseBasedChunkGenerator.class && ((ChunkAccessAccessor) chunk).ga2$noiseChunk() == null
-            && dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk) == null) {
+            && GpuTerrain.of(chunk) == null) {
             // a NoiseChunk would be built inside the step, blender included. Run vanilla's step, all inline
             return null;
         }
         ServerLevel level = ctx.level();
         WorldGenRegion region = new WorldGenRegion(level, cache, step, chunk);
-        net.minecraft.world.level.StructureManager structures = level.structureManager().forWorldGenRegion(region);
-        net.minecraft.world.level.levelgen.RandomState randomState = level.getChunkSource().randomState();
+        StructureManager structures = level.structureManager().forWorldGenRegion(region);
+        RandomState randomState = level.getChunkSource().randomState();
         Blender blender = Blender.of(region);
         StepHandlers.Frame frame = new StepHandlers.Frame(ctx, step, cache, chunk, level, region);
         SURFACE_ASYNC.increment();
@@ -116,7 +133,7 @@ public final class ParallelSteps {
         }
         boolean noiseBased = generator.getClass() == NoiseBasedChunkGenerator.class;
         if (noiseBased && ((ChunkAccessAccessor) chunk).ga2$noiseChunk() == null
-            && dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk) == null) {
+            && GpuTerrain.of(chunk) == null) {
             SURFACE_INLINE.increment();
             return null;
         }
@@ -130,14 +147,14 @@ public final class ParallelSteps {
         Blender blender = Blender.of(region);
         Runnable work = () -> StepThreads.withBlender(blender, call);
         SURFACE_ASYNC.increment();
-        java.util.function.Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_surface", () -> {
+        Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_surface", () -> {
             run(work, step, chunk, generator);
             return chunk;
         });
-        java.util.concurrent.Executor executor = StepLane.executor(StepLane.level(cache, chunk));
+        Executor executor = StepLane.executor(StepLane.level(cache, chunk));
         // the GPU's surface may still be on its way. The step then runs once the surface is in (or the wait for it is over),
         // instead of a worker waiting for it
-        CompletableFuture<Void> gpu = dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob.whenReady(chunk);
+        CompletableFuture<Void> gpu = GpuSurfaceJob.whenReady(chunk);
         if (gpu != null) {
             SURFACE_DEFERRED.increment();
             return gpu.thenApplyAsync(v -> body.get(), executor);
@@ -146,7 +163,7 @@ public final class ParallelSteps {
     }
 
     /** SURFACE steps run once the GPU's surface was in, rather than waiting for it on a worker. */
-    public static final java.util.concurrent.atomic.LongAdder SURFACE_DEFERRED = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder SURFACE_DEFERRED = new LongAdder();
 
     /**
      * The generator call of the CARVERS step on the worker pool. Vanilla's step has built the region and applied the
@@ -161,7 +178,7 @@ public final class ParallelSteps {
             return null;
         }
         if (generator.getClass() == NoiseBasedChunkGenerator.class && ((ChunkAccessAccessor) chunk).ga2$noiseChunk() == null
-            && dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk) == null) {
+            && GpuTerrain.of(chunk) == null) {
             CARVERS_INLINE.increment();
             return null;
         }
@@ -174,7 +191,7 @@ public final class ParallelSteps {
 
     public static final LongAdder FEATURES_WAITED = new LongAdder();
     /** From a FEATURES step scheduled to its locks granted. */
-    public static final dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat FEATURES_LOCK_WAIT = new dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat();
+    public static final Lat FEATURES_LOCK_WAIT = new Lat();
     public static final LongAdder LIGHT_WAITED = new LongAdder();
     public static final LongAdder LIGHT_INIT_ASYNC = new LongAdder();
 
@@ -203,11 +220,11 @@ public final class ParallelSteps {
         }
         STARTS_ASYNC.increment();
         MinecraftServer server = ctx.level().getServer();
-        java.util.function.Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_structure_starts", () -> StepThreads.guarded(server, () -> {
+        Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_structure_starts", () -> StepThreads.guarded(server, () -> {
             run(() -> StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)).join(), step, chunk, ctx.generator());
             return chunk;
         }));
-        java.util.concurrent.Executor executor = StepLane.executor(StepLane.level(cache, chunk));
+        Executor executor = StepLane.executor(StepLane.level(cache, chunk));
         CompletableFuture<?> rings = pendingRings(ctx.level(), chunk.getPos());
         if (rings == null) {
             return CompletableFuture.supplyAsync(body, executor);
@@ -223,17 +240,17 @@ public final class ParallelSteps {
      * none. There are none when all are done, or when no ring position can be the chunk. Ring positions never change once
      * the level exists.
      */
-    @javax.annotation.Nullable
+    @Nullable
     private static CompletableFuture<?> pendingRings(ServerLevel level, ChunkPos pos) {
-        net.minecraft.world.level.chunk.ChunkGeneratorStructureState state = level.getChunkSource().getGeneratorState();
-        java.util.Map<net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement, ? extends CompletableFuture<?>> rings =
-            ((dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkGeneratorStructureStateAccessor) state).ga2$ringPositions();
-        java.util.List<CompletableFuture<?>> pending = null;
-        for (java.util.Map.Entry<net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement, ? extends CompletableFuture<?>> e : rings.entrySet()) {
+        ChunkGeneratorStructureState state = level.getChunkSource().getGeneratorState();
+        Map<ConcentricRingsStructurePlacement, ? extends CompletableFuture<?>> rings =
+            ((ChunkGeneratorStructureStateAccessor) state).ga2$ringPositions();
+        List<CompletableFuture<?>> pending = null;
+        for (Map.Entry<ConcentricRingsStructurePlacement, ? extends CompletableFuture<?>> e : rings.entrySet()) {
             CompletableFuture<?> f = e.getValue();
-            if (!f.isDone() && !dev.denismasterherobrine.generatoraccelerator2.structure.RingBounds.startNeverWaits(state, e.getKey(), pos.x, pos.z)) {
+            if (!f.isDone() && !RingBounds.startNeverWaits(state, e.getKey(), pos.x, pos.z)) {
                 if (pending == null) {
-                    pending = new java.util.ArrayList<>();
+                    pending = new ArrayList<>();
                 }
                 pending.add(f);
             }
@@ -359,7 +376,7 @@ public final class ParallelSteps {
                 StepLane.execute(StepLane.level(cache, chunk), Util.wrapThreadWithTaskName(taskName, () -> {
                     StepThreads.guarded(server, () -> runLocked(locks, request, ctx, step, cache, chunk, result));
                 }));
-            } catch (java.util.concurrent.RejectedExecutionException e) {
+            } catch (RejectedExecutionException e) {
                 locks.release(request);
                 result.completeExceptionally(e);
             }
@@ -397,7 +414,7 @@ public final class ParallelSteps {
     /**
      * Runs a step body. A failure carries the same crash report vanilla builds in {@code ChunkMap.applyStep}. When the thread's
      * outermost body ends, the thread's reused fast-path objects let go of the region
-     * ({@link dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs}).
+     * ({@link RegionRefs}).
      */
     private static void run(Runnable work, ChunkStep step, ChunkAccess chunk, ChunkGenerator generator) {
         int[] running = RUNNING.get();
@@ -418,7 +435,7 @@ public final class ParallelSteps {
             throw new ReportedException(report);
         } finally {
             if (--running[0] == 0) {
-                dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs.release();
+                RegionRefs.release();
             }
         }
     }

@@ -1,7 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CodeShape;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.Ir;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceEval;
@@ -61,15 +64,15 @@ public final class AlexsCavesRules {
             MethodHandles.Lookup l = MethodHandles.publicLookup();
             MethodHandle seedsSet = l.findStatic(seeds, "isInitialized", MethodType.methodType(boolean.class));
             MethodHandle mapsSet = l.findStatic(maps, "isInitialized", MethodType.methodType(boolean.class));
-            dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.requireReady(() -> {
+            BiomeAnswers.requireReady(() -> {
                 try {
                     return (boolean) seedsSet.invokeExact() && (boolean) mapsSet.invokeExact();
                 } catch (Throwable t) {
                     return false;
                 }
             });
-            dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(
-                dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.BIOME_ANSWERS, AlexsCavesMixins.BIOME_SOURCE, () -> true);
+            CompatAdapters.register(
+                HookTargets.BIOME_ANSWERS, AlexsCavesMixins.BIOME_SOURCE, () -> true);
         } catch (ReflectiveOperationException | RuntimeException e) {
             LOGGER.info("Alex's Caves biome lookup: {} -> biomes outside a region looked up each time", e.toString());
         }
@@ -149,10 +152,8 @@ public final class AlexsCavesRules {
                 }
                 Object noise = ((Map<?, ?>) snapshot.invokeExact()).get(biome);
                 return noise != null && (int) rarityOf.invokeExact(noise) == offset;
-            } catch (RuntimeException | Error e) {
-                throw e;
             } catch (Throwable t) {
-                throw new IllegalStateException(t);
+                throw Reflect.unchecked(t);
             }
         }
 

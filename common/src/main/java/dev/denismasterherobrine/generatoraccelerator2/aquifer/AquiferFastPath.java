@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.world.level.levelgen.Aquifer;
+import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 
 /**
@@ -89,7 +90,7 @@ public final class AquiferFastPath {
      * ({@code StateDependence.cellCentreCaches}). An aquifer may have two cells in one block column where such a function
      * differs between the two cell heights. That aquifer keeps vanilla's order ({@link #SEARCH}).
      */
-    private static final ConcurrentMap<PositionalRandomFactory, net.minecraft.world.level.levelgen.DensityFunction[]> CELL_CACHES =
+    private static final ConcurrentMap<PositionalRandomFactory, DensityFunction[]> CELL_CACHES =
         new MapMaker().weakKeys().concurrencyLevel(4).makeMap();
 
     public static void registerRandomState(PositionalRandomFactory aquiferRandom, boolean classifySafe) {
@@ -104,7 +105,7 @@ public final class AquiferFastPath {
      * {@link #registerMode(PositionalRandomFactory, int)}, where the mode holds for an aquifer only after its cells are checked
      * against {@code cellCaches}. Null means no check.
      */
-    public static void registerMode(PositionalRandomFactory aquiferRandom, int mode, net.minecraft.world.level.levelgen.DensityFunction[] cellCaches) {
+    public static void registerMode(PositionalRandomFactory aquiferRandom, int mode, DensityFunction[] cellCaches) {
         MODES.put(aquiferRandom, mode);
         if (cellCaches != null && cellCaches.length > 0) {
             CELL_CACHES.put(aquiferRandom, cellCaches);
@@ -114,7 +115,7 @@ public final class AquiferFastPath {
     }
 
     /** The functions an aquifer's cells must agree on for its mode to hold, or null ({@link #CELL_CACHES}). */
-    public static net.minecraft.world.level.levelgen.DensityFunction[] cellCachesFor(PositionalRandomFactory random) {
+    public static DensityFunction[] cellCachesFor(PositionalRandomFactory random) {
         return CELL_CACHES.get(random);
     }
 

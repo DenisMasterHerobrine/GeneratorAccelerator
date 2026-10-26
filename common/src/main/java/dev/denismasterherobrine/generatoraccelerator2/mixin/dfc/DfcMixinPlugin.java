@@ -1,16 +1,26 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Coremods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.BeardifierChain;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.LateInspection;
 import dev.denismasterherobrine.generatoraccelerator2.compat.LateOverwrites;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MergedMethods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Takeover;
+import dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
+import dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms;
+import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -106,7 +116,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("PlacedFeatureMixin", new FeatureHook(FeatureTargets.PLACEMENT, List.of(
             "placeWithContext(Lnet/minecraft/world/level/levelgen/placement/PlacementContext;Lnet/minecraft/util/RandomSource;Lnet/minecraft/core/BlockPos;)Z"))),
         // the predicate programs answer BlockStateBase.is(HolderSet) for fixed block lists themselves (by block identity)
-        Map.entry("BlockStateIsInspectMixin", new FeatureHook(dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms.STATE_IS,
+        Map.entry("BlockStateIsInspectMixin", new FeatureHook(PredicatePrograms.STATE_IS,
             List.of("is(Lnet/minecraft/core/HolderSet;)Z", "contains(Lnet/minecraft/core/Holder;)Z"), MergedMethods.Mode.BYPASS)),
         // the predicate programs read the region directly, skipping getBlockState and whatever any mod put into it
         Map.entry("WorldGenRegionReadsStrictInspectMixin", new FeatureHook(FeatureTargets.REGION_READS_UNCHANGED,
@@ -165,7 +175,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             "applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"))));
 
     /** The block search {@code findBlockLightSources} runs. NeoForge's search, with its dynamic light emission test, or vanilla's on Fabric. */
-    private static final String LIGHT_SOURCE_SEARCH = dev.denismasterherobrine.generatoraccelerator2.platform.Platform.isNeoForge()
+    private static final String LIGHT_SOURCE_SEARCH = Platform.isNeoForge()
         ? "findBlocks(Ljava/util/function/Predicate;Ljava/util/function/BiPredicate;Ljava/util/function/BiConsumer;)V"
         : "findBlocks(Ljava/util/function/Predicate;Ljava/util/function/BiConsumer;)V";
 
@@ -191,7 +201,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("ClusterBasedGeneratorMixin", List.of(
             new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of("generateChunkPart"),
                 List.of("around", "createContext", "getLowerBound", "getUpperBound", "src", "radius", "isInside", "canPlaceAt", "consume")),
-            new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of(dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins.LAMBDA), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of(ZetaMixins.LAMBDA), MergedMethods.Mode.BYPASS))),
         Map.entry("ZetaClustersInspectMixin", List.of(
             new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of("forEachChunkBlock", "isInside"), MergedMethods.Mode.BYPASS))),
         Map.entry("StoneClustersInspectMixin", List.of(
@@ -626,7 +636,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (mixinClassName.endsWith(".StructureTemplatePlaceMixin") || mixinClassName.endsWith(".StructureTemplatePlaceNeoMixin")) {
             // the loader's own processBlockInfos call: vanilla's five arguments on Fabric, NeoForge's six
-            return mixinClassName.endsWith("Neo" + "Mixin") == dev.denismasterherobrine.generatoraccelerator2.platform.Platform.isNeoForge();
+            return mixinClassName.endsWith("Neo" + "Mixin") == Platform.isNeoForge();
         }
         if ((mixinClassName.endsWith(".ChunkMapMailboxMixin") || mixinClassName.endsWith(".MainThreadExecutorMixin")
             || mixinClassName.endsWith(".ChunkMapUnloadMixin") || mixinClassName.endsWith(".ThreadedLightTasksMixin")
@@ -636,7 +646,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             return false;
         }
         if (mixinClassName.contains(".mixin.chunkload.") && !mixinClassName.endsWith(".ClientChunkPacketTimingMixin")
-            && dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig.otherChunkSystem()) {
+            && ChunkLoadConfig.otherChunkSystem()) {
             // their chunk systems load, ticket and send chunks themselves
             return false;
         }
@@ -698,7 +708,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
         // the class as the transformers left it, before any mixin. Records what coremods changed in it (Coremods).
-        dev.denismasterherobrine.generatoraccelerator2.compat.Coremods.inspect(targetClassName, targetClass);
+        Coremods.inspect(targetClassName, targetClass);
     }
 
     @Override
@@ -727,12 +737,12 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         boolean forced = !hooks.isEmpty() && Boolean.getBoolean(HookTargets.forceProperty(hooks.get(0).name()));
         if (!late) {
             LOGGER.warn("{}: fast {} off (late mixin inspection unavailable)",
-                dev.denismasterherobrine.generatoraccelerator2.platform.Names.mojangClass(targetClass.name), methods);
+                Names.mojangClass(targetClass.name), methods);
         } else if (changedBy.isEmpty() || forced) {
             LateOverwrites.install(targetClass, methods);
         } else {
             LOGGER.info("{}: {} shared with {} -> GA2 versions not applied",
-                dev.denismasterherobrine.generatoraccelerator2.platform.Names.mojangClass(targetClass.name), methods, changedBy);
+                Names.mojangClass(targetClass.name), methods, changedBy);
         }
     }
 
@@ -741,16 +751,16 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
      * replacement reproduces (Fabric API's air test in the section write), so it does not keep the replacement out.
      */
     private static List<String> unhandled(List<MergedMethods.Change> changes, List<FeatureHook> hooks) {
-        Map<String, List<String>> byMixin = new java.util.LinkedHashMap<>();
+        Map<String, List<String>> byMixin = new LinkedHashMap<>();
         for (MergedMethods.Change c : changes) {
             int paren = c.method().indexOf('(');
-            byMixin.computeIfAbsent(c.mixin(), k -> new java.util.ArrayList<>()).add(paren < 0 ? c.method() : c.method().substring(0, paren));
+            byMixin.computeIfAbsent(c.mixin(), k -> new ArrayList<>()).add(paren < 0 ? c.method() : c.method().substring(0, paren));
         }
-        List<String> out = new java.util.ArrayList<>();
+        List<String> out = new ArrayList<>();
         for (Map.Entry<String, List<String>> e : byMixin.entrySet()) {
             boolean known = false;
             for (FeatureHook h : hooks) {
-                if (dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(h.name(), e.getKey(), e.getValue()) != null) {
+                if (KnownMixins.find(h.name(), e.getKey(), e.getValue()) != null) {
                     known = true;
                     break;
                 }
@@ -766,19 +776,19 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         installOverwrites(targetClass, mixinClassName, late);
         if (mixinClassName.endsWith(".mixin.aquifer.NoiseBasedAquiferMixin")) {
             // changes known to keep every status vanilla's when statuses are computed in vanilla's order. With them, the fast path only searches.
-            Map<String, List<String>> byMixin = new java.util.LinkedHashMap<>();
+            Map<String, List<String>> byMixin = new LinkedHashMap<>();
             for (MergedMethods.Change c : MergedMethods.foreignCalls(targetClass, AQUIFER_METHODS, List.of(), MergedMethods.Mode.REPLACE, List.of(), OWN_MIXIN_PACKAGE)) {
-                byMixin.computeIfAbsent(c.mixin(), k -> new java.util.ArrayList<>()).add(c.method().substring(0, c.method().indexOf('(')));
+                byMixin.computeIfAbsent(c.mixin(), k -> new ArrayList<>()).add(c.method().substring(0, c.method().indexOf('(')));
             }
-            List<String> other = new java.util.ArrayList<>();
-            List<String> orderKept = new java.util.ArrayList<>();
-            List<String> liquidRegions = new java.util.ArrayList<>();
+            List<String> other = new ArrayList<>();
+            List<String> orderKept = new ArrayList<>();
+            List<String> liquidRegions = new ArrayList<>();
             for (Map.Entry<String, List<String>> e : byMixin.entrySet()) {
-                boolean known = dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(
-                    dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins.AQUIFER_ORDER_KEPT, e.getKey(), e.getValue()) != null;
+                boolean known = KnownMixins.find(
+                    YungsCaveBiomesMixins.AQUIFER_ORDER_KEPT, e.getKey(), e.getValue()) != null;
                 // Better Caves' step on the answer, which GA2 applies to its own answers (aquifer.LiquidRegions)
-                boolean liquid = !known && dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins.find(
-                    dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins.AQUIFER_LIQUID_REGIONS, e.getKey(), e.getValue()) != null;
+                boolean liquid = !known && KnownMixins.find(
+                    BetterCavesMixins.AQUIFER_LIQUID_REGIONS, e.getKey(), e.getValue()) != null;
                 (known ? orderKept : liquid ? liquidRegions : other).add(e.getKey());
             }
             MixinTargets.recordAquifer(Coremods.withNames(targetClass.name, AQUIFER_METHODS, other), orderKept, liquidRegions);
@@ -787,21 +797,21 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".mixin.beardifier.BeardifierMixin")) {
             // compute: what other mods add around GA2's callback (BeardifierChain). The index runs the steps it knows itself.
             BeardifierChain.Recorded chain = BeardifierChain.inspect(targetClass, OWN_MIXIN_PACKAGE);
-            List<String> computeForeign = new java.util.ArrayList<>(chain.unknown());
+            List<String> computeForeign = new ArrayList<>(chain.unknown());
             for (Coremods.Change c : Coremods.changes(targetClass.name, BEARDIFIER_COMPUTE)) {
                 boolean stepOfChain = chain.steps().stream().anyMatch(s -> s.kind() == BeardifierChain.Kind.COREMOD && c.mixin().equals("coremod " + s.owner()));
                 if (!stepOfChain && !computeForeign.contains(c.mixin())) {
                     computeForeign.add(c.mixin());
                 }
             }
-            List<String> index = new java.util.ArrayList<>(Coremods.withNames(targetClass.name, BEARDIFIER_STATICS,
+            List<String> index = new ArrayList<>(Coremods.withNames(targetClass.name, BEARDIFIER_STATICS,
                 MergedMethods.foreignChanges(targetClass, BEARDIFIER_STATICS, OWN_MIXIN_PACKAGE)));
             computeForeign.stream().filter(m -> !index.contains(m)).forEach(index::add);
             MixinTargets.recordBeardifier(index);
             // the noise programs skip compute for cells no vanilla piece reaches. Any change to the formulas counts wherever it
             // sits. Other mods' code before GA2's callback counts too, because a skipped cell does not run it. The steps after
             // the callback and the wrappers around the method are looked at per beardifier (BeardExtras).
-            List<String> culling = new java.util.ArrayList<>(Coremods.withNames(targetClass.name, BEARDIFIER_STATICS,
+            List<String> culling = new ArrayList<>(Coremods.withNames(targetClass.name, BEARDIFIER_STATICS,
                 MergedMethods.foreignChanges(targetClass, BEARDIFIER_STATICS, List.of(), MergedMethods.Mode.BYPASS, OWN_MIXIN_PACKAGE)));
             for (String m : computeForeign) {
                 if (!culling.contains(m)) {
@@ -829,7 +839,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".mixin.features.predicate.BlockPredicatesInspectMixin")) {
             // one key per vanilla predicate class. The predicate programs ask a changed predicate class through its own test.
-            FeatureTargets.recordChanges(dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms.predicateKey(targetClass.name),
+            FeatureTargets.recordChanges(PredicatePrograms.predicateKey(targetClass.name),
                 Coremods.with(targetClass.name, List.of("test"),
                     MergedMethods.foreignCalls(targetClass, List.of("test"), List.of(), MergedMethods.Mode.BYPASS, List.of(), OWN_MIXIN_PACKAGE)));
             return;

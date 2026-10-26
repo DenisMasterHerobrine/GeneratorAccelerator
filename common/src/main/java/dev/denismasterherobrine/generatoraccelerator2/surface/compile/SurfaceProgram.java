@@ -1,15 +1,26 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface.compile;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.levelgen.VerticalAnchor;
 import net.minecraft.world.level.levelgen.placement.CaveSurface;
@@ -32,7 +43,7 @@ public final class SurfaceProgram {
     public final List<SurfaceExtern.Rule> externRules;
     public final List<SurfaceExtern.Cond> externConds;
     /** Conditions the lowering assumed (a mod's config switch). Vanilla builds a chunk for which one no longer holds. */
-    private final List<java.util.function.BooleanSupplier> guards;
+    private final List<BooleanSupplier> guards;
     public final List<Predicate<Holder<Biome>>> biomeTests;
     public final List<ResourceKey<NormalNoise.NoiseParameters>> noiseKeys;
     public final List<SurfaceRules.VerticalGradientConditionSource> gradients;
@@ -43,11 +54,11 @@ public final class SurfaceProgram {
     /** Generated evaluator, or the interpreter when compilation failed. Null until compiled. */
     private volatile Evaluator compiled;
     /** Deep-band plans, keyed by the chunk's build range and the resolved gradient and anchor heights. */
-    final Map<String, DeepPlan> deepPlans = new java.util.concurrent.ConcurrentHashMap<>();
+    final Map<String, DeepPlan> deepPlans = new ConcurrentHashMap<>();
 
     public interface Evaluator {
         /** {@code SurfaceRule.tryApply} at the evaluation state's current block. */
-        net.minecraft.world.level.block.state.BlockState apply(SurfaceEval s);
+        BlockState apply(SurfaceEval s);
     }
 
     private SurfaceProgram(Lowering l, Ir.Rule root) {
@@ -67,7 +78,7 @@ public final class SurfaceProgram {
 
     /** True while every assumption of the lowering still holds. */
     public boolean guardsHold() {
-        for (java.util.function.BooleanSupplier g : this.guards) {
+        for (BooleanSupplier g : this.guards) {
             if (!g.getAsBoolean()) {
                 return false;
             }
@@ -92,19 +103,19 @@ public final class SurfaceProgram {
     }
 
     /** Per biome met, the compiled rules with the biome conditions answered for that biome. Rebuilt when tags are bound again. */
-    private volatile Map<Holder<Biome>, Evaluator> byBiome = new java.util.IdentityHashMap<>();
-    private final Map<java.util.BitSet, Evaluator> byAnswers = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile Map<Holder<Biome>, Evaluator> byBiome = new IdentityHashMap<>();
+    private final Map<BitSet, Evaluator> byAnswers = new ConcurrentHashMap<>();
     /**
      * By the folded rules themselves. Two sets of biome answers often fold to the same rules (biomes that no rule of the pack
      * singles out), so they share one generated class instead of compiling it, and having the JIT compile it, twice.
      */
-    private final Map<Ir.Rule, Evaluator> byFolded = new java.util.HashMap<>();
+    private final Map<Ir.Rule, Evaluator> byFolded = new HashMap<>();
     /** Programs answered from {@link #byFolded} instead of being generated again. */
-    public static final java.util.concurrent.atomic.LongAdder BIOME_PROGRAMS_SHARED = new java.util.concurrent.atomic.LongAdder();
-    private volatile int byBiomeEpoch = dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch.current();
-    public static final java.util.concurrent.atomic.LongAdder BIOME_PROGRAMS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder BIOME_PROGRAMS_SHARED = new LongAdder();
+    private volatile int byBiomeEpoch = TagEpoch.current();
+    public static final LongAdder BIOME_PROGRAMS = new LongAdder();
     /** Picks of a biome's program by the surface builder (counted when the block's biome changes). */
-    public static final java.util.concurrent.atomic.LongAdder BIOME_PICKS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder BIOME_PICKS = new LongAdder();
 
     /**
      * The compiled rules for blocks of {@code biome}: every biome condition answered as {@code biomeTests} answer it for that
@@ -112,14 +123,14 @@ public final class SurfaceProgram {
      */
     public Evaluator forBiome(Holder<Biome> biome) {
         BIOME_PICKS.increment();
-        int epoch = dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch.current();
+        int epoch = TagEpoch.current();
         Evaluator e = epoch == byBiomeEpoch ? byBiome.get(biome) : null;
         if (e != null) {
             return e;
         }
         // The answers, the folded rules and the compile happen outside the lock. A new biome's program took the lock for its whole
         // compile before, and every thread meeting another new biome waited (1.1 s per square in a 575-mod pack).
-        java.util.BitSet answers = new java.util.BitSet(biomeTests.size());
+        BitSet answers = new BitSet(biomeTests.size());
         for (int slot = 0; slot < biomeTests.size(); slot++) {
             if (biomeTests.get(slot).test(biome)) {
                 answers.set(slot);
@@ -128,7 +139,7 @@ public final class SurfaceProgram {
         synchronized (this) {
             if (epoch != byBiomeEpoch) {
                 // tag-based biome conditions may answer differently now
-                byBiome = new java.util.IdentityHashMap<>();
+                byBiome = new IdentityHashMap<>();
                 byAnswers.clear();
                 byFolded.clear();
                 compiling.clear();
@@ -143,13 +154,13 @@ public final class SurfaceProgram {
             return e;
         }
         Ir.Rule folded = BiomeFold.fold(this.root, answers);
-        java.util.concurrent.CompletableFuture<Evaluator> mine = null;
-        java.util.concurrent.CompletableFuture<Evaluator> theirs;
+        CompletableFuture<Evaluator> mine = null;
+        CompletableFuture<Evaluator> theirs;
         synchronized (this) {
             e = epoch == byBiomeEpoch ? byFolded.get(folded) : null;
             theirs = e == null ? compiling.get(folded) : null;
             if (e == null && theirs == null) {
-                mine = new java.util.concurrent.CompletableFuture<>();
+                mine = new CompletableFuture<>();
                 compiling.put(folded, mine);
             }
         }
@@ -176,7 +187,7 @@ public final class SurfaceProgram {
                 // another thread compiles the same folded rules: only this wait holds up this thread
                 try {
                     e = theirs.join();
-                } catch (java.util.concurrent.CompletionException t) {
+                } catch (CompletionException t) {
                     throw t.getCause() instanceof RuntimeException r ? r : t;
                 }
             }
@@ -189,18 +200,18 @@ public final class SurfaceProgram {
     }
 
     /** Keeps {@code e} as {@code biome}'s program and that of its answers, unless tags were bound again meanwhile. Under the lock. */
-    private void keep(int epoch, Holder<Biome> biome, java.util.BitSet answers, Evaluator e) {
+    private void keep(int epoch, Holder<Biome> biome, BitSet answers, Evaluator e) {
         if (epoch != byBiomeEpoch) {
             return;
         }
         byAnswers.put(answers, e);
-        Map<Holder<Biome>, Evaluator> next = new java.util.IdentityHashMap<>(byBiome);
+        Map<Holder<Biome>, Evaluator> next = new IdentityHashMap<>(byBiome);
         next.put(biome, e);
         byBiome = next;
     }
 
     /** Folded rules being compiled, so a second thread with the same rules waits for that compile. Under the lock. */
-    private final Map<Ir.Rule, java.util.concurrent.CompletableFuture<Evaluator>> compiling = new java.util.HashMap<>();
+    private final Map<Ir.Rule, CompletableFuture<Evaluator>> compiling = new HashMap<>();
 
     /** The compiled evaluator, generated on first use (the interpreter if generation fails). */
     public Evaluator compiled() {
@@ -227,11 +238,11 @@ public final class SurfaceProgram {
     public DeepPlan deepPlan(int minY, int maxY, int[] gradLo, int[] gradHi, int[] anchorY) {
         // A dimension's chunks nearly all resolve to the same plan. The last one is compared first, without building the key.
         LastPlan last = this.lastPlan;
-        if (last != null && last.minY == minY && last.maxY == maxY && java.util.Arrays.equals(last.gradLo, gradLo) && java.util.Arrays.equals(last.gradHi, gradHi)
-            && java.util.Arrays.equals(last.anchorY, anchorY)) {
+        if (last != null && last.minY == minY && last.maxY == maxY && Arrays.equals(last.gradLo, gradLo) && Arrays.equals(last.gradHi, gradHi)
+            && Arrays.equals(last.anchorY, anchorY)) {
             return last.plan;
         }
-        String key = minY + "," + maxY + java.util.Arrays.toString(gradLo) + java.util.Arrays.toString(gradHi) + java.util.Arrays.toString(anchorY);
+        String key = minY + "," + maxY + Arrays.toString(gradLo) + Arrays.toString(gradHi) + Arrays.toString(anchorY);
         DeepPlan plan = deepPlans.computeIfAbsent(key, k -> DeepPlan.build(this, minY, maxY, gradLo, gradHi, anchorY));
         this.lastPlan = new LastPlan(minY, maxY, gradLo.clone(), gradHi.clone(), anchorY.clone(), plan);
         return plan;
@@ -246,7 +257,7 @@ public final class SurfaceProgram {
         final List<Object> opaques = new ArrayList<>();
         final List<SurfaceExtern.Rule> externRules = new ArrayList<>();
         final List<SurfaceExtern.Cond> externConds = new ArrayList<>();
-        final List<java.util.function.BooleanSupplier> guards = new ArrayList<>();
+        final List<BooleanSupplier> guards = new ArrayList<>();
         final List<Predicate<Holder<Biome>>> biomeTests = new ArrayList<>();
         final Map<Object, Integer> biomeSlots = new HashMap<>();
         final List<ResourceKey<NormalNoise.NoiseParameters>> noiseKeys = new ArrayList<>();
@@ -334,7 +345,7 @@ public final class SurfaceProgram {
         }
 
         @Override
-        public void guard(java.util.function.BooleanSupplier holds) {
+        public void guard(BooleanSupplier holds) {
             guards.add(holds);
         }
 
@@ -398,7 +409,7 @@ public final class SurfaceProgram {
                 int slot = slot(biomeSlots, source, () -> biomeTests.add(biomes::contains), biomeTests);
                 return new Ir.Biome(id(source), slot);
             }
-            net.minecraft.tags.TagKey<Biome> tag = ModdedRules.biomeTag(source);
+            TagKey<Biome> tag = ModdedRules.biomeTag(source);
             if (tag != null) {
                 int slot = slot(biomeSlots, source, () -> biomeTests.add(h -> h.is(tag)), biomeTests);
                 return new Ir.Biome(id(source), slot);

@@ -30,7 +30,7 @@ public final class MonsterRoomFast {
     private static final Logger LOGGER = Ga2Log.get("Features");
     private static final BlockState AIR = Blocks.CAVE_AIR.defaultBlockState();
 
-    public static boolean place(net.minecraft.world.level.levelgen.feature.Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
+    public static boolean place(Feature<?> feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
         Predicate<BlockState> predicate = Feature.isReplaceable(BlockTags.FEATURES_CANNOT_REPLACE);
         BlockPos origin = ctx.origin();
         RandomSource random = ctx.random();

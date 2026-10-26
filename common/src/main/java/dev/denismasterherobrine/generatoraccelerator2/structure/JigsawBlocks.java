@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -36,7 +37,7 @@ public final class JigsawBlocks {
     /** True when {@code filterBlocks(pos, settings, block, relative)} may be answered by {@link #filter}. */
     public static boolean applies(Object block, boolean relative, StructurePlaceSettings settings, Object random) {
         return ENABLED && relative && block == Blocks.JIGSAW && random == null && settings.getBoundingBox() == null
-            && settings.getMirror() == net.minecraft.world.level.block.Mirror.NONE && BlockPos.ZERO.equals(settings.getRotationPivot());
+            && settings.getMirror() == Mirror.NONE && BlockPos.ZERO.equals(settings.getRotationPivot());
     }
 
     /** Vanilla's result for the jigsaw blocks of {@code palette} under {@code rotation}, offset by {@code pos}. */

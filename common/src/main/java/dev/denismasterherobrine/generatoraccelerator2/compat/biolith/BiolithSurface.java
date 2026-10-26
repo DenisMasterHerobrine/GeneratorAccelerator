@@ -1,9 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.biolith;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.biome.Biome;
@@ -27,18 +33,18 @@ public final class BiolithSurface {
         ColumnHooks.register(BiolithMixins.SURFACE, BiolithSurface::hooks);
         // Biolith's two wrappers only run the builders that mods registered. With none they call the test and change nothing, so the
         // GPU's surface may be the build. While some are registered, the CPU builds each chunk's surface
-        dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters.register(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.GPU_SURFACE,
+        CompatAdapters.register(HookTargets.GPU_SURFACE,
             BiolithMixins.SURFACE, () -> BUILDERS != null);
-        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob.addCpuCondition(BiolithSurface::hasBuilders);
+        GpuSurfaceJob.addCpuCondition(BiolithSurface::hasBuilders);
     }
 
     /** Biolith's registered surface builders ({@code SurfaceBuilderCollector.getBuilders}), or null when this version has no such list. */
-    private static final java.lang.invoke.MethodHandle BUILDERS = builders();
+    private static final MethodHandle BUILDERS = builders();
 
-    private static java.lang.invoke.MethodHandle builders() {
+    private static MethodHandle builders() {
         try {
             Class<?> c = Class.forName("com.terraformersmc.biolith.impl.surface.SurfaceBuilderCollector", false, BiolithSurface.class.getClassLoader());
-            return java.lang.invoke.MethodHandles.publicLookup().findStatic(c, "getBuilders", java.lang.invoke.MethodType.methodType(java.util.Set.class));
+            return MethodHandles.publicLookup().findStatic(c, "getBuilders", MethodType.methodType(Set.class));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             return null;
         }
@@ -50,7 +56,7 @@ public final class BiolithSurface {
             return true;
         }
         try {
-            return !((java.util.Set<?>) BUILDERS.invokeExact()).isEmpty();
+            return !((Set<?>) BUILDERS.invokeExact()).isEmpty();
         } catch (Throwable t) {
             return true;
         }

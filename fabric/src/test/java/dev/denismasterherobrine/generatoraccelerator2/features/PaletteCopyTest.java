@@ -18,6 +18,7 @@ import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.GlobalPalette;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import org.junit.jupiter.api.Test;
 
@@ -105,7 +106,7 @@ public class PaletteCopyTest {
         assertEquals(v.storage().getBits(), f.storage().getBits(), where + " bits");
         assertSame(v.palette().getClass(), f.palette().getClass(), where + " palette kind");
         assertEquals(v.palette().getSize(), f.palette().getSize(), where + " palette size");
-        if (!(v.palette() instanceof net.minecraft.world.level.chunk.GlobalPalette<?>)) {
+        if (!(v.palette() instanceof GlobalPalette<?>)) {
             for (int i = 0; i < v.palette().getSize(); i++) {
                 assertSame(v.palette().valueFor(i), f.palette().valueFor(i), where + " palette entry " + i);
             }

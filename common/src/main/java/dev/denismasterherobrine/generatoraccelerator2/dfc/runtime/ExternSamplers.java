@@ -3,7 +3,12 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Other mods' noise samplers that compiled density code calls by index. A lowering in {@code compat/<modid>} registers
@@ -42,7 +47,7 @@ public final class ExternSamplers {
      * Runs a compile and returns the samplers it registered. Its programs call them by index, so the caller keeps the list for as
      * long as the programs can run.
      */
-    public static <T> T own(java.util.function.Supplier<T> compile, List<Sampler> owned) {
+    public static <T> T own(Supplier<T> compile, List<Sampler> owned) {
         List<Sampler> outer = COMPILING.get();
         COMPILING.set(owned);
         try {
@@ -117,8 +122,8 @@ public final class ExternSamplers {
         public static final int LITHO_CELLULAR = 2;
     }
 
-    private static final java.util.Map<Integer, GpuForm> GPU = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.Set<String> GPU_SOURCES = new java.util.LinkedHashSet<>();
+    private static final Map<Integer, GpuForm> GPU = new ConcurrentHashMap<>();
+    private static final Set<String> GPU_SOURCES = new LinkedHashSet<>();
 
     /** Adds OpenCL functions GPU forms call (a compat registers its own when its mod is present). */
     public static synchronized void addGpuSource(String source) {

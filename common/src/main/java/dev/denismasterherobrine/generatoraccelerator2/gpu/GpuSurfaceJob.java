@@ -1,13 +1,23 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.StructureManagerLevelAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.ChunkPos;
@@ -23,7 +33,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
  * into the chunk instead of running GA2's surface builder ({@link Apply#surface}). The SURFACE step builds the surface on the CPU as
  * before when the answer is late, says the chunk needs the CPU, or cannot be written.
  */
-public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Result> future, java.util.concurrent.atomic.AtomicBoolean waited) {
+public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Result> future, AtomicBoolean waited) {
     /** How long a SURFACE step waits for the GPU's answer before building the surface on the CPU. */
     private static final long WAIT_MS = 250L;
 
@@ -49,15 +59,15 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     }
 
     /** Conditions under which every chunk builds its surface on the CPU for now (another mod's code would act in it). */
-    private static final java.util.List<java.util.function.BooleanSupplier> CPU_CONDITIONS = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static final List<BooleanSupplier> CPU_CONDITIONS = new CopyOnWriteArrayList<>();
 
     /** Adds a condition under which every chunk builds its surface on the CPU ({@code compat/<modid>}). */
-    public static void addCpuCondition(java.util.function.BooleanSupplier condition) {
+    public static void addCpuCondition(BooleanSupplier condition) {
         CPU_CONDITIONS.add(condition);
     }
 
     private static boolean cpuNow() {
-        for (java.util.function.BooleanSupplier c : CPU_CONDITIONS) {
+        for (BooleanSupplier c : CPU_CONDITIONS) {
             if (c.getAsBoolean()) {
                 return true;
             }
@@ -82,7 +92,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     static boolean allowed() {
         return GpuTerrain.enabled() && GPU_SURFACE.allowed() && SURFACE_ENTRY.unchanged() && HookTargets.handled(HookTargets.SURFACE_ENTRY).isEmpty()
             && SURFACE_STEP.unchanged() && SURFACE_STEP_BODY.unchanged()
-            && dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.stepWritersDeclared(HookTargets.handledMixins(HookTargets.SURFACE_STEP_BODY));
+            && SurfaceSpec.stepWritersDeclared(HookTargets.handledMixins(HookTargets.SURFACE_STEP_BODY));
     }
 
     /** Why {@link #allowed} is false, naming the other mods whose changes keep the surface on the CPU. Null when it is true. */
@@ -90,7 +100,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         if (allowed()) {
             return null;
         }
-        java.util.Set<String> mods = new java.util.TreeSet<>();
+        Set<String> mods = new TreeSet<>();
         for (String key : new String[] { HookTargets.GPU_SURFACE, HookTargets.SURFACE_ENTRY, HookTargets.SURFACE_STEP, HookTargets.SURFACE_BUILD,
             HookTargets.SURFACE_TOP_MATERIAL, HookTargets.GPU_TERRAIN }) {
             mods.addAll(HookTargets.foreign(key));
@@ -103,12 +113,12 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         // code before the step's generator call keeps the surface on the CPU unless GA2 knows the biomes it writes in
         mods.addAll(HookTargets.foreign(HookTargets.SURFACE_STEP_BODY));
         for (String m : HookTargets.handledMixins(HookTargets.SURFACE_STEP_BODY)) {
-            if (!dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec.stepWritersDeclared(java.util.List.of(m))) {
+            if (!SurfaceSpec.stepWritersDeclared(List.of(m))) {
                 mods.add(m);
             }
         }
-        if (!dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferVanilla()) {
-            mods.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferChanges());
+        if (!MixinTargets.aquiferVanilla()) {
+            mods.addAll(MixinTargets.aquiferChanges());
         }
         // the first condition that fails, so the line says why rather than only who is near
         String why;
@@ -212,7 +222,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         int bx = pos.getMinBlockX(), bz = pos.getMinBlockZ();
         int[] cpar = { pos.x, pos.z, terrain.preliminarySurfaceLevel(bx, bz), terrain.preliminarySurfaceLevel(bx + 16, bz), terrain.preliminarySurfaceLevel(bx, bz + 16),
             terrain.preliminarySurfaceLevel(bx + 16, bz + 16), 0, 0 };
-        gc.ga2$setGpuSurface(new GpuSurfaceJob(wg, batches.submit(pos, res.storage(), res.meta(), tops, win, cpar), new java.util.concurrent.atomic.AtomicBoolean()));
+        gc.ga2$setGpuSurface(new GpuSurfaceJob(wg, batches.submit(pos, res.storage(), res.meta(), tops, win, cpar), new AtomicBoolean()));
         ASKED.increment();
         return true;
     }
@@ -229,7 +239,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
      * The SURFACE step. Writes the GPU's surface into the chunk. Returns false when the CPU must build it: no answer, a late answer, or a
      * chunk the GPU left to the CPU.
      */
-    public static boolean apply(ChunkAccess chunk, java.util.function.Consumer<ChunkAccess> cpuSurface, Runnable records) {
+    public static boolean apply(ChunkAccess chunk, Consumer<ChunkAccess> cpuSurface, Runnable records) {
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
         GpuSurfaceJob job = gc == null ? null : gc.ga2$gpuSurface();
         if (job == null) {
@@ -240,10 +250,10 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         try {
             if (job.waited.get() && !job.future.isDone()) {
                 // The step already waited its full time for the answer (whenReady).
-                throw new java.util.concurrent.TimeoutException();
+                throw new TimeoutException();
             }
             r = QuietWait.get(job.future, WAIT_MS);
-        } catch (java.util.concurrent.TimeoutException e) {
+        } catch (TimeoutException e) {
             LATE.increment();
             // A late surface means the GPU is busy elsewhere. The governor counts it with the late blocks and biomes.
             job.wg.answered(true);

@@ -3,14 +3,19 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload.ChunkMapUpdatingInvoker;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.world.level.ChunkPos;
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 /**
  * The chunks {@link ChunkyHolds} keeps, against a model of the game's tickets: a chunk stays loaded while a Chunky ticket within
@@ -23,16 +28,16 @@ class ChunkyHoldsTest {
 
     @Test
     void mixinsApply() {
-        assertTrue(dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload.ChunkMapUpdatingInvoker.class
-            .isAssignableFrom(net.minecraft.server.level.ChunkMap.class), "the chunk map hands out updating holders");
+        assertTrue(ChunkMapUpdatingInvoker.class
+            .isAssignableFrom(ChunkMap.class), "the chunk map hands out updating holders");
         boolean field = false;
-        for (java.lang.reflect.Field f : net.minecraft.server.level.ServerChunkCache.class.getDeclaredFields()) {
+        for (Field f : ServerChunkCache.class.getDeclaredFields()) {
             field |= f.getType() == ChunkyHolds.class;
         }
         assertTrue(field, "the server chunk cache tracks Chunky's tickets");
-        assertTrue(ChunkyHolds.Owner.class.isAssignableFrom(net.minecraft.server.level.ServerChunkCache.class), "the cache hands out its holds");
+        assertTrue(ChunkyHolds.Owner.class.isAssignableFrom(ServerChunkCache.class), "the cache hands out its holds");
         boolean skip = false;
-        for (java.lang.reflect.Method m : net.minecraft.server.level.ChunkMap.class.getDeclaredMethods()) {
+        for (Method m : ChunkMap.class.getDeclaredMethods()) {
             skip |= m.getName().contains("notWhileKept");
         }
         assertTrue(skip, "the early saves leave kept chunks out");

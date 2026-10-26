@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.surface;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicSnow;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
+import dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.BiomeTemperatureAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.PerlinSimplexNoiseAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.SimplexNoiseAccessor;
@@ -13,10 +15,15 @@ import dev.denismasterherobrine.generatoraccelerator2.surface.compile.Ir;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceExtern;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
@@ -70,7 +77,7 @@ public final class SurfaceSpec {
 
     private final SurfaceProgram program;
     /** The tag epoch the biome predicates were answered in ({@code TagEpoch}). After a reload, they may answer differently. */
-    private final int tagEpoch = dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch.current();
+    private final int tagEpoch = TagEpoch.current();
     private final int[] slotSpec;
     private final int surfaceNoise, secondaryNoise, bandsNoise;
     private final long noiseRandomLo, noiseRandomHi;
@@ -116,7 +123,7 @@ public final class SurfaceSpec {
         {
             // The types by name, for the status line, which shows the mods whose rules keep the surface on the CPU. Compat code's
             // externs run here when they have a GPU form.
-            java.util.Set<String> types = new java.util.TreeSet<>();
+            Set<String> types = new TreeSet<>();
             for (Object o : program.opaques) {
                 types.add(o.getClass().getName());
             }
@@ -330,14 +337,14 @@ public final class SurfaceSpec {
      * {@code compat/<modid>}). As for eroded badlands, a chunk with such a biome at a column's top builds its surface on the CPU, where
      * the mod's code runs.
      */
-    private static final java.util.Set<net.minecraft.resources.ResourceKey<Biome>> BADLANDS_EXTENSION = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<ResourceKey<Biome>> BADLANDS_EXTENSION = ConcurrentHashMap.newKeySet();
 
-    public static void addBadlandsExtension(net.minecraft.resources.ResourceKey<Biome> biome) {
+    public static void addBadlandsExtension(ResourceKey<Biome> biome) {
         BADLANDS_EXTENSION.add(biome);
     }
 
     private static boolean badlandsExtension(Holder<Biome> h) {
-        for (net.minecraft.resources.ResourceKey<Biome> k : BADLANDS_EXTENSION) {
+        for (ResourceKey<Biome> k : BADLANDS_EXTENSION) {
             if (h.is(k)) {
                 return true;
             }
@@ -352,20 +359,20 @@ public final class SurfaceSpec {
      * biome source and vanilla's zoom. The zoom reads only the window. The GPU's surface stays off while a mixin of that step is not
      * declared here.
      */
-    private static final Map<String, java.util.Set<net.minecraft.resources.ResourceKey<Biome>>> STEP_WRITERS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Set<ResourceKey<Biome>>> STEP_WRITERS = new ConcurrentHashMap<>();
 
-    public static void declareStepWriter(String mixin, java.util.Set<net.minecraft.resources.ResourceKey<Biome>> biomes) {
-        STEP_WRITERS.put(mixin, java.util.Set.copyOf(biomes));
+    public static void declareStepWriter(String mixin, Set<ResourceKey<Biome>> biomes) {
+        STEP_WRITERS.put(mixin, Set.copyOf(biomes));
     }
 
     /** Whether every one of {@code mixins} (of the SURFACE step before the generator call) is declared ({@link #declareStepWriter}). */
-    public static boolean stepWritersDeclared(java.util.Collection<String> mixins) {
+    public static boolean stepWritersDeclared(Collection<String> mixins) {
         return STEP_WRITERS.keySet().containsAll(mixins);
     }
 
     private static boolean stepWriter(Holder<Biome> h) {
-        for (java.util.Set<net.minecraft.resources.ResourceKey<Biome>> keys : STEP_WRITERS.values()) {
-            for (net.minecraft.resources.ResourceKey<Biome> k : keys) {
+        for (Set<ResourceKey<Biome>> keys : STEP_WRITERS.values()) {
+            for (ResourceKey<Biome> k : keys) {
                 if (h.is(k)) {
                     return true;
                 }
@@ -436,19 +443,13 @@ public final class SurfaceSpec {
 
     /** Whether the tables still answer as the rules would. The tags must be the same and the lowering's assumptions must still hold. */
     public boolean current() {
-        return tagEpoch == dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch.current() && program.guardsHold() && snowOffset == snowOffset();
+        return tagEpoch == TagEpoch.current() && program.guardsHold() && snowOffset == snowOffset();
     }
 
     /** The height offset of the temperature's snow line. Tectonic's offset when its biome mixin is the change GA2 handles, else 0. */
     private static int snowOffset() {
-        return dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicSnow.applies()
-            ? dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicSnow.offset().orElse(Integer.MIN_VALUE) : 0;
-    }
-
-    /** The id of a state, or -1 when the surface never has it. */
-    public int idOf(BlockState s) {
-        Integer i = stateIds.get(s);
-        return i == null ? -1 : i;
+        return TectonicSnow.applies()
+            ? TectonicSnow.offset().orElse(Integer.MIN_VALUE) : 0;
     }
 
     /** Kind per state id for the column walk: 0 air, 1 a fluid (not air), 2 solid. */

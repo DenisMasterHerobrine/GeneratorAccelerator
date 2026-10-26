@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.level.block.Blocks;
@@ -85,11 +86,11 @@ final class PickerShape {
     }
 
     private static int level(Aquifer.FluidStatus s) {
-        return ((dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor) (Object) s).ga2$fluidLevel();
+        return ((FluidStatusAccessor) (Object) s).ga2$fluidLevel();
     }
 
     private static BlockState type(Aquifer.FluidStatus s) {
-        return ((dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor) (Object) s).ga2$fluidType();
+        return ((FluidStatusAccessor) (Object) s).ga2$fluidType();
     }
 
     /** The program's id for a picker's fluid: air, the default fluid (the noise step's own) or lava. */

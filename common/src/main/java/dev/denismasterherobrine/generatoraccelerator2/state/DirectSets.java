@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
+import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 
 /**
@@ -70,7 +71,7 @@ public final class DirectSets {
             return IDENTITY;
         }
         String owner = Holder.Reference.class.getName();
-        org.objectweb.asm.tree.ClassNode node = CodeShape.classNode(owner);
+        ClassNode node = CodeShape.classNode(owner);
         String e = CodeShape.fingerprint(CodeShape.method(node, "equals", "(Ljava/lang/Object;)Z"));
         String h = CodeShape.fingerprint(CodeShape.method(node, "hashCode", "()I"));
         String k = CodeShape.fingerprint(CodeShape.method(node, "getKey", "()Lnet/minecraft/resources/ResourceKey;"));

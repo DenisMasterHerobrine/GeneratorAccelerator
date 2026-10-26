@@ -1,11 +1,14 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -37,13 +40,13 @@ public class FeatureFastBench {
                 cases.add(c);
             }
         }
-        cases.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        cases.sort(Comparator.comparing(FeatureRun.ConfiguredCase::name));
         int rounds = Integer.getInteger("ga2.bench.rounds", 12);
         for (int round = 0; round < rounds; round++) {
             long vanilla = time(r, cases, true, trees);
             long fast = time(r, cases, false, trees);
             int n = cases.size() * 64;
-            System.out.printf(java.util.Locale.ROOT, "FeatureFastBench %s round %d: vanilla %.0f ns, fast %.0f ns per placement (%.2fx)%n", kind, round,
+            System.out.printf(Locale.ROOT, "FeatureFastBench %s round %d: vanilla %.0f ns, fast %.0f ns per placement (%.2fx)%n", kind, round,
                 (double) vanilla / n, (double) fast / n, (double) vanilla / fast);
         }
     }
@@ -52,7 +55,7 @@ public class FeatureFastBench {
         long total = 0;
         LevelHeightAccessor heights = HarnessWorld.heights(r, HarnessWorld.Kind.OVERWORLD);
         NoiseBasedChunkGenerator generator = HarnessWorld.generator(r, HarnessWorld.Kind.OVERWORLD);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS);
+        Holder<Biome> biome = r.biomes.getHolderOrThrow(Biomes.PLAINS);
         for (FeatureRun.ConfiguredCase c : cases) {
             ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), 20261002L), heights);
             for (ProtoChunk chunk : chunks) {

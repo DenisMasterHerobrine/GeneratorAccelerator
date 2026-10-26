@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import java.util.concurrent.CompletableFuture;
@@ -16,15 +17,15 @@ public abstract class GpuProtoChunkMixin implements Ga2GpuChunk {
     @Unique
     private volatile GpuTerrain ga2$gpuTerrain;
     @Unique
-    private volatile dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob ga2$gpuSurface;
+    private volatile GpuSurfaceJob ga2$gpuSurface;
 
     @Override
-    public dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob ga2$gpuSurface() {
+    public GpuSurfaceJob ga2$gpuSurface() {
         return ga2$gpuSurface;
     }
 
     @Override
-    public void ga2$setGpuSurface(dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob job) {
+    public void ga2$setGpuSurface(GpuSurfaceJob job) {
         this.ga2$gpuSurface = job;
     }
 

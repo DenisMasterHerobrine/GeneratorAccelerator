@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import java.lang.invoke.MethodHandle;
 import java.util.List;
 import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 
 /**
  * A compiled column program class plus the RandomState-level data needed to instantiate it for a
@@ -45,7 +46,7 @@ public final class ColumnTemplate {
         this.statefulMarkers = List.copyOf(statefulMarkers);
         boolean beard = false;
         for (DensityFunction f : externTemplates) {
-            beard |= f instanceof net.minecraft.world.level.levelgen.DensityFunctions.BeardifierOrMarker;
+            beard |= f instanceof DensityFunctions.BeardifierOrMarker;
         }
         this.readsBeardifier = beard;
     }

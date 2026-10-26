@@ -58,10 +58,6 @@ public final class CoverageReport {
         add(Kind.LIFTED, fn, root, path, "");
     }
 
-    public void pendingPort(DensityFunction fn, String root, String path) {
-        add(Kind.PENDING_PORT, fn, root, path, "unported vanilla node -> own compute");
-    }
-
     /** A cache marker that stays on its vanilla wrapper inside compiled code because it carries per-chunk state. */
     public void statefulMarker(DensityFunction marker, String root, String kind) {
         statefulMarker(marker, root, kind, "");

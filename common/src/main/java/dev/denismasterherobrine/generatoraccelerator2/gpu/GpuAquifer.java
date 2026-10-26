@@ -1,9 +1,11 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.DensityFunction;
+import javax.annotation.Nullable;
 
 /**
  * A chunk's {@code NoiseBasedAquifer}, with each aquifer cell's centre and {@code FluidStatus} taken from the GPU
@@ -53,13 +55,13 @@ public final class GpuAquifer implements Aquifer {
      * sample the barrier noise, which few blocks need. Without one, a context for the block is made then, as the carver would
      * have made it for the call.
      */
-    public BlockState substanceAt(int i, int j, int k, @javax.annotation.Nullable DensityFunction.FunctionContext context, double substance) {
+    public BlockState substanceAt(int i, int j, int k, @Nullable DensityFunction.FunctionContext context, double substance) {
         BlockState state = substance0(i, j, k, context, substance);
         // Better Caves' step at computeSubstance's return, as the chunk's NoiseChunk aquifer would run it
-        return t.liquids != null ? dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions.apply(t.liquids, i, j, k, state) : state;
+        return t.liquids != null ? LiquidRegions.apply(t.liquids, i, j, k, state) : state;
     }
 
-    private BlockState substance0(int i, int j, int k, @javax.annotation.Nullable DensityFunction.FunctionContext context, double substance) {
+    private BlockState substance0(int i, int j, int k, @Nullable DensityFunction.FunctionContext context, double substance) {
         if (substance > 0.0) {
             this.shouldScheduleFluidUpdate = false;
             return null;
@@ -157,7 +159,7 @@ public final class GpuAquifer implements Aquifer {
 
     /** The block {@link #pressure} computes at, its context if the caller had one, and the barrier noise there once sampled (NaN before). */
     private int bx, by, bz;
-    @javax.annotation.Nullable
+    @Nullable
     private DensityFunction.FunctionContext barrierContext;
     private double barrier;
 

@@ -1,13 +1,22 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.feature.Feature;
+import java.util.function.Predicate;
+import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
+import net.minecraft.world.level.levelgen.feature.configurations.FeatureConfiguration;
+import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
 
 /**
  * Other mods' wrappers of calls inside the vanilla features GA2 transcribes. The transcriptions run them at the same calls.
@@ -41,12 +50,12 @@ public final class FeatureWraps {
      * Ore configurations that another mod's change to the ore feature acts on (owo-lib's). Those configurations keep vanilla's code
      * with that change. Null when no such change is installed.
      */
-    public static volatile java.util.function.Predicate<net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration> oreVeto;
+    public static volatile Predicate<OreConfiguration> oreVeto;
 
     /** True when {@code config}'s placements must run vanilla's ore code ({@link #oreVeto}). */
-    public static boolean oreVetoed(net.minecraft.world.level.levelgen.feature.configurations.FeatureConfiguration config) {
-        java.util.function.Predicate<net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration> veto = oreVeto;
-        return veto != null && config instanceof net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration oc && veto.test(oc);
+    public static boolean oreVetoed(FeatureConfiguration config) {
+        Predicate<OreConfiguration> veto = oreVeto;
+        return veto != null && config instanceof OreConfiguration oc && veto.test(oc);
     }
 
     static boolean shouldSnow(Feature<?> feature, Biome biome, LevelReader level, BlockPos pos) {
@@ -61,7 +70,7 @@ public final class FeatureWraps {
     @FunctionalInterface
     public interface IceWrite {
         boolean setIce(Feature<?> feature, WorldGenLevel level, BlockPos pos, BlockState state, int flags,
-                       com.llamalad7.mixinextras.injector.wrapoperation.Operation<Boolean> write);
+                       Operation<Boolean> write);
     }
 
     public static volatile IceWrite ice;
@@ -72,12 +81,12 @@ public final class FeatureWraps {
      */
     @FunctionalInterface
     public interface GeodeTail {
-        void after(Feature<?> feature, net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx);
+        void after(Feature<?> feature, FeaturePlaceContext<?> ctx);
     }
 
     public static volatile GeodeTail geodeTail;
 
-    static void geodeDone(Feature<?> feature, net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx) {
+    static void geodeDone(Feature<?> feature, FeaturePlaceContext<?> ctx) {
         GeodeTail tail = geodeTail;
         if (tail != null) {
             tail.after(feature, ctx);
@@ -90,14 +99,14 @@ public final class FeatureWraps {
      */
     @FunctionalInterface
     public interface SpawnerMob {
-        net.minecraft.world.entity.EntityType<?> mob(Feature<?> feature, net.minecraft.world.entity.EntityType<?> original, BlockPos origin,
-                                                     net.minecraft.util.RandomSource random, WorldGenLevel level);
+        EntityType<?> mob(Feature<?> feature, EntityType<?> original, BlockPos origin,
+                                                     RandomSource random, WorldGenLevel level);
     }
 
     public static volatile SpawnerMob spawnerMob;
 
-    static net.minecraft.world.entity.EntityType<?> spawnerMob(Feature<?> feature, net.minecraft.world.entity.EntityType<?> original, BlockPos origin,
-                                                              net.minecraft.util.RandomSource random, WorldGenLevel level) {
+    static EntityType<?> spawnerMob(Feature<?> feature, EntityType<?> original, BlockPos origin,
+                                                              RandomSource random, WorldGenLevel level) {
         SpawnerMob wrap = spawnerMob;
         return wrap != null ? wrap.mob(feature, original, origin, random, level) : original;
     }
@@ -109,20 +118,20 @@ public final class FeatureWraps {
      */
     @FunctionalInterface
     public interface SimpleBlockCheck {
-        Boolean afterSurvive(Feature<?> feature, net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx, BlockState state, BlockPos pos,
+        Boolean afterSurvive(Feature<?> feature, FeaturePlaceContext<?> ctx, BlockState state, BlockPos pos,
                              WorldGenLevel level);
     }
 
     public static volatile SimpleBlockCheck simpleBlock;
 
-    static Boolean simpleBlockAfterSurvive(Feature<?> feature, net.minecraft.world.level.levelgen.feature.FeaturePlaceContext<?> ctx, BlockState state,
+    static Boolean simpleBlockAfterSurvive(Feature<?> feature, FeaturePlaceContext<?> ctx, BlockState state,
                                            BlockPos pos, WorldGenLevel level) {
         SimpleBlockCheck check = simpleBlock;
         return check != null ? check.afterSurvive(feature, ctx, state, pos, level) : null;
     }
 
     /** A local handed to another mod's handler that only reads it ({@code @Local LocalRef<T>}). */
-    public static final class Ref<T> implements com.llamalad7.mixinextras.sugar.ref.LocalRef<T> {
+    public static final class Ref<T> implements LocalRef<T> {
         private T value;
 
         public Ref(T value) {
@@ -142,7 +151,7 @@ public final class FeatureWraps {
 
     static void setIce(Feature<?> feature, WorldGenLevel level, Ga2Region region, BlockPos pos) {
         IceWrite wrap = ice;
-        BlockState state = net.minecraft.world.level.block.Blocks.ICE.defaultBlockState();
+        BlockState state = Blocks.ICE.defaultBlockState();
         if (wrap == null) {
             RegionWriter.setBlock(region, pos, state);
             return;

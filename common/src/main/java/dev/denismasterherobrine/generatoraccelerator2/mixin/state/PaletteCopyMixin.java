@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.state.PaletteCopy;
 import java.util.Arrays;
 import net.minecraft.util.BitStorage;
 import net.minecraft.world.level.chunk.Palette;
@@ -36,7 +37,7 @@ public abstract class PaletteCopyMixin<T> {
     private void ga2$copyFrom(Palette<T> from, BitStorage fromStorage, CallbackInfo ci) {
         int bits = fromStorage.getBits();
         int size = fromStorage.getSize();
-        if (!dev.denismasterherobrine.generatoraccelerator2.state.PaletteCopy.ENABLED || bits > 8 || size > 4096 || !GA2$HOOK.allowed()) {
+        if (!PaletteCopy.ENABLED || bits > 8 || size > 4096 || !GA2$HOOK.allowed()) {
             return;
         }
         int[][] scratch = GA2$SCRATCH.get();

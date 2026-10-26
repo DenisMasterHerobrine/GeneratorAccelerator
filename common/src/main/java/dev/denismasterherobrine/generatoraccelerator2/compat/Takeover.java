@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
+import dev.denismasterherobrine.generatoraccelerator2.ConfigFiles;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -136,7 +137,7 @@ public final class Takeover {
         }
         try {
             // the folder's file, or an older version's file not moved yet. The move happens when the mod is constructed, after mixins
-            Path file = dev.denismasterherobrine.generatoraccelerator2.ConfigFiles.existing("compat");
+            Path file = ConfigFiles.existing("compat");
             if (Files.exists(file)) {
                 for (String line : Files.readAllLines(file)) {
                     String l = line.trim();

@@ -11,10 +11,6 @@ public record ClDeviceInfo(long platform, long device, String platformName, Stri
                            String extensions, long type, int computeUnits, long globalMemory, long maxAlloc, long doubleFpConfig, boolean hostUnifiedMemory) {
     public static final long TYPE_CPU = 1L << 1, TYPE_GPU = 1L << 2;
 
-    public boolean isGpu() {
-        return (type & TYPE_GPU) != 0;
-    }
-
     public boolean hasFp64() {
         return doubleFpConfig != 0 && extensions.contains("cl_khr_fp64");
     }

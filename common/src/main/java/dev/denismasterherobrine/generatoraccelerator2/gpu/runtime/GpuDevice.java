@@ -3,6 +3,10 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.LockSupport;
@@ -83,10 +87,6 @@ public final class GpuDevice {
         LockSupport.unpark(thread);
     }
 
-    public boolean onGpuThread() {
-        return Thread.currentThread() == thread;
-    }
-
     /** Runs {@code task} on the GPU thread, or on this thread once the device is closed. */
     public void submit(Runnable task) {
         tasks.add(task);
@@ -104,7 +104,7 @@ public final class GpuDevice {
      * release their objects first. A world released later still can. The driver frees the context once its last object is released.
      */
     /** Code that releases objects of this device's context made elsewhere (the GPU light's), run first when the device closes. */
-    private final java.util.List<Runnable> closers = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Runnable> closers = new CopyOnWriteArrayList<>();
 
     /** Adds {@code closer} to the code run first when the device closes ({@link #close}). */
     public void onClose(Runnable closer) {
@@ -121,7 +121,7 @@ public final class GpuDevice {
                 }
             }
             closers.clear();
-            java.util.Set<Long> all = new java.util.LinkedHashSet<>();
+            Set<Long> all = new LinkedHashSet<>();
             all.add(queue);
             all.add(sideQueue);
             all.add(hostQueue);
@@ -233,7 +233,7 @@ public final class GpuDevice {
                 cl.releaseProgram(spinProgram);
                 cl.releaseMem(spinSink);
             });
-            LOGGER.info("debug spin: {} iterations per µs -> {} µs more device time per chunk", String.format(java.util.Locale.ROOT, "%.1f", spinItersPerUs), DEBUG_SPIN_US);
+            LOGGER.info("debug spin: {} iterations per µs -> {} µs more device time per chunk", String.format(Locale.ROOT, "%.1f", spinItersPerUs), DEBUG_SPIN_US);
         }
         spin(queue, (int) Math.min(Integer.MAX_VALUE, Math.round(chunks * DEBUG_SPIN_US * spinItersPerUs)));
     }

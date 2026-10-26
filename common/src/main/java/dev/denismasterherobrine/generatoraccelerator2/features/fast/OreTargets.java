@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.region.TagEpoch;
+import dev.denismasterherobrine.generatoraccelerator2.state.StateIndex;
 import java.util.Map;
 import com.google.common.collect.MapMaker;
 import net.minecraft.util.RandomSource;
@@ -18,7 +19,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.TagMatchTest;
  * other rule test (the random ones, or a modded class) gets no table and the fast path tests every
  * target exactly as vanilla does.
  *
- * <p>Lookups go by the state's registry id first, in a paged {@link dev.denismasterherobrine.generatoraccelerator2.state.StateIndex.Table}.
+ * <p>Lookups go by the state's registry id first, in a paged {@link StateIndex.Table}.
  * Pages of 256 ids are made on first use, so the table stays small even when the registry holds hundreds of thousands
  * of states with mods. A state the registry lacks falls back to an identity table. That table only holds the states an
  * ore actually met (a few dozen). Reads are lock-free in both tables. A new state is added to a copy that replaces the
@@ -32,7 +33,7 @@ public final class OreTargets {
 
     private final OreConfiguration.TargetBlockState[] targets;
     private volatile Table table = new Table(16);
-    private final dev.denismasterherobrine.generatoraccelerator2.state.StateIndex.Table byId = new dev.denismasterherobrine.generatoraccelerator2.state.StateIndex.Table(UNKNOWN);
+    private final StateIndex.Table byId = new StateIndex.Table(UNKNOWN);
     private final int epoch;
 
     private OreTargets(OreConfiguration config) {
@@ -151,7 +152,7 @@ public final class OreTargets {
     /** Bit {@code i} set when target {@code i} matches {@code state}. Bits are in target order. */
     public int mask(BlockState state) {
         // by the state's registry id (a field read and two array reads). A state the registry lacks goes by identity.
-        int id = dev.denismasterherobrine.generatoraccelerator2.state.StateIndex.id(state);
+        int id = StateIndex.id(state);
         if (id >= 0) {
             int v = this.byId.get(id);
             if (v != UNKNOWN) {

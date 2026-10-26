@@ -9,6 +9,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -69,7 +70,7 @@ public class PatchRepeatsTest {
             stone(List.of(height, scan, BlockPredicateFilter.forPredicate(cliffNeighbours()), BlockPredicateFilter.forPredicate(below))),
             stone(List.of(height, scan, BlockPredicateFilter.forPredicate(below))),
             stone(List.of(height, RarityFilter.onAverageOnceEvery(3), scan)));
-        Holder<net.minecraft.world.level.biome.Biome> plains = r.biomes.getHolderOrThrow(Biomes.PLAINS);
+        Holder<Biome> plains = r.biomes.getHolderOrThrow(Biomes.PLAINS);
         List<String> failures = new ArrayList<>();
         long skipped0 = PatchRepeats.SKIPPED.sum();
         int compared = 0, placed = 0;

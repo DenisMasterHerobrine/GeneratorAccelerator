@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
 /**
@@ -82,7 +83,7 @@ final class LithostitchedCellular {
         }
         // CellularDensityFunction: nextIntBetweenInclusive(0, (int) ((float) size * jitter)), in float as the mod computes it
         int[] p = { h, v, (int) ((float) h * jitter), (int) ((float) v * jitter), ret, salt, (int) seed, (int) (seed >>> 32) };
-        java.util.Random r = new java.util.Random(0x63656C6CL);
+        Random r = new Random(0x63656C6CL);
         for (int i = 0; i < 1024; i++) {
             int span = i < 512 ? 4096 : 30_000_000;
             int x = r.nextInt(2 * span) - span, y = r.nextInt(1024) - 512, z = r.nextInt(2 * span) - span;

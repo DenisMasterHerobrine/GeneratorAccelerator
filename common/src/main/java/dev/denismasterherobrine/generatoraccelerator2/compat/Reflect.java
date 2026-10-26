@@ -1,8 +1,13 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
+import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /**
@@ -43,11 +48,11 @@ public final class Reflect {
      * {@code type}'s declared methods, or none when one of their signatures names a class this side does not have. An example
      * is another mod's method with a client class, on a dedicated server. Looking methods up resolves every signature of the class.
      */
-    public static java.lang.reflect.Method[] declaredMethods(Class<?> type) {
+    public static Method[] declaredMethods(Class<?> type) {
         try {
             return type.getDeclaredMethods();
         } catch (LinkageError e) {
-            return new java.lang.reflect.Method[0];
+            return new Method[0];
         }
     }
 
@@ -108,5 +113,43 @@ public final class Reflect {
         } catch (ClassNotFoundException | LinkageError e) {
             return null;
         }
+    }
+
+    /**
+     * The method another mod's mixin merged into {@code owner}, made callable. Its merged name ends with {@code suffix}, it is
+     * static exactly when {@code isStatic}, it returns {@code returnType} and takes exactly {@code params}. Null when there is none
+     * or it cannot be opened.
+     */
+    @Nullable
+    public static MethodHandle mergedMethod(Class<?> owner, String suffix, boolean isStatic, Class<?> returnType, Class<?>... params) {
+        return mergedMethod(owner, name -> name.endsWith(suffix), isStatic, returnType, params);
+    }
+
+    /** As {@link #mergedMethod(Class, String, boolean, Class, Class[])}, for a merged name that {@code name} accepts. */
+    @Nullable
+    public static MethodHandle mergedMethod(Class<?> owner, Predicate<String> name, boolean isStatic, Class<?> returnType, Class<?>... params) {
+        for (Method m : declaredMethods(owner)) {
+            if (name.test(m.getName()) && Modifier.isStatic(m.getModifiers()) == isStatic && m.getReturnType() == returnType
+                && Arrays.equals(m.getParameterTypes(), params)) {
+                try {
+                    m.setAccessible(true);
+                    return MethodHandles.lookup().unreflect(m);
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * {@code t} as an unchecked exception to throw after a {@code MethodHandle} call. Errors are thrown here, runtime exceptions are
+     * returned as they are, and checked exceptions come back wrapped.
+     */
+    public static RuntimeException unchecked(Throwable t) {
+        if (t instanceof Error e) {
+            throw e;
+        }
+        return t instanceof RuntimeException r ? r : new IllegalStateException(t);
     }
 }

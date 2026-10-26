@@ -4,12 +4,9 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.placement.PlacementPipeline;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
@@ -45,28 +42,18 @@ public final class ConfluenceFeatures {
     };
 
     private static boolean setUp() {
-        Class<?>[] params = {Stream.class, Consumer.class, Operation.class, PlacementContext.class, RandomSource.class, MutableBoolean.class};
-        for (Method m : dev.denismasterherobrine.generatoraccelerator2.compat.Reflect.declaredMethods(PlacedFeature.class)) {
-            if (m.getName().endsWith("$wrap") && m.getName().contains("confluence") && !Modifier.isStatic(m.getModifiers())
-                && m.getReturnType() == void.class && Arrays.equals(m.getParameterTypes(), params)) {
-                try {
-                    m.setAccessible(true);
-                    MethodHandle handler = MethodHandles.lookup().unreflect(m);
-                    PlacementPipeline.position = (placed, pos, place, ctx, random, success) -> {
-                        try {
-                            handler.invoke(placed, Stream.of(pos), place, FOR_EACH, ctx, random, success);
-                        } catch (RuntimeException | Error e) {
-                            throw e;
-                        } catch (Throwable t) {
-                            throw new IllegalStateException(t);
-                        }
-                    };
-                    return true;
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    return false;
-                }
-            }
+        MethodHandle handler = Reflect.mergedMethod(PlacedFeature.class, name -> name.endsWith("$wrap") && name.contains("confluence"), false,
+            void.class, Stream.class, Consumer.class, Operation.class, PlacementContext.class, RandomSource.class, MutableBoolean.class);
+        if (handler == null) {
+            return false;
         }
-        return false;
+        PlacementPipeline.position = (placed, pos, place, ctx, random, success) -> {
+            try {
+                handler.invoke(placed, Stream.of(pos), place, FOR_EACH, ctx, random, success);
+            } catch (Throwable t) {
+                throw Reflect.unchecked(t);
+            }
+        };
+        return true;
     }
 }

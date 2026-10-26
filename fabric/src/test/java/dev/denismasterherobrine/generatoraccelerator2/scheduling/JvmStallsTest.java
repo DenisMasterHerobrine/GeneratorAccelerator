@@ -9,7 +9,9 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Field;
 
 /**
  * {@link JvmStalls}: a wait leaves out the time the whole JVM stood still. The stalls here are added as the watch would add them
@@ -22,9 +24,9 @@ class JvmStallsTest {
     private static void stalled(long nanos) {
         new JvmStalls.Wait(0);
         try {
-            java.lang.reflect.Field total = JvmStalls.class.getDeclaredField("TOTAL");
+            Field total = JvmStalls.class.getDeclaredField("TOTAL");
             total.setAccessible(true);
-            ((java.util.concurrent.atomic.AtomicLong) total.get(null)).addAndGet(nanos);
+            ((AtomicLong) total.get(null)).addAndGet(nanos);
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }

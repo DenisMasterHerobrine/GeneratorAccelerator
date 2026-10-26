@@ -3,11 +3,14 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.denismasterherobrine.generatoraccelerator2.features.placement.PlacementPipeline;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -24,6 +27,7 @@ import net.minecraft.world.level.levelgen.placement.PlacementFilter;
 import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 import net.minecraft.world.level.levelgen.placement.PlacementModifierType;
 import net.minecraft.world.level.levelgen.placement.RepeatingPlacement;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -179,20 +183,20 @@ public class PlacementShortcutsTest {
                 case "toString" -> "test level";
                 default -> throw new UnsupportedOperationException(method.getName());
             });
-        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> forEach = args -> {
+        Operation<Void> forEach = args -> {
             @SuppressWarnings("unchecked")
             Stream<BlockPos> s = (Stream<BlockPos>) args[0];
             @SuppressWarnings("unchecked")
-            java.util.function.Consumer<BlockPos> c = (java.util.function.Consumer<BlockPos>) args[1];
+            Consumer<BlockPos> c = (Consumer<BlockPos>) args[1];
             s.forEach(c);
             return null;
         };
         // the mod's handler: a third of the positions are "replaced" (drawing from the random source), the rest placed
         interface Handler {
-            void wrap(Stream<BlockPos> stream, java.util.function.Consumer<BlockPos> consumer, com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> original,
-                      PlacementContext ctx, RandomSource random, org.apache.commons.lang3.mutable.MutableBoolean success);
+            void wrap(Stream<BlockPos> stream, Consumer<BlockPos> consumer, Operation<Void> original,
+                      PlacementContext ctx, RandomSource random, MutableBoolean success);
         }
-        Handler handler = (stream, consumer, original, ctx, random, success) -> original.call(stream, (java.util.function.Consumer<BlockPos>) pos -> {
+        Handler handler = (stream, consumer, original, ctx, random, success) -> original.call(stream, (Consumer<BlockPos>) pos -> {
             if (random.nextInt(3) == 0) {
                 success.setTrue();
             } else {
@@ -204,7 +208,7 @@ public class PlacementShortcutsTest {
             List.of(new ModSpread(), new ModRepeat(), new ModFilter(), new ModRepeat()),
             List.of(new ModRepeatOwnPositions(), new ModFilter(), new ModSpread()));
         int compared = 0;
-        dev.denismasterherobrine.generatoraccelerator2.features.placement.PlacementPipeline.position =
+        PlacementPipeline.position =
             (placed, pos, place, ctx, random, success) -> handler.wrap(Stream.of(pos), place, forEach, ctx, random, success);
         try {
             for (List<PlacementModifier> chain : chains) {
@@ -217,12 +221,12 @@ public class PlacementShortcutsTest {
                     RandomSource fastRandom = RandomSource.create(seed);
                     BlockPos origin = new BlockPos((int) seed * 16, 64, -(int) seed * 16);
                     // vanilla's placeWithContext, with the handler around its forEach
-                    PlacementContext ctx = new PlacementContext(level, world.generator, java.util.Optional.empty());
+                    PlacementContext ctx = new PlacementContext(level, world.generator, Optional.empty());
                     Stream<BlockPos> stream = Stream.of(origin);
                     for (PlacementModifier m : chain) {
                         stream = stream.flatMap(p -> m.getPositions(ctx, vanillaRandom, p));
                     }
-                    org.apache.commons.lang3.mutable.MutableBoolean success = new org.apache.commons.lang3.mutable.MutableBoolean();
+                    MutableBoolean success = new MutableBoolean();
                     handler.wrap(stream, p -> {
                         if (vanillaConfigured.place(level, world.generator, vanillaRandom, p)) {
                             success.setTrue();
@@ -236,7 +240,7 @@ public class PlacementShortcutsTest {
                 }
             }
         } finally {
-            dev.denismasterherobrine.generatoraccelerator2.features.placement.PlacementPipeline.position = null;
+            PlacementPipeline.position = null;
         }
         System.out.println("placement position wrapper: " + compared + " placements compared");
     }

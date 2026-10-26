@@ -8,6 +8,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.HeightmapPriming;
+import dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.ParallelSteps;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepLane;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepThreads;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -149,21 +151,21 @@ public abstract class ChunkStatusTasksMixin {
         HeightmapPriming.prime(chunk, types, (c, t) -> original.call(c, t));
     }
 
-    /** While the decoration census runs ({@link dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus}), each decoration is timed. */
+    /** While the decoration census runs ({@link FeatureCensus}), each decoration is timed. */
     @WrapOperation(method = "generateFeatures", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/chunk/ChunkGenerator;applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"),
         require = 0)
-    private static void ga2$census(ChunkGenerator generator, net.minecraft.world.level.WorldGenLevel region, ChunkAccess chunk, StructureManager structures,
+    private static void ga2$census(ChunkGenerator generator, WorldGenLevel region, ChunkAccess chunk, StructureManager structures,
                                    Operation<Void> original) {
-        if (!dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.on) {
+        if (!FeatureCensus.on) {
             original.call(generator, region, chunk, structures);
             return;
         }
-        dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.chunkStart(region);
+        FeatureCensus.chunkStart(region);
         try {
             original.call(generator, region, chunk, structures);
         } finally {
-            dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus.chunkEnd();
+            FeatureCensus.chunkEnd();
         }
     }
 

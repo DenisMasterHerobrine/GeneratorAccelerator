@@ -23,6 +23,7 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.level.levelgen.placement.CountOnEveryLayerPlacement;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -116,7 +117,7 @@ public class EveryLayerTest {
     @SuppressWarnings("deprecation")
     @Test
     void bench() {
-        org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("ga2.bench"));
+        Assumptions.assumeTrue(Boolean.getBoolean("ga2.bench"));
         HarnessWorld.Registries2 r = HarnessWorld.registries();
         HarnessWorld.Kind kind = HarnessWorld.Kind.NETHER;
         LevelHeightAccessor heights = HarnessWorld.heights(r, kind);

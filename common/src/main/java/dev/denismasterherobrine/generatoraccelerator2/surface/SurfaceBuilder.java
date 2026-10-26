@@ -3,12 +3,18 @@ package dev.denismasterherobrine.generatoraccelerator2.surface;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import com.google.common.collect.MapMaker;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.SurfaceSystemAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.DeepPlan;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.Ir;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceEval;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -28,6 +34,7 @@ import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.levelgen.SurfaceSystem;
 import net.minecraft.world.level.levelgen.WorldGenerationContext;
+import org.slf4j.Logger;
 
 /**
  * {@code SurfaceSystem.buildSurface} with the same column loop, the rules evaluated by a compiled
@@ -44,8 +51,8 @@ public final class SurfaceBuilder {
     private SurfaceBuilder() {}
 
     private static final ConcurrentMap<SurfaceRules.RuleSource, SurfaceProgram> PROGRAMS = new MapMaker().weakKeys().makeMap();
-    private static final org.slf4j.Logger LOGGER = Ga2Log.get("Surface");
-    private static final java.util.Set<String> LOGGED_OPAQUE = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Logger LOGGER = Ga2Log.get("Surface");
+    private static final Set<String> LOGGED_OPAQUE = ConcurrentHashMap.newKeySet();
 
     /**
      * Programs by the rule's shape ({@link Shape}), for a rule asked as a new object each time. Citadel (Alex's Caves, Alex's
@@ -53,9 +60,9 @@ public final class SurfaceBuilder {
      * chunk then lowered and compiled them again, into classes the JIT never compiled: 3,086 such classes ran in one 49 s
      * square of a 575-mod pack, and the surface step took half of the workers' time. Cleared when the server stops.
      */
-    private static final ConcurrentMap<Shape, SurfaceProgram> BY_SHAPE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentMap<Shape, SurfaceProgram> BY_SHAPE = new ConcurrentHashMap<>();
     /** Programs found by their shape after the rule object itself missed. */
-    public static final java.util.concurrent.atomic.LongAdder SHAPE_HITS = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder SHAPE_HITS = new LongAdder();
 
     /**
      * A sequence rule by its parts: a nested sequence by its own shape, any other rule by identity. Two sequences of the same
@@ -79,7 +86,7 @@ public final class SurfaceBuilder {
             if (!(source instanceof SurfaceRules.SequenceRuleSource seq)) {
                 return null;
             }
-            java.util.List<SurfaceRules.RuleSource> rules = seq.sequence();
+            List<SurfaceRules.RuleSource> rules = seq.sequence();
             Object[] parts = new Object[rules.size()];
             for (int i = 0; i < parts.length; i++) {
                 SurfaceRules.RuleSource r = rules.get(i);
@@ -128,7 +135,7 @@ public final class SurfaceBuilder {
             }
             program = SurfaceProgram.lower(source);
             if (program.hasOpaque) {
-                java.util.Set<String> kinds = new java.util.TreeSet<>();
+                Set<String> kinds = new TreeSet<>();
                 for (Object o : program.opaques) {
                     kinds.add(o.getClass().getName());
                 }
@@ -255,7 +262,7 @@ public final class SurfaceBuilder {
         int cellX = minX >> 4;
         int cellZ = minZ >> 4;
         // without a NoiseChunk (a chunk the GPU filled), the GPU's levels, computed as the NoiseChunk computes them
-        dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain terrain = noiseChunk == null ? dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain.of(chunk) : null;
+        GpuTerrain terrain = noiseChunk == null ? GpuTerrain.of(chunk) : null;
         int p00 = terrain != null ? terrain.preliminarySurfaceLevel(cellX << 4, cellZ << 4) : noiseChunk.preliminarySurfaceLevel(cellX << 4, cellZ << 4);
         int p10 = terrain != null ? terrain.preliminarySurfaceLevel((cellX + 1) << 4, cellZ << 4) : noiseChunk.preliminarySurfaceLevel((cellX + 1) << 4, cellZ << 4);
         int p01 = terrain != null ? terrain.preliminarySurfaceLevel(cellX << 4, (cellZ + 1) << 4) : noiseChunk.preliminarySurfaceLevel(cellX << 4, (cellZ + 1) << 4);

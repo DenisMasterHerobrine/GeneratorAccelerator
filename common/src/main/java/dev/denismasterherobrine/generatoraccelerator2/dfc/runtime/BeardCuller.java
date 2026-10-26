@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.BeardifierAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardBounds;
@@ -21,7 +22,7 @@ public final class BeardCuller {
      * When they do, it also requires that this chunk has none of their pieces.
      */
     public static boolean mayCull(Beardifier beardifier) {
-        return dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard.testChunks == null
+        return EnhancedBeard.testChunks == null
             && MixinTargets.beardCullingAllowed() && (!BeardExtras.present() || BeardExtras.cullable(beardifier));
     }
 

@@ -1,20 +1,28 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 
+import com.google.common.collect.ImmutableList;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.LazyInterpolation;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MapAllMemo;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import net.minecraft.world.level.biome.Climate;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MarkerPairing;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SlicePool;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.VeinRule;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.Aquifer;
@@ -61,8 +69,8 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
 
     @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
         target = "Lcom/google/common/collect/ImmutableList$Builder;add(Ljava/lang/Object;)Lcom/google/common/collect/ImmutableList$Builder;"))
-    private com.google.common.collect.ImmutableList.Builder<Object> ga2$recordRule(com.google.common.collect.ImmutableList.Builder<Object> builder, Object rule,
-                                                                                 Operation<com.google.common.collect.ImmutableList.Builder<Object>> original) {
+    private ImmutableList.Builder<Object> ga2$recordRule(ImmutableList.Builder<Object> builder, Object rule,
+                                                                                 Operation<ImmutableList.Builder<Object>> original) {
         if (this.ga2$materialRules == null) {
             this.ga2$materialRules = new Object[2];
         }
@@ -164,7 +172,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     }
 
     @Redirect(method = "selectCellYZ", at = @At(value = "INVOKE", target = "Ljava/util/List;forEach(Ljava/util/function/Consumer;)V"))
-    private void ga2$selectCellYZ(List<NoiseChunk.NoiseInterpolator> list, java.util.function.Consumer<NoiseChunk.NoiseInterpolator> action,
+    private void ga2$selectCellYZ(List<NoiseChunk.NoiseInterpolator> list, Consumer<NoiseChunk.NoiseInterpolator> action,
                                   @Local(argsOnly = true, ordinal = 0) int cellY, @Local(argsOnly = true, ordinal = 1) int cellZ) {
         for (NoiseChunk.NoiseInterpolator interpolator : this.ga2$interpolators()) {
             interpolator.selectCellYZ(cellY, cellZ);
@@ -189,7 +197,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     private ChunkBinding ga2$binding;
     /** The compiled surface level walk for this chunk. Kept after the fill, because the surface step and carvers ask levels too. */
     @Unique
-    private dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels ga2$levelProgram;
+    private SurfaceLevels ga2$levelProgram;
     @Unique
     private RandomState ga2$randomState;
     /** The router the constructor wrapped, kept until {@link #ga2$bind} has bound the programs to it. */
@@ -254,13 +262,13 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
             return;
         }
         // which chunk object replaced which router object. One walk of the router serves both bindings below.
-        dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MarkerPairing pairing;
+        MarkerPairing pairing;
         try {
             NoiseRouter base = randomState.router();
             // the constructor's own wrapped router. Wrapping again would return the same instances (wrap() is
             // memoised), at the cost of a second walk and hash of the whole router.
             NoiseRouter wrapped = constructed != null ? constructed : base.mapAll(((NoiseChunkAccessor) (Object) this)::ga2$wrap);
-            pairing = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.MarkerPairing.of(base, wrapped);
+            pairing = MarkerPairing.of(base, wrapped);
         } catch (RuntimeException e) {
             if (DfcConfig.failOnCodegenError()) {
                 throw e;
@@ -273,7 +281,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         if (levels) {
             // before the chunk binding, which adds the chunk's beardifier to the pairing
             try {
-                this.ga2$levelProgram = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.bind(set.surfaceLevels(), pairing);
+                this.ga2$levelProgram = SurfaceLevels.bind(set.surfaceLevels(), pairing);
             } catch (RuntimeException e) {
                 if (DfcConfig.failOnCodegenError()) {
                     throw e;
@@ -303,7 +311,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
 
     /** Errors are logged a few times, then counted. Otherwise the same failure would log a stack trace for every chunk. */
     @Unique
-    private static final java.util.concurrent.atomic.AtomicLong BIND_FAILURES = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong BIND_FAILURES = new AtomicLong();
 
     /**
      * The programs and their buffers are only used while the chunk's noise is filled. Afterwards they just take memory. The
@@ -333,10 +341,10 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
             slices.ga2$setSlice1(RELEASED_SLICE);
             // for the interpolators of the next NoiseChunks (SlicePool, see also mixin.dfc.NoiseInterpolatorPoolMixin)
             if (slice0 != RELEASED_SLICE) {
-                dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SlicePool.give(slice0);
+                SlicePool.give(slice0);
             }
             if (slice1 != RELEASED_SLICE && slice1 != slice0) {
-                dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SlicePool.give(slice1);
+                SlicePool.give(slice1);
             }
         }
         this.ga2$slicesReleased = true;
@@ -359,11 +367,11 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
             for (NoiseChunk.NoiseInterpolator interpolator : this.ga2$interpolators()) {
                 NoiseInterpolatorAccessor slices = (NoiseInterpolatorAccessor) interpolator;
                 if (slices.ga2$slice0() == RELEASED_SLICE) {
-                    double[][] slice = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SlicePool.take(rows, height);
+                    double[][] slice = SlicePool.take(rows, height);
                     slices.ga2$setSlice0(slice != null ? slice : new double[rows][height]);
                 }
                 if (slices.ga2$slice1() == RELEASED_SLICE) {
-                    double[][] slice = dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SlicePool.take(rows, height);
+                    double[][] slice = SlicePool.take(rows, height);
                     slices.ga2$setSlice1(slice != null ? slice : new double[rows][height]);
                 }
             }
@@ -412,7 +420,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
             if (held == null) {
                 this.ga2$samplers = new BoundSampler[] { bound };
             } else {
-                held = java.util.Arrays.copyOf(held, held.length + 1);
+                held = Arrays.copyOf(held, held.length + 1);
                 held[held.length - 1] = bound;
                 this.ga2$samplers = held;
             }
@@ -474,7 +482,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         if (b != null) {
             b.fillCurrentCell();
         }
-        this.ga2$cellClass = dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds.MIXED;
+        this.ga2$cellClass = CellBounds.MIXED;
     }
 
     @Override
@@ -488,7 +496,7 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     }
 
     @Override
-    public dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels ga2$levelProgram() {
+    public SurfaceLevels ga2$levelProgram() {
         return this.ga2$levelProgram;
     }
 }

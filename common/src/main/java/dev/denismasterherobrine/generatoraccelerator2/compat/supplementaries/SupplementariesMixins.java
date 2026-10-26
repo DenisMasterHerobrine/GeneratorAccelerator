@@ -2,8 +2,10 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CodeShape;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 
@@ -19,7 +21,7 @@ public final class SupplementariesMixins {
     public static final String CONFIG = FEATURE + "$Config";
     public static final String BLOCK = "net.mehvahdjukaar.supplementaries.common.block.blocks.BarnaclesBlock";
     /** The search's mixin and the mixin that inspects the block's placement test. Applied only with {@link #codeKnown}. */
-    public static final java.util.Set<String> MIXINS = java.util.Set.of(
+    public static final Set<String> MIXINS = Set.of(
         "dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.mixin.BarnaclesFeatureMixin",
         "dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.mixin.BarnaclesBlockInspectMixin");
 
@@ -55,7 +57,7 @@ public final class SupplementariesMixins {
     }
 
     private static boolean check() {
-        Map<String, ClassNode> nodes = new java.util.HashMap<>();
+        Map<String, ClassNode> nodes = new HashMap<>();
         for (Known k : KNOWN) {
             ClassNode node = nodes.computeIfAbsent(k.owner(), CodeShape::classNode);
             String got = CodeShape.fingerprint(CodeShape.method(node, k.method(), null));

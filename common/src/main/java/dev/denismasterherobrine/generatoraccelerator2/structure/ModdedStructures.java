@@ -5,6 +5,8 @@ import dev.denismasterherobrine.generatoraccelerator2.features.modded.FeatureSaf
 import javax.annotation.Nullable;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import org.slf4j.Logger;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Lays out, one at a time, modded structures whose layout keeps state between starts in static fields. Vanilla runs
@@ -29,7 +31,7 @@ public final class ModdedStructures {
      * {@code init} writes the same values from the config each time (the biome step calls it on every worker thread too), and a
      * flag stops a repeated log in {@code replaceBiomes}. Mowzie's Mobs: the boss's constructor stores a config value.
      */
-    private static final java.util.Set<String> REVIEWED = java.util.Set.of(
+    private static final Set<String> REVIEWED = Set.of(
         "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.biomeSize",
         "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.seperationDistance",
         "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.initialized",
@@ -37,7 +39,7 @@ public final class ModdedStructures {
         "com/bobmowzie/mowziesmobs/server/entity/umvuthana/EntityUmvuthi.HEALTH_LOST_BETWEEN_SUNBLOCKERS");
     private static final Object NONE = new Object();
     /** Classes already logged. Several threads may compute a class value at once. */
-    private static final java.util.Set<String> LOGGED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<String> LOGGED = ConcurrentHashMap.newKeySet();
 
     private static final ClassValue<Object> LOCKS = new ClassValue<>() {
         @Override

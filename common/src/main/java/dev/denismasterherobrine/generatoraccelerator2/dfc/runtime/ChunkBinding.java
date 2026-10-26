@@ -1,25 +1,34 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.CellProgram;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.CellTemplate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.ColumnProgram;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.codegen.ColumnTemplate;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseInterpolatorAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import javax.annotation.Nullable;
 
 /**
  * Per-{@link NoiseChunk} state of the compiled programs: the column program bound to this chunk's
@@ -28,7 +37,7 @@ import net.minecraft.world.level.levelgen.blending.Blender;
  * like vanilla's own interpolator state.
  */
 public final class ChunkBinding {
-    private static final java.util.concurrent.atomic.AtomicInteger DIAG_LOGS = new java.util.concurrent.atomic.AtomicInteger();
+    private static final AtomicInteger DIAG_LOGS = new AtomicInteger();
 
     private final NoiseChunk chunk;
     private final NoiseChunkAccessor acc;
@@ -79,7 +88,7 @@ public final class ChunkBinding {
      * the first fill of a column computes its corners up to the highest one a cell that is not all air by the bounds touches.
      * The corners above are filled only if such a cell turns out to need them after all ({@link #completeCell}).
      */
-    @javax.annotation.Nullable private dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.Column sky;
+    @Nullable private SkyBounds.Column sky;
     /** Corner columns per side while a plan is on, else 0. */
     private int skySide;
     private int skyMinX;
@@ -92,9 +101,9 @@ public final class ChunkBinding {
     private int[] skyFrom;
     /** The column program's output for part of a column. */
     private double[][] partOut;
-    public static final java.util.concurrent.atomic.LongAdder SKY_PLANS = new java.util.concurrent.atomic.LongAdder();
-    public static final java.util.concurrent.atomic.LongAdder SKY_CORNERS_SKIPPED = new java.util.concurrent.atomic.LongAdder();
-    public static final java.util.concurrent.atomic.LongAdder SKY_CORNERS_COMPLETED = new java.util.concurrent.atomic.LongAdder();
+    public static final LongAdder SKY_PLANS = new LongAdder();
+    public static final LongAdder SKY_CORNERS_SKIPPED = new LongAdder();
+    public static final LongAdder SKY_CORNERS_COMPLETED = new LongAdder();
     /** Tests: every N-th planned cell is filled block by block, with its corners filled later, as when the aquifer keeps fluid there. */
     public static int COMPLETE_EVERY;
     private int completeSeen;
@@ -194,7 +203,7 @@ public final class ChunkBinding {
                 StringBuilder sb = new StringBuilder();
                 sb.append("column binding incomplete: chunk has ").append(chunkInterpolators.size())
                     .append(" interpolators, ").append(binding.rootIndex.size()).append(" paired of ").append(rootMarkers.size())
-                    .append(" markers; blender empty=").append(chunk.getBlender() == net.minecraft.world.level.levelgen.blending.Blender.empty())
+                    .append(" markers; blender empty=").append(chunk.getBlender() == Blender.empty())
                     .append("; walk divergences=").append(pairing.divergences());
                 for (int r = 0; r < rootMarkers.size(); r++) {
                     DensityFunction w = pairing.lookup(rootMarkers.get(r).vanilla());
@@ -206,7 +215,7 @@ public final class ChunkBinding {
                     sb.append("\n  chunk interpolator ").append(idx++).append(" wrapped=").append(Names.mojangSimpleName(ni.wrapped().getClass()))
                         .append(binding.rootIndex.containsKey(ni) ? " paired" : " UNPAIRED");
                 }
-                dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler.LOGGER.warn(sb.toString());
+                Compiler.LOGGER.warn(sb.toString());
             }
         }
         // Cell caches: datapack cache_all_in_cell markers resolve through the pairing. The chunk's own
@@ -241,8 +250,8 @@ public final class ChunkBinding {
         }
         // Sky corners need the final density to be the one cell program, classified without the beardifier everywhere, and
         // columns that are computed in parts with the same values (no blending: the set has no sky bounds otherwise)
-        dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds skyTemplate = set.sky();
-        if (skyTemplate != null && dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds.ENABLED && column != null && complete
+        SkyBounds skyTemplate = set.sky();
+        if (skyTemplate != null && SkyBounds.ENABLED && column != null && complete
             && binding.blenderEmpty && !beardEverywhere && cells.length == 1 && cellTemplates.get(0).marker == null && VERIFY_CELLS == 0) {
             binding.sky = skyTemplate.forChunk(resolve(pairing, skyTemplate.externTemplates()));
         }
@@ -261,7 +270,7 @@ public final class ChunkBinding {
      * 0, no structure piece reaches it, and the picker gives air and no lava there. Those are the tests the fill's classification
      * makes, in the same terms, except the aquifer's own: the fill still asks it at the cell, in its order.
      */
-    public void planSky(int minX, int minZ, @javax.annotation.Nullable net.minecraft.world.level.levelgen.Aquifer.FluidPicker picker) {
+    public void planSky(int minX, int minZ, @Nullable Aquifer.FluidPicker picker) {
         this.skySide = 0;
         if (sky == null || picker == null || classifyValues == null || cellWidth <= 0 || 16 % cellWidth != 0) {
             return;
@@ -272,8 +281,8 @@ public final class ChunkBinding {
         int pickFrom = cellCountY;
         for (int cy = cellCountY - 1; cy >= 0; cy--) {
             int y0 = cornerY(cy);
-            if (!dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir.noLava(picker, minX, y0, minZ, cellWidth, cellHeight)
-                || !dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir.allAir(picker, minX, y0, minZ, cellWidth, cellHeight)) {
+            if (!CellAir.noLava(picker, minX, y0, minZ, cellWidth, cellHeight)
+                || !CellAir.allAir(picker, minX, y0, minZ, cellWidth, cellHeight)) {
                 break;
             }
             pickFrom = cy;
@@ -547,7 +556,7 @@ public final class ChunkBinding {
         }
         if (to < cellCountY) {
             for (int r = 0; r < out.length; r++) {
-                java.util.Arrays.fill(out[r], to + 1, stride, Double.NaN);
+                Arrays.fill(out[r], to + 1, stride, Double.NaN);
             }
             if (from == 0) {
                 SKY_CORNERS_SKIPPED.add(cellCountY - to);
@@ -681,9 +690,9 @@ public final class ChunkBinding {
      * where something reads the memo later in the same cell.
      */
     private static final int VERIFY_CELLS = Integer.getInteger("generatoraccelerator2.verify.cells", 0);
-    private static final java.util.concurrent.atomic.AtomicLong VERIFY_SEEN = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong CELLS_VERIFIED = new java.util.concurrent.atomic.AtomicLong();
-    public static final java.util.concurrent.atomic.AtomicLong CELLS_DIFFERING = new java.util.concurrent.atomic.AtomicLong();
+    private static final AtomicLong VERIFY_SEEN = new AtomicLong();
+    public static final AtomicLong CELLS_VERIFIED = new AtomicLong();
+    public static final AtomicLong CELLS_DIFFERING = new AtomicLong();
 
     private void verifyCell(DensityFunction filler, double[] values, int x0, int y0, int z0) {
         double[] expected = new double[values.length];

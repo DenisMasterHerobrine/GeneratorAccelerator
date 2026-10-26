@@ -13,6 +13,7 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
@@ -282,7 +283,7 @@ public final class LightSnapshot extends Long2ObjectOpenHashMap<DataLayer> {
         lines.add("light snapshots: " + state);
         long deltas = DELTAS.sum();
         long full = FULL.sum();
-        lines.add(String.format(java.util.Locale.ROOT, "  %,d published from the changed sections (%.1f sections each), %,d from whole maps, %.3f ms each",
+        lines.add(String.format(Locale.ROOT, "  %,d published from the changed sections (%.1f sections each), %,d from whole maps, %.3f ms each",
             deltas, deltas == 0 ? 0.0 : (double) CHANGED.sum() / deltas, full, deltas + full == 0 ? 0.0 : NANOS.sum() / 1e6 / (deltas + full)));
         return lines;
     }

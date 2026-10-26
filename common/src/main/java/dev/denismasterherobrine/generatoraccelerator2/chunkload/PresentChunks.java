@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkload;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload.ChunkMapUpdatingInvoker;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerChunkCache;
@@ -30,7 +31,7 @@ public final class PresentChunks {
     /** Chunks answered at once off the server thread. */
     public static final LongAdder ANSWERED = new LongAdder();
     /** Other mods' handlers at the head of {@code getChunk}, done before a chunk is answered here (compat), or null. */
-    public static volatile java.util.function.Consumer<ServerChunkCache> beforeAnswer;
+    public static volatile Consumer<ServerChunkCache> beforeAnswer;
 
     /** The chunk at {@code x, z} when it has {@code status} already, else null (the server thread answers then). */
     @Nullable
@@ -41,7 +42,7 @@ public final class PresentChunks {
         ChunkHolder holder = ((ChunkMapUpdatingInvoker) cache.chunkMap).ga2$visibleChunk(ChunkPos.asLong(x, z));
         ChunkAccess chunk = holder == null ? null : holder.getChunkIfPresent(status);
         if (chunk != null) {
-            java.util.function.Consumer<ServerChunkCache> before = beforeAnswer;
+            Consumer<ServerChunkCache> before = beforeAnswer;
             if (before != null) {
                 before.accept(cache);
             }

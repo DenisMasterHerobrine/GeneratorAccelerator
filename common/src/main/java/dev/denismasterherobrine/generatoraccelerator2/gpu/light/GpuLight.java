@@ -1,24 +1,33 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.light;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuConfig;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuDevice;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.DataLayerStorageMapAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LayerLightSectionStorageAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LightEngineAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.SkyLightSectionStorageAccessor;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.shorts.ShortArrayList;
 import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntFunction;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -40,7 +49,6 @@ import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.SingleValuePalette;
 import net.minecraft.world.level.lighting.LightEngine;
-import net.minecraft.world.level.lighting.SkyLightEngine;
 import net.minecraft.util.SimpleBitStorage;
 import net.minecraft.util.ZeroBitStorage;
 import org.slf4j.Logger;
@@ -125,8 +133,8 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             if (this.n == 0) {
                 return -1;
             }
-            double[] s = java.util.Arrays.copyOf(this.ring, this.n);
-            java.util.Arrays.sort(s);
+            double[] s = Arrays.copyOf(this.ring, this.n);
+            Arrays.sort(s);
             return s[this.n / 2];
         }
     }
@@ -240,15 +248,15 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         final LightTypes types = new LightTypes();
         final Long2IntOpenHashMap slotOf = new Long2IntOpenHashMap();
         /** The entries' own sections, whose neighbourhoods are in the batch. */
-        final it.unimi.dsi.fastutil.longs.LongOpenHashSet seedSections = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+        final LongOpenHashSet seedSections = new LongOpenHashSet();
         final LongArrayList keys = new LongArrayList();
         final Long2ObjectOpenHashMap<ChunkInfo> chunks = new Long2ObjectOpenHashMap<>();
         /** The batch's block words, a view of the program's pinned upload buffer, and how many are written. */
-        java.nio.LongBuffer words;
+        LongBuffer words;
         int wordCount;
-        final it.unimi.dsi.fastutil.ints.IntArrayList sinfo = new it.unimi.dsi.fastutil.ints.IntArrayList();
-        final it.unimi.dsi.fastutil.shorts.ShortArrayList pal = new it.unimi.dsi.fastutil.shorts.ShortArrayList();
-        final it.unimi.dsi.fastutil.ints.IntArrayList kslots = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        final IntArrayList sinfo = new IntArrayList();
+        final ShortArrayList pal = new ShortArrayList();
+        final IntArrayList kslots = new IntArrayList();
         byte[] storing = new byte[0];
         int[] nbr = new int[0];
         int[] hazard = new int[0];
@@ -267,7 +275,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
 
     static {
         for (int v = 0; v < 16; v++) {
-            java.util.Arrays.fill(LEVELS[v], (byte) (v | v << 4));
+            Arrays.fill(LEVELS[v], (byte) (v | v << 4));
         }
     }
 
@@ -407,7 +415,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         long part = p.upload(LightProgram.Buf.PART, shorts(p, LightProgram.Buf.PART, faces.part(), faces.part().length));
         long pairs = p.upload(LightProgram.Buf.PAIRS, ints(p, LightProgram.Buf.PAIRS, faces.pairs(), faces.pairs().length));
         long kslots = p.upload(LightProgram.Buf.KSLOTS, ints(p, LightProgram.Buf.KSLOTS, s.kslots.elements(), nk));
-        java.util.Arrays.fill(s.changed, 0, slots, 0);
+        Arrays.fill(s.changed, 0, slots, 0);
         long changed = p.upload(LightProgram.Buf.CHANGED, ints(p, LightProgram.Buf.CHANGED, s.changed, slots));
         long fail = p.upload(LightProgram.Buf.FAIL, ints(p, LightProgram.Buf.FAIL, new int[] { 0 }, 1));
         long out = p.buffer(LightProgram.Buf.OUT, (long) slots * 2048);
@@ -697,12 +705,12 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             }
             s.pal.size(po);
         }
-        raw(s, types, level, slot, sx, sy, sz, i -> dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads.get(data, i));
+        raw(s, types, level, slot, sx, sy, sz, i -> StateReads.get(data, i));
     }
 
     /** A section's entry for {@code k_prepare}: its slot, bits per block, first word, palette offset (-1: none) and palette size. */
     private static void info(Scratch s, int slot, int bits, int words, int palette, int size) {
-        it.unimi.dsi.fastutil.ints.IntArrayList info = s.sinfo;
+        IntArrayList info = s.sinfo;
         info.add(slot);
         info.add(bits);
         info.add(words);
@@ -718,7 +726,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
     }
 
     /** A section's types block by block (16 bits each), a block whose properties may depend on its position asked there. */
-    private static void raw(Scratch s, LightTypes types, BlockGetter level, int slot, int sx, int sy, int sz, java.util.function.IntFunction<BlockState> state) {
+    private static void raw(Scratch s, LightTypes types, BlockGetter level, int slot, int sx, int sy, int sz, IntFunction<BlockState> state) {
         RAW_SECTIONS.increment();
         int wo = s.wordCount;
         long word = 0;
@@ -757,7 +765,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
 
     // ------------------------------------------------------------------------------------------------ OpenCL helpers
 
-    private static int stepArgs(dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi cl, long k, int a, long[] mems, int np, long hazard, long fail) {
+    private static int stepArgs(ClApi cl, long k, int a, long[] mems, int np, long hazard, long fail) {
         for (int i = 0; i < 10; i++) {
             cl.argMem(k, a++, mems[i]);
         }
@@ -767,7 +775,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         return a;
     }
 
-    private static void rel(dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi cl, long event) {
+    private static void rel(ClApi cl, long event) {
         if (event != 0) {
             cl.releaseEvent(event);
         }
@@ -803,17 +811,17 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
             : program != null ? "on" : "waiting for the GPU";
         lines.add("GPU light: " + state + ", batches of at least " + MIN_WORK + " work");
         long batches = BATCHES.sum();
-        lines.add(String.format(java.util.Locale.ROOT, "  %,d batches on the GPU (%,d entries, %,d sections, %,d changed), %.2f ms each on the light thread;"
+        lines.add(String.format(Locale.ROOT, "  %,d batches on the GPU (%,d entries, %,d sections, %,d changed), %.2f ms each on the light thread;"
                 + " back to the CPU: %,d empty-section fills, %,d palettes changed while read, %,d too large, %,d other; %,d left to the CPU by time",
             batches, ENTRIES.sum(), SECTIONS.sum(), CHANGED.sum(), batches == 0 ? 0.0 : NANOS.sum() / 1e6 / batches, FILL.sum(), RACE.sum(), LARGE.sum(),
             OUTSIDE.sum() + UNSTORED.sum() + ERRORS.sum(), CPU_CHOSEN.sum()));
-        lines.add(String.format(java.util.Locale.ROOT, "  ns per queued entry (median of the last 8 batches), GPU / CPU: block light %s / %s, sky light %s / %s", cost(GPU_COST[0].median()), cost(CPU_COST[0].median()),
+        lines.add(String.format(Locale.ROOT, "  ns per queued entry (median of the last 8 batches), GPU / CPU: block light %s / %s, sky light %s / %s", cost(GPU_COST[0].median()), cost(CPU_COST[0].median()),
             cost(GPU_COST[1].median()), cost(CPU_COST[1].median())));
-        lines.add(String.format(java.util.Locale.ROOT, "  per batch on the light thread: %.2f ms waiting for the lock, %.2f ms for the host arrays, %.2f ms on the GPU"
+        lines.add(String.format(Locale.ROOT, "  per batch on the light thread: %.2f ms waiting for the lock, %.2f ms for the host arrays, %.2f ms on the GPU"
                 + " (transfers and kernels), %.2f ms writing back", batches == 0 ? 0.0 : LOCK_NANOS.sum() / 1e6 / batches, batches == 0 ? 0.0 : PREP_NANOS.sum() / 1e6 / batches,
             batches == 0 ? 0.0 : GPU_NANOS.sum() / 1e6 / batches, batches == 0 ? 0.0 : BACK_NANOS.sum() / 1e6 / batches));
         double per = Math.max(1L, batches) * 1e6;
-        lines.add(String.format(java.util.Locale.ROOT, "  host arrays per batch: %.3f ms the slots, %.3f ms their levels and neighbours, %.3f ms the entries, %.3f ms the blocks,"
+        lines.add(String.format(Locale.ROOT, "  host arrays per batch: %.3f ms the slots, %.3f ms their levels and neighbours, %.3f ms the entries, %.3f ms the blocks,"
                 + " %.3f ms the face tables; %,d of %,d stored sections read block by block",
             PREP_PARTS[0].sum() / per, PREP_PARTS[1].sum() / per, PREP_PARTS[2].sum() / per, PREP_PARTS[3].sum() / per, PREP_PARTS[4].sum() / per,
             RAW_SECTIONS.sum(), BLOCK_SECTIONS.sum()));
@@ -830,13 +838,13 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         long[] now = snapshot();
         long b = now[0] - before[0];
         double per = Math.max(1L, b);
-        return String.format(java.util.Locale.ROOT, "GPU light: %.2f batches per chunk, %.0f entries and %.0f sections each; per batch %.2f ms waiting for the lock,"
+        return String.format(Locale.ROOT, "GPU light: %.2f batches per chunk, %.0f entries and %.0f sections each; per batch %.2f ms waiting for the lock,"
                 + " %.2f ms for the host arrays, %.2f ms on the GPU, %.2f ms writing back",
             b / (double) Math.max(1L, chunks), (now[1] - before[1]) / per, (now[2] - before[2]) / per, (now[3] - before[3]) / 1e6 / per,
             (now[4] - before[4]) / 1e6 / per, (now[5] - before[5]) / 1e6 / per, (now[6] - before[6]) / 1e6 / per);
     }
 
     private static String cost(double c) {
-        return c < 0 ? "-" : String.format(java.util.Locale.ROOT, "%.0f", c);
+        return c < 0 ? "-" : String.format(Locale.ROOT, "%.0f", c);
     }
 }

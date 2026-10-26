@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.util.function.Function;
 import javax.annotation.Nullable;
@@ -81,14 +82,14 @@ public final class LiquidRegions {
             }
             field.setAccessible(true);
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            aquiferField = lookup.unreflectGetter(field).asType(java.lang.invoke.MethodType.methodType(Object.class, Aquifer.class));
+            aquiferField = lookup.unreflectGetter(field).asType(MethodType.methodType(Object.class, Aquifer.class));
             stateMethod = MethodHandles.publicLookup().unreflect(RandomState.class.getMethod(DUCK_METHOD))
-                .asType(java.lang.invoke.MethodType.methodType(Object.class, RandomState.class));
+                .asType(MethodType.methodType(Object.class, RandomState.class));
             getOrCreate = MethodHandles.publicLookup().unreflect(regions.getMethod("getOrCreateLiquidBlocksForChunk", ChunkPos.class))
-                .asType(java.lang.invoke.MethodType.methodType(Object.class, Object.class, ChunkPos.class));
+                .asType(MethodType.methodType(Object.class, Object.class, ChunkPos.class));
             Class<?> data = Class.forName(REGIONS_CLASS + "$CacheData", false, LiquidRegions.class.getClassLoader());
-            altitudeOf = MethodHandles.publicLookup().unreflect(data.getMethod("liquidAltitude")).asType(java.lang.invoke.MethodType.methodType(int.class, Object.class));
-            blocksOf = MethodHandles.publicLookup().unreflect(data.getMethod("liquidBlocks")).asType(java.lang.invoke.MethodType.methodType(BlockState[][].class, Object.class));
+            altitudeOf = MethodHandles.publicLookup().unreflect(data.getMethod("liquidAltitude")).asType(MethodType.methodType(int.class, Object.class));
+            blocksOf = MethodHandles.publicLookup().unreflect(data.getMethod("liquidBlocks")).asType(MethodType.methodType(BlockState[][].class, Object.class));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             LOGGER.warn("Better Caves' liquid regions not readable ({}) -> the aquifer keeps vanilla's code", e.toString());
             aquiferField = null;

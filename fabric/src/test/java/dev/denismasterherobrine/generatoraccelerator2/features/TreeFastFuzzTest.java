@@ -3,11 +3,16 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
+import dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -16,6 +21,7 @@ import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Field;
 
 /**
  * The tree fast path ({@code TreeFast}: its leaf distance sets, its free-height scan) against vanilla's {@code TreeFeature} for
@@ -37,9 +43,9 @@ public class TreeFastFuzzTest {
      */
     @Test
     void beeTreesMatchVanilla() {
-        long before = dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees.TREES.sum();
+        long before = TreeBees.TREES.sum();
         compareTrees(true, 6);
-        assertTrue(dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees.TREES.sum() > before, "the beehive path placed trees");
+        assertTrue(TreeBees.TREES.sum() > before, "the beehive path placed trees");
     }
 
     private static void compareTrees(boolean bees, int minimum) {
@@ -51,7 +57,7 @@ public class TreeFastFuzzTest {
                 trees.add(c);
             }
         }
-        trees.sort(java.util.Comparator.comparing(FeatureRun.ConfiguredCase::name));
+        trees.sort(Comparator.comparing(FeatureRun.ConfiguredCase::name));
         assertTrue(trees.size() >= minimum, "too few tree features: " + trees.size());
         List<String> failures = new ArrayList<>();
         int compared = 0;
@@ -85,9 +91,9 @@ public class TreeFastFuzzTest {
     /** Seeds the random {@code Collections.shuffle(List)} uses, which vanilla's beehive decorator shuffles its candidates with. */
     private static void seedShuffle(long seed) {
         try {
-            java.lang.reflect.Field f = java.util.Collections.class.getDeclaredField("r");
+            Field f = Collections.class.getDeclaredField("r");
             f.setAccessible(true);
-            f.set(null, new java.util.Random(seed));
+            f.set(null, new Random(seed));
         } catch (ReflectiveOperationException | RuntimeException e) {
             throw new IllegalStateException("cannot seed Collections.shuffle (the test JVM needs --add-opens java.base/java.util)", e);
         }
@@ -97,7 +103,7 @@ public class TreeFastFuzzTest {
     private static FeatureRun.Result run(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, long terrainSeed, int t, boolean vanilla) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS);
+        Holder<Biome> biome = r.biomes.getHolderOrThrow(Biomes.PLAINS);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
         }

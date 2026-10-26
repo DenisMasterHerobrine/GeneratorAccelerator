@@ -1,18 +1,20 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface;
 
+import com.llamalad7.mixinextras.sugar.ref.LocalIntRef;
+import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
@@ -20,6 +22,7 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.BlockColumn;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
@@ -75,13 +78,13 @@ public final class ColumnHooks {
         /** Vanilla's rule context with this column's position ({@code updateXZ}). Set when a hook asks for it. */
         public SurfaceRules.Context ruleContext;
         /** The position of the column's biome lookup, vanilla's second mutable position ({@code (x, legacy ? 0 : top, z)}). */
-        public net.minecraft.core.BlockPos.MutableBlockPos biomePos;
+        public BlockPos.MutableBlockPos biomePos;
         /** Values a mixin's handlers share for one build ({@code @Share}), by a key of the hook's own. */
-        public final Map<Object, Object> shared = new java.util.IdentityHashMap<>();
+        public final Map<Object, Object> shared = new IdentityHashMap<>();
     }
 
     /** A {@code @Share}d reference for one build. */
-    public static final class Ref<T> implements com.llamalad7.mixinextras.sugar.ref.LocalRef<T> {
+    public static final class Ref<T> implements LocalRef<T> {
         private T value;
 
         @Override
@@ -96,7 +99,7 @@ public final class ColumnHooks {
     }
 
     /** A {@code @Share}d int for one build. */
-    public static final class IntRef implements com.llamalad7.mixinextras.sugar.ref.LocalIntRef {
+    public static final class IntRef implements LocalIntRef {
         private int value;
 
         @Override
@@ -200,8 +203,8 @@ public final class ColumnHooks {
         f.context = context;
         f.chunk = chunk;
         f.rule = rule;
-        f.biomePos = new net.minecraft.core.BlockPos.MutableBlockPos();
-        net.minecraft.world.level.levelgen.Heightmap surface = chunk.getOrCreateHeightmapUnprimed(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG);
+        f.biomePos = new BlockPos.MutableBlockPos();
+        Heightmap surface = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
         int minX = chunk.getPos().getMinBlockX(), minZ = chunk.getPos().getMinBlockZ();
         try {
             Resolved.runRecords(r.start, f);
@@ -490,14 +493,11 @@ public final class ColumnHooks {
      * and it takes exactly {@code params}. That excludes MixinExtras' bridge for sugar, which takes references.
      */
     public static MethodHandle handler(String name, Class<?> returnType, Class<?>... params) throws ReflectiveOperationException {
-        for (Method m : SurfaceSystem.class.getDeclaredMethods()) {
-            if (m.getName().endsWith("$" + name) && !Modifier.isStatic(m.getModifiers()) && m.getReturnType() == returnType
-                && Arrays.equals(m.getParameterTypes(), params)) {
-                m.setAccessible(true);
-                return MethodHandles.lookup().unreflect(m);
-            }
+        MethodHandle h = Reflect.mergedMethod(SurfaceSystem.class, "$" + name, false, returnType, params);
+        if (h == null) {
+            throw new NoSuchMethodException("SurfaceSystem.*$" + name + Arrays.toString(params));
         }
-        throw new NoSuchMethodException("SurfaceSystem.*$" + name + Arrays.toString(params));
+        return h;
     }
 
     /** {@link #BUILD_ARGS}, the callback info, then {@code locals}. */

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.light;
 
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
+import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
@@ -71,7 +72,7 @@ public final class LightSources {
             int bits = storage.getBits();
             boolean small = bits <= 8;
             if (small) {
-                java.util.Arrays.fill(local, 0, 1 << bits, 0);
+                Arrays.fill(local, 0, 1 << bits, 0);
             }
             if (storage instanceof SimpleBitStorage simple) {
                 long[] raw = simple.getRaw();
@@ -132,7 +133,7 @@ public final class LightSources {
         }
         if (id >= 0) {
             if (id >= table.length) {
-                byte[] grown = java.util.Arrays.copyOf(table, Math.max(id + 1, Block.BLOCK_STATE_REGISTRY.size()));
+                byte[] grown = Arrays.copyOf(table, Math.max(id + 1, Block.BLOCK_STATE_REGISTRY.size()));
                 codes = table = grown;
             }
             table[id] = code;

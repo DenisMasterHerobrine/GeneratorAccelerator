@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.TreeSet;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -45,10 +46,10 @@ public class ParallelLightExactnessTest {
     @Test
     void realChunks() throws Exception {
         Path region = RegionChunks.defaultRegion();
-        org.junit.jupiter.api.Assumptions.assumeTrue(region != null, "no dev-run region file");
+        Assumptions.assumeTrue(region != null, "no dev-run region file");
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         ProtoChunk[] chunks = RegionChunks.load(region, 4, 6, 8, world);
-        org.junit.jupiter.api.Assumptions.assumeTrue(chunks != null, "region square not fully generated");
+        Assumptions.assumeTrue(chunks != null, "region square not fully generated");
         compare("real chunks", world, chunks, true, 77L);
     }
 

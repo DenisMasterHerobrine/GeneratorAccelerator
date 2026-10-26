@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.terrablender;
 
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeRegions;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
@@ -114,7 +115,7 @@ public final class TerraBlenderBiomes {
     }
 
     /** One parameter list's regions: a climate tree per region index, and GA2's own copy of the list for the region noise. */
-    public static final class Regions implements dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeRegions {
+    public static final class Regions implements BiomeRegions {
         private final Api api;
         /** The tree of each region index. Null for a region that added no biomes (TerraBlender never fills it). */
         private final Climate.RTree<Holder<Biome>>[] trees;

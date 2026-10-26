@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import net.minecraft.world.level.levelgen.DensityFunction;
+import java.util.Arrays;
 
 /**
  * Fills one {@code CacheAllInCell} value array for a whole cell, in vanilla's {@code fillAllDirectly}
@@ -33,7 +34,7 @@ public abstract class CellProgram extends CompiledProgram {
     /** Moves to the next block. Every slot's value from an earlier block becomes stale. Stamps start over after 2^32 blocks. */
     public static void advance(CellProgram program) {
         if (++program.epoch == 0) {
-            java.util.Arrays.fill(program.stamps, 0);
+            Arrays.fill(program.stamps, 0);
             program.epoch = 1;
         }
     }

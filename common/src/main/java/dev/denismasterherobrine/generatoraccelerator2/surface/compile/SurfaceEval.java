@@ -1,13 +1,17 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface.compile;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.SurfaceSystemAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
+import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.SurfaceRules;
@@ -65,7 +69,7 @@ public final class SurfaceEval {
      * scanning down from the current block. Blocks below the current block are untouched so far, and the
      * run above it was solid when vanilla would have scanned, so both scans stop at the same block.
      */
-    private dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks columnBlocks;
+    private ChunkBlocks columnBlocks;
     private int columnLx;
     private int columnLz;
     private int columnMinY;
@@ -75,7 +79,7 @@ public final class SurfaceEval {
 
     // biome condition results per biome holder for this chunk. A holder's key never changes, and a biome set's tags are
     // read once per chunk
-    private final java.util.IdentityHashMap<Holder<Biome>, byte[]> biomeMatches = new java.util.IdentityHashMap<>();
+    private final IdentityHashMap<Holder<Biome>, byte[]> biomeMatches = new IdentityHashMap<>();
     private Holder<Biome> matchHolder;
     private byte[] matches;
 
@@ -131,7 +135,7 @@ public final class SurfaceEval {
     public void updateXZ(int x, int z) {
         blockX = x;
         blockZ = z;
-        java.util.Arrays.fill(noiseDone, false);
+        Arrays.fill(noiseDone, false);
         secondaryDone = false;
         steep = 0;
         double noise = surfaceNoise.getValue(x, 0.0, z);
@@ -145,7 +149,7 @@ public final class SurfaceEval {
     }
 
     /** The column whose blocks the lazy stone-run scan reads. Resets the run. */
-    public void column(dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks blocks, int lx, int lz, int minY) {
+    public void column(ChunkBlocks blocks, int lx, int lz, int minY) {
         columnBlocks = blocks;
         columnLx = lx;
         columnLz = lz;
@@ -259,7 +263,7 @@ public final class SurfaceEval {
             return eagerBelowValue;
         }
         if (runBottom >= blockY) {
-            int k2 = net.minecraft.world.level.dimension.DimensionType.WAY_BELOW_MIN_Y;
+            int k2 = DimensionType.WAY_BELOW_MIN_Y;
             for (int j3 = blockY - 1; j3 >= columnMinY - 1; j3--) {
                 BlockState below = columnBlocks.get(columnLx, j3, columnLz);
                 if (below.isAir() || !below.getFluidState().isEmpty()) {
@@ -417,8 +421,8 @@ public final class SurfaceEval {
 
     public void setColumnValue(int slot, double value) {
         if (slot >= externColumn.length) {
-            externColumn = java.util.Arrays.copyOf(externColumn, slot + 4);
-            externColumnStamp = java.util.Arrays.copyOf(externColumnStamp, slot + 4);
+            externColumn = Arrays.copyOf(externColumn, slot + 4);
+            externColumnStamp = Arrays.copyOf(externColumnStamp, slot + 4);
         }
         externColumn[slot] = value;
         externColumnStamp[slot] = columnStamp;

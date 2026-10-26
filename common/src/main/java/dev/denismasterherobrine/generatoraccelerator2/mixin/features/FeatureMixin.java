@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import java.util.Optional;
 
 /**
  * Dispatches fast paths registered through the public API. Runs after vanilla's write-radius check
@@ -37,7 +38,7 @@ public abstract class FeatureMixin {
             return;
         }
         @SuppressWarnings({ "unchecked", "rawtypes" })
-        FeaturePlaceContext<?> ctx = new FeaturePlaceContext(java.util.Optional.empty(), level, generator, random, origin, config);
+        FeaturePlaceContext<?> ctx = new FeaturePlaceContext(Optional.empty(), level, generator, random, origin, config);
         Object result = path.place(ctx, region);
         if (result == FeatureFastPath.FALLBACK) {
             FeatureStats.fallback(this.getClass());

@@ -3,10 +3,8 @@ package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -166,13 +164,10 @@ public final class StepHandlers {
      * {@code "$" + name}, and it takes exactly {@code params}. That excludes MixinExtras' bridge for sugar, which takes references.
      */
     public static MethodHandle staticHandler(String name, Class<?>... params) throws ReflectiveOperationException {
-        for (Method m : ChunkStatusTasks.class.getDeclaredMethods()) {
-            if (m.getName().endsWith("$" + name) && Modifier.isStatic(m.getModifiers()) && m.getReturnType() == void.class
-                && Arrays.equals(m.getParameterTypes(), params)) {
-                m.setAccessible(true);
-                return MethodHandles.lookup().unreflect(m);
-            }
+        MethodHandle h = Reflect.mergedMethod(ChunkStatusTasks.class, "$" + name, true, void.class, params);
+        if (h == null) {
+            throw new NoSuchMethodException("ChunkStatusTasks.*$" + name + Arrays.toString(params));
         }
-        throw new NoSuchMethodException("ChunkStatusTasks.*$" + name + Arrays.toString(params));
+        return h;
     }
 }

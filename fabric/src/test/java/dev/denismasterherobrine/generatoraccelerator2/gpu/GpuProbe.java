@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
@@ -9,15 +10,13 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.CacheAllInCellAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseInterpolatorAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import it.unimi.dsi.fastutil.shorts.ShortList;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,8 +25,11 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
@@ -37,6 +39,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -108,7 +111,7 @@ public class GpuProbe {
             if (world.settings.defaultFluid() != Blocks.WATER.defaultBlockState()) {
                 throw new IllegalStateException("default fluid is not water");
             }
-            Field beardField = net.minecraft.world.level.levelgen.Beardifier.class.getDeclaredField("BEARD_KERNEL");
+            Field beardField = Beardifier.class.getDeclaredField("BEARD_KERNEL");
             beardField.setAccessible(true);
             beardKernel = ((float[]) beardField.get(null)).clone();
             for (int i = 0; i < states.length; i++) {
@@ -119,8 +122,8 @@ public class GpuProbe {
             parameters.setAccessible(true);
             @SuppressWarnings("unchecked")
             // under Lithostitched's injectors, the source they wrap
-            Object multi = dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.isInjector(world.biomeSource)
-                ? dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.base(world.biomeSource) : world.biomeSource;
+            Object multi = LithostitchedGpuBiomes.isInjector(world.biomeSource)
+                ? LithostitchedGpuBiomes.base(world.biomeSource) : world.biomeSource;
             Climate.ParameterList<Holder<Biome>> list = (Climate.ParameterList<Holder<Biome>>) parameters.invoke(multi);
             Climate.RTree<Holder<Biome>> tree = list.index;
             List<Climate.RTree.Node<Holder<Biome>>> order = new ArrayList<>();
@@ -565,7 +568,7 @@ public class GpuProbe {
             boolean fp64 = cl.hasFp64();
             boolean timing = Boolean.parseBoolean(System.getProperty("ga2.gpu.timing", "true"));
             // the four programs compile in parallel (NVIDIA builds each in minutes cold)
-            java.util.concurrent.ExecutorService builds = java.util.concurrent.Executors.newFixedThreadPool(4);
+            ExecutorService builds = Executors.newFixedThreadPool(4);
             long b0 = System.nanoTime();
             var f64vF = fp64 ? builds.submit(() -> new Variant(cl, s, "f64-verify", s.gen(ClGen.Prec.F64, true), "-D FULL -D WRITE_DENSITY")) : null;
             var f32vF = builds.submit(() -> new Variant(cl, s, "f32-verify", s.gen(ClGen.Prec.F32, true), "-D FULL -D WRITE_DENSITY"));
@@ -680,7 +683,7 @@ public class GpuProbe {
      * {@code gradlew test --tests "*GpuProbe.structures*" -Dga2.gpu.structures=true --no-configuration-cache}
      */
     @Test
-    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "ga2.gpu.structures", matches = "true")
+    @EnabledIfSystemProperty(named = "ga2.gpu.structures", matches = "true")
     void structures() throws Exception {
         Setup s = GpuDatapack.setup(SEED);
         try (Cl cl = Cl.open()) {
@@ -816,7 +819,7 @@ public class GpuProbe {
     static ProtoChunk refChunk(Setup s, int cx, int cz, Structures structures) {
         TerrainHarness.World w = s.world;
         ProtoChunk c = w.emptyChunk(cx, cz);
-        net.minecraft.world.level.levelgen.Beardifier beard = structures.beardifierFor(cx, cz);
+        Beardifier beard = structures.beardifierFor(cx, cz);
         c.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, w.randomState, beard, w.settings, w.fluidPicker, Blender.empty()));
         w.generator.createBiomes(w.randomState, Blender.empty(), null, c).join();
         c.setPersistedStatus(ChunkStatus.BIOMES);
@@ -1021,8 +1024,8 @@ public class GpuProbe {
             }
             PalettedContainer<BlockState> container = secs[sec].getStates();
             @SuppressWarnings("unchecked")
-            PalettedContainer.Data<BlockState> data = ((dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker) (Object) container)
-                .ga2$createOrReuseData(null, net.minecraft.util.Mth.ceillog2(psize));
+            PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container)
+                .ga2$createOrReuseData(null, Mth.ceillog2(psize));
             var palette = data.palette();
             palette.idFor(air);
             int nonEmpty = 0, ticking = 0, fluids = 0;

@@ -6,12 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import com.mojang.datafixers.util.Pair;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -91,7 +94,7 @@ public class ClimateSearchTest {
                 ties++;
             }
         }
-        org.junit.jupiter.api.Assertions.assertTrue(ties > 100, "too few ties to test: " + ties);
+        Assertions.assertTrue(ties > 100, "too few ties to test: " + ties);
     }
 
     /**
@@ -105,7 +108,7 @@ public class ClimateSearchTest {
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) list.index).ga2$flat();
         int nodes = flat.nodes();
         int[] keys = new int[nodes + 1];
-        java.util.Map<Object, Integer> numbers = new java.util.IdentityHashMap<>();
+        Map<Object, Integer> numbers = new IdentityHashMap<>();
         List<Integer> leafIds = new ArrayList<>();
         for (int id = 0; id < nodes; id++) {
             if (flat.leaf(id) != null) {
@@ -138,7 +141,7 @@ public class ClimateSearchTest {
                 ties++;
             }
         }
-        org.junit.jupiter.api.Assertions.assertTrue(ties > 20, "too few ties to test: " + ties);
+        Assertions.assertTrue(ties > 20, "too few ties to test: " + ties);
     }
 
     private static Climate.ParameterPoint randomPoint(Random r) {

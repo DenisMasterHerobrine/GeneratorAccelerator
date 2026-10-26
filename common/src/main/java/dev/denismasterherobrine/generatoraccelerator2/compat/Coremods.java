@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
@@ -32,6 +34,7 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.MultiANewArrayInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.slf4j.Logger;
@@ -225,7 +228,7 @@ public final class Coremods {
         if (getters != null) {
             for (Map.Entry<String, String> g : getters.entrySet()) {
                 String fieldDesc = null;
-                for (org.objectweb.asm.tree.FieldNode f : node.fields) {
+                for (FieldNode f : node.fields) {
                     if (f.name.equals(g.getKey())) {
                         fieldDesc = f.desc;
                     }
@@ -395,7 +398,7 @@ public final class Coremods {
 
     /** Ordinals of the method's labels that are jump, switch or try-catch targets, in order. Other labels do not shift the ordinals. */
     private static Map<LabelNode, Integer> labelOrdinals(MethodNode m) {
-        Set<LabelNode> targets = new java.util.HashSet<>();
+        Set<LabelNode> targets = new HashSet<>();
         for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
             if (insn instanceof JumpInsnNode j) {
                 targets.add(j.label);
@@ -407,7 +410,7 @@ public final class Coremods {
                 targets.addAll(s.labels);
             }
         }
-        for (org.objectweb.asm.tree.TryCatchBlockNode tc : m.tryCatchBlocks) {
+        for (TryCatchBlockNode tc : m.tryCatchBlocks) {
             targets.add(tc.start);
             targets.add(tc.end);
             targets.add(tc.handler);

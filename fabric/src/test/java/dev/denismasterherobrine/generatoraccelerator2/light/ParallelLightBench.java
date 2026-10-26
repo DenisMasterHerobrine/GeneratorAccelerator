@@ -1,9 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.light;
 
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
+import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.RegionChunks;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import org.junit.jupiter.api.Test;
@@ -26,24 +29,24 @@ public class ParallelLightBench {
         }
         System.out.println("parallel light bench: " + base.length + " chunks from " + (region != null ? region : "test terrain"));
         int[] helperCounts = System.getProperty("ga2.bench.helpers") != null
-            ? java.util.Arrays.stream(System.getProperty("ga2.bench.helpers").split(",")).mapToInt(Integer::parseInt).toArray() : new int[] { 0, 1, 2, 3, 4, 7 };
+            ? Arrays.stream(System.getProperty("ga2.bench.helpers").split(",")).mapToInt(Integer::parseInt).toArray() : new int[] { 0, 1, 2, 3, 4, 7 };
         int[] batches = System.getProperty("ga2.bench.batch") != null
-            ? java.util.Arrays.stream(System.getProperty("ga2.bench.batch").split(",")).mapToInt(Integer::parseInt).toArray() : new int[] { 3, 12 };
+            ? Arrays.stream(System.getProperty("ga2.bench.batch").split(",")).mapToInt(Integer::parseInt).toArray() : new int[] { 3, 12 };
         int rounds = Integer.getInteger("ga2.bench.rounds", 10);
         if (Boolean.getBoolean("ga2.bench.track")) {
-            dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.TRACK = line -> System.out.println("track " + line);
+            ParallelLightStats.TRACK = line -> System.out.println("track " + line);
         }
         ParallelLight.anyEngine = true;
         try {
             for (int batch : batches) {
                 double[] best = new double[helperCounts.length];
                 double[][] parts = new double[helperCounts.length][3];
-                java.util.Arrays.fill(best, Double.MAX_VALUE);
-                java.util.List<String>[] stats = new java.util.List[helperCounts.length];
+                Arrays.fill(best, Double.MAX_VALUE);
+                List<String>[] stats = new List[helperCounts.length];
                 for (int round = 0; round < rounds; round++) {
                     for (int i = 0; i < helperCounts.length; i++) {
                         int helpers = helperCounts[i];
-                        dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightStats.reset();
+                        ParallelLightStats.reset();
                         ParallelLight.ENABLED = helpers > 0;
                         ParallelLight.helpersOverride = helpers;
                         ParallelLight.minEntriesOverride = Integer.getInteger("ga2.bench.minEntries", 2048);
