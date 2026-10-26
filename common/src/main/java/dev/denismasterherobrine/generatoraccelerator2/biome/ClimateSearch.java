@@ -71,6 +71,10 @@ public final class ClimateSearch {
                     q0, q1, q2, q3, q4, q5, lastId, id, walked);
             }
         }
+        // the search returns the leaf's value. A tie with a leaf of the same value gives the same answer
+        if (SearchTies.watching() && !flat.alone(q0, q1, q2, q3, q4, q5, id, true)) {
+            SearchTies.unsure(SearchTies.TIE);
+        }
         Climate.RTree.Leaf<T> leaf = (Climate.RTree.Leaf<T>) flat.leaf(id);
         if (leaf != last) {
             // The same leaf as before is common (the quarts of one column). A thread-local write costs more than the read above.

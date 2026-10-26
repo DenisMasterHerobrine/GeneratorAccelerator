@@ -282,7 +282,16 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                     + "Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/core/Registry;"
                     + "Lnet/minecraft/world/level/levelgen/blending/Blender;)V")))),
         Map.entry("HolderTagsMixin", List.of(
-            new FeatureHook(HookTargets.TAG_BITS, List.of("is(Lnet/minecraft/tags/TagKey;)Z", "bindTags(Ljava/util/Collection;)V"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.TAG_BITS, List.of("is(Lnet/minecraft/tags/TagKey;)Z", "bindTags(Ljava/util/Collection;)V"), MergedMethods.Mode.BYPASS),
+            // vanilla has no equals or hashCode here. NeoForge adds both. A mod that adds or changes them counts as a change
+            new FeatureHook(HookTargets.DIRECT_SETS, List.of("equals(Ljava/lang/Object;)Z", "hashCode()I", "key()Lnet/minecraft/resources/ResourceKey;",
+                "kind()Lnet/minecraft/core/Holder$Kind;", "getKey()Lnet/minecraft/resources/ResourceKey;"), MergedMethods.Mode.BYPASS))),
+        Map.entry("DirectSetMixin", List.of(
+            new FeatureHook(HookTargets.DIRECT_SETS, List.of("contains(Lnet/minecraft/core/Holder;)Z"), MergedMethods.Mode.BYPASS))),
+        // the height skips getChunk(int, int). It still looks chunks up through getChunk(int, int, ChunkStatus, boolean).
+        Map.entry("WorldGenRegionHeightsMixin", List.of(
+            new FeatureHook(HookTargets.REGION_HEIGHTS, List.of("getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I",
+                "getChunk(II)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
         Map.entry("SectionWriteMixin", List.of(
             new FeatureHook(HookTargets.SECTION_WRITE, List.of("setBlockState(IIILnet/minecraft/world/level/block/state/BlockState;Z)Lnet/minecraft/world/level/block/state/BlockState;"),
                 MergedMethods.Mode.BYPASS),
@@ -312,7 +321,17 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;",
                 "getNoiseBiome(Lnet/minecraft/world/level/biome/Climate$TargetPoint;)Lnet/minecraft/core/Holder;",
                 "parameters()Lnet/minecraft/world/level/biome/Climate$ParameterList;"),
+                MergedMethods.Mode.BYPASS),
+            // the answers kept for points outside a region come from this lookup. Only reviewed changes keep it position-only
+            new FeatureHook(HookTargets.BIOME_ANSWERS, List.of(
+                "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;",
+                "getNoiseBiome(Lnet/minecraft/world/level/biome/Climate$TargetPoint;)Lnet/minecraft/core/Holder;",
+                "parameters()Lnet/minecraft/world/level/biome/Climate$ParameterList;"),
                 MergedMethods.Mode.BYPASS))),
+        Map.entry("WorldGenRegionBiomesMixin", List.of(
+            new FeatureHook(HookTargets.BIOME_ANSWERS, List.of("getUncachedNoiseBiome(III)Lnet/minecraft/core/Holder;"), MergedMethods.Mode.BYPASS))),
+        Map.entry("ServerLevelBiomeAnswersMixin", List.of(
+            new FeatureHook(HookTargets.BIOME_ANSWERS, List.of("getUncachedNoiseBiome(III)Lnet/minecraft/core/Holder;"), MergedMethods.Mode.BYPASS))),
         Map.entry("GpuClimateSamplerInspectMixin", List.of(
             new FeatureHook(HookTargets.GPU_BIOMES, List.of("sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), MergedMethods.Mode.BYPASS),
             new FeatureHook(HookTargets.GPU_CLIMATE_POINTS, List.of("sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), MergedMethods.Mode.BYPASS))),

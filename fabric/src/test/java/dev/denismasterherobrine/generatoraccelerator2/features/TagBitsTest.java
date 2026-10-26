@@ -1,6 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import dev.denismasterherobrine.generatoraccelerator2.state.TagBits;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -49,5 +52,20 @@ public class TagBitsTest {
         }
         System.out.println("TagBitsTest: " + checked + " checks over " + tags.size() + " tags, " + members + " memberships");
         assertTrue(wrong.isEmpty(), wrong.size() + " wrong:\n" + String.join("\n", wrong.subList(0, Math.min(20, wrong.size()))));
+    }
+
+    /** A key no holder was bound with has no index. Once a holder is bound with it, the same key instance finds its index. */
+    @Test
+    void absentKeyFindsItsIndexLater() {
+        HarnessWorld.registries();
+        TagKey<Block> key = TagKey.create(Registries.BLOCK, net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("ga2test", "late_tag"));
+        assertEquals(-1, TagBits.index(key));
+        assertEquals(-1, TagBits.index(key));
+        TagBits.bits(Set.of(key));
+        int i = TagBits.index(key);
+        assertTrue(i >= 0, "no index after binding: " + i);
+        @SuppressWarnings("unchecked")
+        TagKey<Block> copy = new TagKey<>(Registries.BLOCK, key.location());
+        assertEquals(i, TagBits.index(copy));
     }
 }

@@ -29,5 +29,9 @@ public final class BiolithMixins {
         new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, SURFACE, Set.of("injectSurfaceBuilders", "injectLateSurfaceBuilders"),
             "Biolith's custom surfaces still generate. Chunks build their surface on the CPU while a mod has registered such a surface."),
         new KnownMixins.Entry(MOD_ID, HookTargets.BIOME_PARAMETERS, PARAMETERS, Set.of("injectEntries"),
-            "Biolith's added biomes still appear. Once the biome list is built, GA2 reuses it without waiting on a lock."));
+            "Biolith's added biomes still appear. Once the biome list is built, GA2 reuses it without waiting on a lock."),
+        // its lookup (getBiome) searches the climate tree and places its replacements by the position and the world's seed
+        new KnownMixins.Entry(MOD_ID, HookTargets.BIOME_ANSWERS, PARAMETERS, Set.of("getBiome", "injectEntries"),
+            "Biolith's biomes still appear. A biome that other mods ask for outside the chunks being decorated is looked up once "
+                + "with Biolith's code and kept."));
 }

@@ -32,7 +32,8 @@ public final class ModdedFeatures {
     private static final Logger LOGGER = Ga2Log.get("Features");
 
     /** A feature class: its mod (module), why its placements would share state (null if not), and the lock they take then. */
-    public record Profile(String type, String module, @Nullable String sharedState, @Nullable Object lock, @Nullable SeededStatics.Init init) {}
+    public record Profile(String type, String module, @Nullable String sharedState, @Nullable Object lock, @Nullable SeededStatics.Init init,
+                          LongAdder placements) {}
 
     /**
      * One lock for every feature that shares state. Such state may be shared between a mod's feature classes. With one
@@ -46,16 +47,14 @@ public final class ModdedFeatures {
     private static final ClassValue<Profile> PROFILES = new ClassValue<>() {
         @Override
         protected Profile computeValue(Class<?> type) {
-            return profile(type);
+            // vanilla's own classes have none. The check was a string comparison per placement
+            return type.getName().startsWith("net.minecraft.") ? null : profile(type);
         }
     };
 
     /** The profile of a feature class, or null for vanilla's own classes. */
     @Nullable
     public static Profile of(Class<?> type) {
-        if (type.getName().startsWith("net.minecraft.")) {
-            return null;
-        }
         return PROFILES.get(type);
     }
 
@@ -81,7 +80,7 @@ public final class ModdedFeatures {
             }
         }
         Object lock = shared == null ? null : SHARED_LOCK;
-        Profile p = new Profile(type.getName(), module, shared, lock, init);
+        Profile p = new Profile(type.getName(), module, shared, lock, init, PLACEMENTS.computeIfAbsent(type.getName(), k -> new LongAdder()));
         SEEN.put(type.getName(), p);
         if (shared != null && init != null) {
             LOGGER.info("feature {} ({}): {} (seeded) -> serialized until initialized",
@@ -96,7 +95,7 @@ public final class ModdedFeatures {
 
     /** Counts a placement of a modded feature (for the report). */
     public static void placed(Profile profile) {
-        PLACEMENTS.computeIfAbsent(profile.type(), k -> new LongAdder()).increment();
+        profile.placements().increment();
     }
 
     // ------------------------------------------------------------------------------------------------ fast path eligibility

@@ -123,6 +123,15 @@ public final class StepsCommand {
                 + " answered from earlier probes of the same column; surface levels by the compiled walk "
                 + dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels.COLUMNS.sum());
         }
+        long outsideAsked = dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.ASKED.sum();
+        if (outsideAsked > 0) {
+            send(source, "biomes asked outside a region's chunks: " + outsideAsked + ", answered from earlier answers "
+                + (outsideAsked - dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.LOOKED_UP.sum()) + ", not kept " + dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.UNSURE.sum()
+                + " (searches with another leaf as near: GA2's " + dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.REASONS[0].sum()
+                + ", Biolith's first answer " + dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.REASONS[1].sum()
+                + ", Biolith's second " + dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.REASONS[2].sum()
+                + "; searches GA2 does not see " + dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.REASONS[3].sum() + ")");
+        }
         long readRegions = dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads.REGIONS.sum();
         long layerSearches = dev.denismasterherobrine.generatoraccelerator2.features.placement.EveryLayer.CALLS.sum();
         if (readRegions + layerSearches > 0) {

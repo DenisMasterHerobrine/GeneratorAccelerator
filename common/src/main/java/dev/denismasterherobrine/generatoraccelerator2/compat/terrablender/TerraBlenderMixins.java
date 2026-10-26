@@ -43,7 +43,11 @@ public final class TerraBlenderMixins {
         new KnownMixins.Entry(MOD_ID, HookTargets.GPU_BIOMES, BIOME_SOURCE, Set.of("getNoiseBiome"),
             "TerraBlender's biome regions still work. The GPU places each region's biomes the same way."),
         new KnownMixins.Entry(MOD_ID, HookTargets.GPU_BIOMES, BIOME_STEP, Set.of("modifyBiomeSource"),
-            "TerraBlender's biome regions still work. The GPU uses TerraBlender's own region map."));
+            "TerraBlender's biome regions still work. The GPU uses TerraBlender's own region map."),
+        // its lookup searches the region's tree. The regions come from its noise of the world's seed
+        new KnownMixins.Entry(MOD_ID, HookTargets.BIOME_ANSWERS, BIOME_SOURCE, Set.of("getNoiseBiome"),
+            "TerraBlender's biome regions still work. A biome that other mods ask for outside the chunks being decorated is looked "
+                + "up once with TerraBlender's code and kept."));
     private static final String RTREE = "net/minecraft/world/level/biome/Climate$RTree";
     private static final String NODE = "net/minecraft/world/level/biome/Climate$RTree$Node";
 

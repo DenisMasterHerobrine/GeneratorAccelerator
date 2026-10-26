@@ -41,6 +41,106 @@ public class ClimateSearchTest {
         }
     }
 
+    /** {@code FlatClimateTree.alone} against a count of the leaves at the nearest distance, ties included. */
+    @Test
+    void aloneMatchesLeafCount() {
+        Climate.ParameterList<Holder<Biome>> list = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
+            HarnessWorld.registries().biomes.asLookup()).parameters();
+        Climate.RTree<Holder<Biome>> tree = list.index;
+        FlatClimateTree flat = ((Ga2ClimateTree) (Object) tree).ga2$flat();
+        List<Climate.RTree.Leaf<Holder<Biome>>> leaves = new ArrayList<>();
+        collect(tree.root, leaves);
+        Random r = new Random(77);
+        int ties = 0;
+        for (int it = 0; it < 40_000; it++) {
+            long[] q = new long[7];
+            for (int d = 0; d < 6; d++) {
+                q[d] = it % 2 == 0 ? Climate.quantizeCoord((float) (r.nextGaussian() * 0.6)) : (r.nextInt(9) - 4) * 2500L;
+            }
+            long best = Long.MAX_VALUE;
+            int atBest = 0;
+            for (Climate.RTree.Leaf<Holder<Biome>> leaf : leaves) {
+                long s = 0;
+                for (int d = 0; d < 7; d++) {
+                    long t = leaf.parameterSpace[d].distance(q[d]);
+                    s += t * t;
+                }
+                if (s < best) {
+                    best = s;
+                    atBest = 1;
+                } else if (s == best) {
+                    atBest++;
+                }
+            }
+            int id = flat.search(q[0], q[1], q[2], q[3], q[4], q[5], -1);
+            assertEquals(atBest == 1, flat.alone(q[0], q[1], q[2], q[3], q[4], q[5], id), "query " + it + ": " + atBest + " leaves at the nearest distance");
+            Object value = flat.leaf(id).value;
+            int otherValues = 0;
+            for (Climate.RTree.Leaf<Holder<Biome>> leaf : leaves) {
+                long s = 0;
+                for (int d = 0; d < 7; d++) {
+                    long t = leaf.parameterSpace[d].distance(q[d]);
+                    s += t * t;
+                }
+                if (s == best && leaf.value != value) {
+                    otherValues++;
+                }
+            }
+            assertEquals(otherValues == 0, flat.alone(q[0], q[1], q[2], q[3], q[4], q[5], id, true), "query " + it + ": " + otherValues + " other values at the nearest distance");
+            if (atBest > 1) {
+                ties++;
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(ties > 100, "too few ties to test: " + ties);
+    }
+
+    /**
+     * {@code FlatClimateTree.secondAlone} against a count of the leaves at the second answer's distance whose biome is neither the
+     * second's nor the first's ({@code searchFittest}, Biolith's search).
+     */
+    @Test
+    void secondAloneMatchesLeafCount() {
+        Climate.ParameterList<Holder<Biome>> list = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
+            HarnessWorld.registries().biomes.asLookup()).parameters();
+        FlatClimateTree flat = ((Ga2ClimateTree) (Object) list.index).ga2$flat();
+        int nodes = flat.nodes();
+        int[] keys = new int[nodes + 1];
+        java.util.Map<Object, Integer> numbers = new java.util.IdentityHashMap<>();
+        List<Integer> leafIds = new ArrayList<>();
+        for (int id = 0; id < nodes; id++) {
+            if (flat.leaf(id) != null) {
+                keys[id] = numbers.computeIfAbsent(flat.leaf(id).value, k -> numbers.size() + 1);
+                leafIds.add(id);
+            }
+        }
+        Random r = new Random(78);
+        int[] ids = new int[2];
+        long[] distance = new long[2];
+        int ties = 0;
+        for (int it = 0; it < 40_000; it++) {
+            long[] q = new long[6];
+            for (int d = 0; d < 6; d++) {
+                q[d] = it % 2 == 0 ? Climate.quantizeCoord((float) (r.nextGaussian() * 0.6)) : (r.nextInt(9) - 4) * 2500L;
+            }
+            flat.searchFittest(q[0], q[1], q[2], q[3], q[4], q[5], keys, -1, -1, ids, distance);
+            int u = ids[0], p = ids[1];
+            if (p < 0) {
+                continue;
+            }
+            int others = 0;
+            for (int id : leafIds) {
+                if (id != p && flat.distanceTo(id, q[0], q[1], q[2], q[3], q[4], q[5]) == distance[1] && keys[id] != keys[p] && keys[id] != keys[u]) {
+                    others++;
+                }
+            }
+            assertEquals(others == 0, flat.secondAlone(q[0], q[1], q[2], q[3], q[4], q[5], p, keys, keys[u]), "query " + it + ": " + others + " other biomes at the second distance");
+            if (others > 0) {
+                ties++;
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(ties > 20, "too few ties to test: " + ties);
+    }
+
     private static Climate.ParameterPoint randomPoint(Random r) {
         Climate.Parameter[] p = new Climate.Parameter[6];
         for (int d = 0; d < 6; d++) {

@@ -50,6 +50,8 @@ public final class CompatModules {
         if (Compat.isLoaded(BiolithMixins.MOD_ID)) {
             BiolithSurface.register();
             dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithParameters.register();
+            // nothing to set up: Biolith's lookup answers from the position and the world's seed, set before the first chunk
+            CompatAdapters.register(HookTargets.BIOME_ANSWERS, BiolithMixins.PARAMETERS, () -> true);
         }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicSnow.register();
@@ -67,6 +69,10 @@ public final class CompatModules {
             CompatAdapters.register(HookTargets.STRUCTURE_FOSSIL_PROBE, LithostitchedMixins.NETHER_FOSSIL, () -> true);
             // nothing to set up: GPU biomes are for a plain multi-noise source only, which the wrapping passes through
             CompatAdapters.register(HookTargets.GPU_BIOMES, LithostitchedMixins.TERRABLENDER_RESOLVER, () -> true);
+            // the injector source answers from the position: its base source's answer, then injectors of noise and regions
+            dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.knownSource(source ->
+                dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.isInjector(source)
+                    && dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes.base(source) != null);
         }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate.register();
@@ -109,6 +115,8 @@ public final class CompatModules {
         }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesChunks.register();
+            dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesRules.register();
+            dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesRules.registerBiomeAnswers();
         }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins.register();
@@ -128,9 +136,13 @@ public final class CompatModules {
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.MOD_ID)) {
             // the GPU searches the region trees as TerraBlender does, which needs TerraBlender's searches to use vanilla's distance
             for (KnownMixins.Entry e : dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.ENTRIES) {
-                CompatAdapters.register(e.hook(), e.mixin(), () -> dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes.available()
-                    && dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.distanceSearch());
+                if (e.hook().equals(HookTargets.GPU_BIOMES)) {
+                    CompatAdapters.register(e.hook(), e.mixin(), () -> dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes.available()
+                        && dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.distanceSearch());
+                }
             }
+            // nothing to set up: TerraBlender's lookup answers from the position and the regions of the world's seed
+            CompatAdapters.register(HookTargets.BIOME_ANSWERS, dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.BIOME_SOURCE, () -> true);
         }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestCoremods.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestSurface.register();

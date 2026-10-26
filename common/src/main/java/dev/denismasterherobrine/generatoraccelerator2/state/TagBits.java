@@ -19,7 +19,10 @@ public final class TagBits {
 
     public static final long[] NONE = new long[0];
 
-    /** Implemented by every tag key. Holds the index + 1, or 0 before this instance knows its index. */
+    /**
+     * Implemented by every tag key. Holds the index + 1, or minus the {@link #generation} in which this instance found it has no
+     * index, or 0 before it looked.
+     */
     public interface Indexed {
         int ga2$tagIndex();
 
@@ -29,6 +32,11 @@ public final class TagBits {
     /** By value. Copied on every new key. Keys are added while tags are bound, a few thousand at most. Read without locks. */
     private static volatile Object2IntOpenHashMap<TagKey<?>> index = empty();
     private static int next;
+    /**
+     * Raised after keys were added ({@link #assign}). A key without an index remembers the generation it looked in. It looks
+     * again in a later one. A mod's tag that no block has (an empty tag) was looked up in the map at every test before.
+     */
+    private static volatile int generation = 1;
 
     private static Object2IntOpenHashMap<TagKey<?>> empty() {
         Object2IntOpenHashMap<TagKey<?>> m = new Object2IntOpenHashMap<>();
@@ -40,13 +48,16 @@ public final class TagBits {
     public static int index(TagKey<?> key) {
         Indexed k = (Indexed) (Object) key;
         int v = k.ga2$tagIndex();
-        if (v != 0) {
+        if (v > 0) {
             return v - 1;
         }
-        int i = index.getInt(key);
-        if (i >= 0) {
-            k.ga2$setTagIndex(i + 1);
+        // the generation first: a map read after it holds every key added before it was raised
+        int g = generation;
+        if (v == -g) {
+            return -1;
         }
+        int i = index.getInt(key);
+        k.ga2$setTagIndex(i >= 0 ? i + 1 : -g);
         return i;
     }
 
@@ -86,5 +97,6 @@ public final class TagBits {
             }
         }
         index = m;
+        generation++;
     }
 }

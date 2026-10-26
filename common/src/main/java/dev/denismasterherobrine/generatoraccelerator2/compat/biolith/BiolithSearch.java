@@ -79,11 +79,87 @@ public final class BiolithSearch {
 
     public static void forgetWorlds() {
         generation++;
+        leafBiomes = null;
+    }
+
+    /** Called after a datapack reload: Biolith's requests from data may have changed. */
+    public static void forgetRequests() {
+        leafBiomes = null;
+    }
+
+    /**
+     * The biomes whose first answer's leaf Biolith's sub-biome criteria may read (its parameter ranges): those with sub-biome
+     * requests, and those a replacement can turn into one, in any dimension. Read from Biolith's placements when first needed,
+     * once the server runs ({@code biome.BiomeAnswers}). {@link #ANY_BIOME} when they cannot be read.
+     */
+    private static volatile java.util.Set<Object> leafBiomes;
+    private static final java.util.Set<Object> ANY_BIOME = new java.util.HashSet<>();
+    /** The End's biomes, for which Biolith's vanilla compat builds a leaf from the first answer's ranges. */
+    private static final java.util.Set<Object> END_BIOMES = java.util.Set.of(net.minecraft.world.level.biome.Biomes.SMALL_END_ISLANDS,
+        net.minecraft.world.level.biome.Biomes.END_BARRENS, net.minecraft.world.level.biome.Biomes.END_MIDLANDS, net.minecraft.world.level.biome.Biomes.END_HIGHLANDS);
+
+    /** Whether Biolith may read the leaf of a first answer {@code leaf}, beyond its biome and distance. */
+    static boolean firstLeafRead(Climate.RTree.Leaf<?> leaf) {
+        java.util.Set<Object> biomes = leafBiomes;
+        if (biomes == null) {
+            leafBiomes = biomes = readLeafBiomes();
+        }
+        if (biomes == ANY_BIOME || !(leaf.value instanceof Holder<?> holder)) {
+            return true;
+        }
+        Optional<? extends ResourceKey<?>> key = holder.unwrapKey();
+        return key.isEmpty() || biomes.contains(key.get()) || END_BIOMES.contains(key.get());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Set<Object> readLeafBiomes() {
+        try {
+            ClassLoader loader = Climate.class.getClassLoader();
+            Class<?> coordinator = Class.forName("com.terraformersmc.biolith.impl.biome.BiomeCoordinator", false, loader);
+            Class<?> placement = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement", false, loader);
+            Class<?> replacementSet = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement$ReplacementRequestSet", false, loader);
+            Class<?> replacement = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement$ReplacementRequest", false, loader);
+            Field subs = placement.getDeclaredField("subBiomeRequests");
+            Field reps = placement.getDeclaredField("replacementRequests");
+            Field requests = replacementSet.getDeclaredField("requests");
+            java.lang.reflect.Method biome = replacement.getDeclaredMethod("biome");
+            subs.setAccessible(true);
+            reps.setAccessible(true);
+            requests.setAccessible(true);
+            biome.setAccessible(true);
+            java.util.Set<Object> out = new java.util.HashSet<>();
+            for (String dimension : new String[] { "OVERWORLD", "NETHER", "END" }) {
+                Object p = coordinator.getField(dimension).get(null);
+                Map<Object, Object> sub = (Map<Object, Object>) subs.get(p);
+                out.addAll(sub.keySet());
+                for (Map.Entry<Object, Object> e : ((Map<Object, Object>) reps.get(p)).entrySet()) {
+                    for (Object r : (java.util.List<Object>) requests.get(e.getValue())) {
+                        if (sub.containsKey(biome.invoke(r))) {
+                            out.add(e.getKey());
+                        }
+                    }
+                }
+            }
+            LOGGER.info("Biolith sub-biome requests: {} biomes {} -> ties of their first answers count by leaf", out.size(), out);
+            return out;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            LOGGER.info("Biolith sub-biome requests: {} -> every tie of a first answer counts", e.toString());
+            return ANY_BIOME;
+        }
     }
 
     /** Biolith's answer for {@code target}, or null to run Biolith's own search. */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public static Object search(Climate.RTree<?> tree, Climate.TargetPoint target, Climate.DistanceMetric<?> metric) {
+        Object answer = flatSearch(tree, target, metric);
+        if (answer == null) {
+            // Biolith's own search: GA2 does not see whether its answers hold for any last answers
+            dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.UNSEEN);
+        }
+        return answer;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object flatSearch(Climate.RTree<?> tree, Climate.TargetPoint target, Climate.DistanceMetric<?> metric) {
         if (!BiomeConfig.flatClimateSearch() || metric == null || !VANILLA_METRIC.get(metric.getClass())) {
             return null;
         }
@@ -122,7 +198,8 @@ public final class BiolithSearch {
             : dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand.fittest(tree, target);
         int hu = handed == null ? -2 : id(flat, handed[0]);
         int hp = handed == null ? -2 : id(flat, handed[1]);
-        if (hu >= 0 && hp != -2) {
+        boolean byGpu = hu >= 0 && hp != -2;
+        if (byGpu) {
             uId = hu;
             pId = hp;
             uDist = flat.distanceTo(hu, target.temperature(), target.humidity(), target.continentalness(), target.erosion(), target.depth(), target.weirdness());
@@ -144,6 +221,17 @@ public final class BiolithSearch {
             pId = ids[1];
             uDist = distance[0];
             pDist = distance[1];
+        }
+        // The GPU's answers are the only leaves at their distances. Others are checked while a lookup watches (biome.SearchTies).
+        // Biolith's sub-biome criteria read the first answer's leaf (its parameter ranges) and the second's biome and distance.
+        // Without such criteria for the first answer's biome, a tie with a leaf of the same biome gives the same answer
+        if (!byGpu && dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.watching()) {
+            long t0 = target.temperature(), t1 = target.humidity(), t2 = target.continentalness(), t3 = target.erosion(), t4 = target.depth(), t5 = target.weirdness();
+            if (!flat.alone(t0, t1, t2, t3, t4, t5, uId, uId >= 0 && !firstLeafRead(flat.leaf(uId)))) {
+                dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.BIOLITH_FIRST);
+            } else if (!flat.secondAlone(t0, t1, t2, t3, t4, t5, pId, keys, keys[uId < 0 ? keys.length - 1 : uId])) {
+                dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.unsure(dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies.BIOLITH_SECOND);
+            }
         }
         Climate.RTree.Leaf<?> ultimate = uId < 0 ? null : flat.leaf(uId);
         Climate.RTree.Leaf<?> penultimate = pId < 0 ? null : flat.leaf(pId);
@@ -168,7 +256,7 @@ public final class BiolithSearch {
             return last.answer;
         }
         try {
-            Object answer = penultimate == null ? s.single.invoke(ultimate, du) : s.pair.invoke(ultimate, du, penultimate, dp);
+            Object answer = penultimate == null ? (Object) s.single.invokeExact(ultimate, du) : (Object) s.pair.invokeExact(ultimate, du, penultimate, dp);
             last.ultimate = ultimate;
             last.penultimate = penultimate;
             last.du = du;

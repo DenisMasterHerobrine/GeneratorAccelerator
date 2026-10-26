@@ -87,6 +87,12 @@ public final class SurfaceExtern {
 
         Ir.Cond extern(Cond cond);
 
+        /**
+         * True when every one of {@code conds} is, asked in order up to the first false one. A type whose test has a part that
+         * depends on the block and a part that depends on the column only becomes the two, so the column's part is cached.
+         */
+        Ir.Cond all(java.util.List<Ir.Cond> conds);
+
         /** An assumption the lowering makes (a mod's config value). Vanilla builds a chunk for which it no longer holds. */
         void guard(BooleanSupplier holds);
     }

@@ -115,6 +115,35 @@ public final class PlacementPipeline {
         return OTHER;
     }
 
+    /** Implemented by every placed feature ({@code PlacedFeatureMixin}): the kinds of its modifiers. */
+    public interface Kinds {
+        KindsOf ga2$kinds();
+
+        void ga2$setKinds(KindsOf kinds);
+    }
+
+    /** {@link #kind} of each modifier of {@code modifiers}. */
+    public record KindsOf(List<PlacementModifier> modifiers, byte[] kinds) {}
+
+    /**
+     * {@link #kind} of each modifier, kept on the placed feature. A random patch places its inner feature thousands of times per
+     * chunk, and each placement found every modifier's kind again. Kept with the list they were found for. A different list
+     * (another mod's change to {@code placement()}) has them found again.
+     */
+    private static byte[] kinds(PlacedFeature placed, List<PlacementModifier> modifiers) {
+        Kinds holder = (Kinds) (Object) placed;
+        KindsOf kept = holder.ga2$kinds();
+        if (kept != null && kept.modifiers() == modifiers) {
+            return kept.kinds();
+        }
+        byte[] kinds = new byte[modifiers.size()];
+        for (int k = 0; k < kinds.length; k++) {
+            kinds[k] = kind(modifiers.get(k));
+        }
+        holder.ga2$setKinds(new KindsOf(modifiers, kinds));
+        return kinds;
+    }
+
     public static boolean place(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
         // the decoration census counts top-level placements only. Nested ones run while an outer run is taken
         if (!FeatureCensus.on || RUNS.get().depth != 0) {
@@ -135,6 +164,8 @@ public final class PlacementPipeline {
     private static final class Runs {
         Run[] runs = new Run[4];
         int depth;
+        /** Placements since the last top-level one ended. Counted when it ends: a random patch makes thousands per chunk. */
+        long placements;
 
         Run take() {
             if (depth == runs.length) {
@@ -158,11 +189,14 @@ public final class PlacementPipeline {
         try {
             run.start(placed, placed.placement(), placed.feature().value(), ctx, random, position);
             run.walk(0, origin);
-            FeatureStats.PLACEMENTS_FAST.increment();
+            runs.placements++;
             return run.placed || run.success != null && run.success.isTrue();
         } finally {
             run.end();
-            runs.depth--;
+            if (--runs.depth == 0 && runs.placements > 0) {
+                FeatureStats.PLACEMENTS_FAST.add(runs.placements);
+                runs.placements = 0;
+            }
         }
     }
 
@@ -173,8 +207,8 @@ public final class PlacementPipeline {
         org.apache.commons.lang3.mutable.MutableBoolean success;
         private java.util.function.Consumer<BlockPos> consumer;
         private List<PlacementModifier> modifiers;
-        /** {@link #kind} of each modifier, found once per placement (the walk visits each many times). */
-        private byte[] kinds = new byte[8];
+        /** {@link #kind} of each modifier ({@link #kinds}). Read only. */
+        private byte[] kinds;
         private int count;
         private ConfiguredFeature<?, ?> feature;
         private PlacementContext ctx;
@@ -219,13 +253,8 @@ public final class PlacementPipeline {
             this.placedFeature = placed;
             this.wrap = wrap;
             this.modifiers = modifiers;
-            int n = this.count = modifiers.size();
-            if (kinds.length < n) {
-                kinds = new byte[n];
-            }
-            for (int k = 0; k < n; k++) {
-                kinds[k] = kind(modifiers.get(k));
-            }
+            this.count = modifiers.size();
+            this.kinds = kinds(placed, modifiers);
             this.feature = feature;
             this.ctx = ctx;
             this.random = random;

@@ -191,6 +191,71 @@ public final class FlatClimateTree {
     }
 
     /**
+     * Whether leaf {@code id} is the only leaf at its distance from the target ({@code biome.SearchTies}). A search whose answer
+     * is the only leaf at its distance gives that answer whatever the last result. A node is never nearer than a leaf below it.
+     * So the walk enters only nodes at most that far.
+     */
+    public boolean alone(long q0, long q1, long q2, long q3, long q4, long q5, int id) {
+        return alone(q0, q1, q2, q3, q4, q5, id, false, null, Integer.MIN_VALUE);
+    }
+
+    /** {@link #alone}, or with {@code byValue} whether no leaf with another value is at that distance. */
+    public boolean alone(long q0, long q1, long q2, long q3, long q4, long q5, int id, boolean byValue) {
+        return alone(q0, q1, q2, q3, q4, q5, id, byValue, null, Integer.MIN_VALUE);
+    }
+
+    /**
+     * Whether no leaf at leaf {@code id}'s distance has a biome ({@code keys}, as {@link #searchFittest} numbers them) other than
+     * {@code id}'s and {@code first}'s. That is the second answer of {@link #searchFittest}: the nearest leaf whose biome differs
+     * from the first answer's. Leaves of its own biome or of the first's at that distance give the same biome and distance.
+     */
+    public boolean secondAlone(long q0, long q1, long q2, long q3, long q4, long q5, int id, int[] keys, int first) {
+        return alone(q0, q1, q2, q3, q4, q5, id, false, keys, first);
+    }
+
+    /**
+     * The walk of {@link #alone}. With {@code byValue}, a leaf with the same value does not count: a search that returns only the
+     * leaf's value gives the same value whichever of two such leaves it ends on. With {@code keys}, a leaf whose key is {@code id}'s
+     * or {@code firstKey} does not count.
+     */
+    private boolean alone(long q0, long q1, long q2, long q3, long q4, long q5, int id, boolean byValue, int[] keys, int firstKey) {
+        if (id < 0 || this.count[0] == 0) {
+            return true;
+        }
+        Object value = byValue ? this.leaves[id].value : null;
+        int key = keys == null ? Integer.MIN_VALUE : keys[id];
+        long d = nodeDistance(id, q0, q1, q2, q3, q4, q5);
+        int[] first = this.first;
+        int[] count = this.count;
+        int[] stack = new int[2 * (this.depth + 1)];
+        int sp = 0;
+        stack[0] = 0;
+        stack[1] = first[0];
+        while (sp >= 0) {
+            int node = stack[2 * sp];
+            int child = stack[2 * sp + 1];
+            if (child == first[node] + count[node]) {
+                sp--;
+                continue;
+            }
+            stack[2 * sp + 1] = child + 1;
+            long c = nodeDistance(child, q0, q1, q2, q3, q4, q5);
+            if (c <= d) {
+                if (count[child] == 0) {
+                    if (child != id && c == d && (!byValue || this.leaves[child].value != value) && (keys == null || keys[child] != key && keys[child] != firstKey)) {
+                        return false;
+                    }
+                } else {
+                    sp++;
+                    stack[2 * sp] = child;
+                    stack[2 * sp + 1] = first[child];
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
      * The leaf vanilla's search returns for this target when the thread's last result is {@code last}.
      * {@code last} is a leaf id, or -1 for none.
      */

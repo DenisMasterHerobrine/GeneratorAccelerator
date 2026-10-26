@@ -15,7 +15,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** Routes placement through the explicit pipeline. Applied late so the plugin can see other mods' changes to the method first. */
 @Mixin(value = PlacedFeature.class, priority = 5000)
-public abstract class PlacedFeatureMixin {
+public abstract class PlacedFeatureMixin implements PlacementPipeline.Kinds {
+    @org.spongepowered.asm.mixin.Unique
+    private volatile PlacementPipeline.KindsOf ga2$kinds;
+
+    @Override
+    public PlacementPipeline.KindsOf ga2$kinds() {
+        return this.ga2$kinds;
+    }
+
+    @Override
+    public void ga2$setKinds(PlacementPipeline.KindsOf kinds) {
+        this.ga2$kinds = kinds;
+    }
+
     @Inject(method = "placeWithContext", at = @At("HEAD"), cancellable = true)
     private void ga2$place(PlacementContext ctx, RandomSource random, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         if (FeatureHooks.enabled() && FeaturesCompat.placementPipelineAllowed()) {

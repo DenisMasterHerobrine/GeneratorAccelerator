@@ -135,6 +135,9 @@ public final class GeneratorAccelerator {
 
     public static void onTagsUpdated() {
         TagEpoch.bump();
+        // a datapack reload: Biolith's requests from data may have changed, and the biomes kept with them
+        dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers.forget();
+        dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.forgetRequests();
     }
 
     public static void onServerStarting(MinecraftServer starting) {

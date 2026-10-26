@@ -282,6 +282,11 @@ public final class SurfaceProgram {
         }
 
         @Override
+        public Ir.Cond all(List<Ir.Cond> conds) {
+            return new Ir.All(nextId++, List.copyOf(conds));
+        }
+
+        @Override
         public void guard(java.util.function.BooleanSupplier holds) {
             guards.add(holds);
         }

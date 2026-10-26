@@ -148,6 +148,18 @@ public final class HookTargets {
     public static final String GPU_SURFACE = "gpu.surface";
     /** {@code Holder.Reference.is(TagKey)} and {@code bindTags}: tag membership by bit (state.TagBits). */
     public static final String TAG_BITS = "tags.bits";
+    /**
+     * {@code HolderSet.Direct.contains}, and how reference holders compare ({@code Holder.Reference.equals}, {@code hashCode},
+     * {@code key}, {@code kind}, {@code getKey}): membership of a direct holder set by bit (state.DirectSets).
+     */
+    public static final String DIRECT_SETS = "tags.directSets";
+    /** {@code WorldGenRegion.getHeight(type, x, z)} and {@code getChunk(int, int)}: heights read through the region's chunk lookup for GA2. */
+    public static final String REGION_HEIGHTS = "features.regionHeights";
+    /**
+     * {@code WorldGenRegion.getUncachedNoiseBiome}, {@code ServerLevel.getUncachedNoiseBiome} and the multi-noise source's lookup
+     * ({@code getNoiseBiome}, {@code parameters}): the level's answers for points outside a region, kept per point (biome.BiomeAnswers).
+     */
+    public static final String BIOME_ANSWERS = "biomes.regionAnswers";
     /** {@code LevelChunkSection.setBlockState}: the counted state properties from per-state flags (state.StateFlags). */
     public static final String SECTION_WRITE = "state.sectionWrite";
     /**
