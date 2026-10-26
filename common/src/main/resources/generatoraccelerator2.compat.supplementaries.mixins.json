@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "BarnaclesBlockInspectMixin",
+    "BarnaclesFeatureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

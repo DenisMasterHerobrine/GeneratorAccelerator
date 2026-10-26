@@ -213,6 +213,12 @@ public final class GpuTerrain {
     private static volatile Boolean enabled;
 
     /**
+     * Whether a dimension whose surface the CPU builds still takes the GPU's terrain ({@code GpuSteps}). Off: there the step without
+     * a NoiseChunk cost more than it saved. {@code -Dgeneratoraccelerator2.gpu.terrainWithoutSurface=true} turns it on.
+     */
+    public static final boolean WITHOUT_SURFACE = Boolean.getBoolean("generatoraccelerator2.gpu.terrainWithoutSurface");
+
+    /**
      * Whether chunks the GPU fills may go without a NoiseChunk. This requires that no other mod changes the code that reads this data
      * in the NoiseChunk's place. That code is the surface step's call, the rule context's levels, the surface system's methods that hand
      * the NoiseChunk on, the aquifer and the surface level methods. Changes that GA2 runs itself are excluded too, since that code could
@@ -228,6 +234,27 @@ public final class GpuTerrain {
                 && MixinTargets.surfaceLevelAllowed();
         }
         return e;
+    }
+
+    /** The first condition of {@link #enabled} that fails, for the GPU's status line. Null when it holds. */
+    @javax.annotation.Nullable
+    public static String disabledReason() {
+        if (!ENABLED) {
+            return "off (-Dgeneratoraccelerator2.gpu.terrain=false)";
+        } else if (!HOOK.allowed()) {
+            return "gpu.terrain off";
+        } else if (!SURFACE_BUILD.unchanged()) {
+            return "another mod changes the surface build " + HookTargets.foreign(HookTargets.SURFACE_BUILD);
+        } else if (!dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks.noiseChunkFree()) {
+            return "other mods' code in the surface's column loop may read the NoiseChunk " + HookTargets.handledMixins(HookTargets.SURFACE_BUILD);
+        } else if (!TOP_MATERIAL.unchanged() || !HookTargets.handled(HookTargets.SURFACE_TOP_MATERIAL).isEmpty()) {
+            return "another mod changes the top material";
+        } else if (!MixinTargets.aquiferVanilla()) {
+            return "other mods change the aquifer " + MixinTargets.aquiferChanges();
+        } else if (!MixinTargets.surfaceLevelAllowed()) {
+            return "another mod changes the surface level methods";
+        }
+        return null;
     }
 
     public static GpuTerrain of(ChunkAccess chunk) {

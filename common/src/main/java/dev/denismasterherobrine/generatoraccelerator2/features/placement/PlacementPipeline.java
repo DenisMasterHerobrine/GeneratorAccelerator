@@ -122,26 +122,47 @@ public final class PlacementPipeline {
         void ga2$setKinds(KindsOf kinds);
     }
 
-    /** {@link #kind} of each modifier of {@code modifiers}. */
-    public record KindsOf(List<PlacementModifier> modifiers, byte[] kinds) {}
+    /**
+     * {@link #kind} of each modifier of {@code modifiers}. {@code readsOnly}: every modifier is a transcribed one that draws no
+     * random number and only reads (heightmaps, noise, vanilla's block predicates). Such modifiers give the same positions at the
+     * same position until a block changes ({@link PatchRepeats}).
+     */
+    public record KindsOf(List<PlacementModifier> modifiers, byte[] kinds, boolean readsOnly) {}
+
+    private static boolean readsOnly(byte kind, PlacementModifier m) {
+        return switch (kind) {
+            case HEIGHTMAP, WATER_DEPTH, SURFACE_RELATIVE, NOISE_THRESHOLD, NOISE_COUNT -> true;
+            case PREDICATE -> ((dev.denismasterherobrine.generatoraccelerator2.features.predicate.PredicatePrograms.FilterProgram) (Object) m).ga2$readsOnly();
+            case SCAN -> ((ScanPlacement) m).ga2$readsOnly();
+            default -> false;
+        };
+    }
 
     /**
      * {@link #kind} of each modifier, kept on the placed feature. A random patch places its inner feature thousands of times per
      * chunk, and each placement found every modifier's kind again. Kept with the list they were found for. A different list
      * (another mod's change to {@code placement()}) has them found again.
      */
-    private static byte[] kinds(PlacedFeature placed, List<PlacementModifier> modifiers) {
+    private static KindsOf kinds(PlacedFeature placed, List<PlacementModifier> modifiers) {
         Kinds holder = (Kinds) (Object) placed;
         KindsOf kept = holder.ga2$kinds();
         if (kept != null && kept.modifiers() == modifiers) {
-            return kept.kinds();
+            return kept;
         }
         byte[] kinds = new byte[modifiers.size()];
+        boolean readsOnly = true;
         for (int k = 0; k < kinds.length; k++) {
             kinds[k] = kind(modifiers.get(k));
+            readsOnly &= readsOnly(kinds[k], modifiers.get(k));
         }
-        holder.ga2$setKinds(new KindsOf(modifiers, kinds));
-        return kinds;
+        kept = new KindsOf(modifiers, kinds, readsOnly);
+        holder.ga2$setKinds(kept);
+        return kept;
+    }
+
+    /** True when the placed feature's modifiers only read and draw nothing ({@link KindsOf#readsOnly}). */
+    static boolean readsOnly(PlacedFeature placed) {
+        return kinds(placed, placed.placement()).readsOnly();
     }
 
     public static boolean place(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
@@ -166,6 +187,21 @@ public final class PlacementPipeline {
         int depth;
         /** Placements since the last top-level one ended. Counted when it ends: a random patch makes thousands per chunk. */
         long placements;
+        /** Random patch tries watched (patchTry), and those answered at once. Counted with the placements. */
+        long patchTries, patchSkipped;
+
+        // a random patch's try (patchTry): the placement under it, and how that placement went
+        PlacedFeature watched;
+        long watchedAt;
+        int watchedDepth;
+        boolean skip;
+        /** {@link #GAVE_NONE}, {@link #GAVE_SOME}, or 0 when the watched placement did not reach the pipeline. */
+        byte report;
+
+        // tries that gave no position, by position, each with the stamp it was found under (PatchRepeats)
+        final long[] noneAt = new long[REPEAT_SLOTS];
+        final long[] noneStamp = new long[REPEAT_SLOTS];
+        long stamps;
 
         Run take() {
             if (depth == runs.length) {
@@ -182,20 +218,86 @@ public final class PlacementPipeline {
 
     private static final ThreadLocal<Runs> RUNS = ThreadLocal.withInitial(Runs::new);
 
+    /** The watched placement's modifiers gave no position and only read, or it reached its feature or other code. */
+    private static final byte GAVE_NONE = 1, GAVE_SOME = 2;
+    private static final int REPEAT_SLOTS = 1 << 10;
+
+    /**
+     * A random patch's try: {@code inner.place(level, generator, random, pos)} ({@link PatchRepeats}). Called while no other mod
+     * changes the patch's method, so the wrapped call is that call: calling it directly boxes no arguments, where the wrapper's
+     * operation made an array per try. {@code stamp} is the patch's stamp: tries that gave no position under it still hold. 0 before
+     * its first try.
+     */
+    static boolean patchTry(PlacedFeature inner, net.minecraft.world.level.WorldGenLevel level, net.minecraft.world.level.chunk.ChunkGenerator generator,
+                            RandomSource random, BlockPos pos, com.llamalad7.mixinextras.sugar.ref.LocalLongRef stamp) {
+        Runs runs = RUNS.get();
+        long s = stamp.get();
+        if (s == 0) {
+            stamp.set(s = ++runs.stamps);
+        }
+        long key = pos.asLong();
+        int slot = (int) it.unimi.dsi.fastutil.HashCommon.mix(key) & (REPEAT_SLOTS - 1);
+        boolean known = runs.noneStamp[slot] == s && runs.noneAt[slot] == key;
+        runs.patchTries++;
+        boolean verify = known && PatchRepeats.VERIFY.sample();
+        runs.watched = inner;
+        runs.watchedAt = key;
+        runs.watchedDepth = runs.depth;
+        runs.skip = known && !verify;
+        runs.report = 0;
+        boolean placed;
+        try {
+            placed = inner.place(level, generator, random, pos);
+        } finally {
+            runs.watched = null;
+        }
+        byte report = runs.report;
+        if (verify) {
+            PatchRepeats.VERIFY.result(report != GAVE_SOME, pos.immutable(), "no position, as before", "a position");
+        }
+        if (report == GAVE_NONE) {
+            runs.noneAt[slot] = key;
+            runs.noneStamp[slot] = s;
+        } else {
+            // a feature or code GA2 did not see may have changed blocks: what earlier tries found no longer holds
+            stamp.set(++runs.stamps);
+        }
+        return placed;
+    }
+
     /** The pipeline itself. */
     public static boolean pipeline(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
         Runs runs = RUNS.get();
+        // the placement directly under a random patch's try (patchTry)
+        boolean watched = runs.watched == placed && runs.watchedDepth == runs.depth && runs.watchedAt == origin.asLong();
+        if (watched) {
+            runs.watched = null;
+            if (runs.skip) {
+                // the same try gave no position before, and nothing ran since
+                runs.patchSkipped++;
+                runs.report = GAVE_NONE;
+                return false;
+            }
+        }
         Run run = runs.take();
         try {
             run.start(placed, placed.placement(), placed.feature().value(), ctx, random, position);
             run.walk(0, origin);
             runs.placements++;
+            if (watched) {
+                runs.report = run.readsOnly && !run.fed ? GAVE_NONE : GAVE_SOME;
+            }
             return run.placed || run.success != null && run.success.isTrue();
         } finally {
             run.end();
             if (--runs.depth == 0 && runs.placements > 0) {
                 FeatureStats.PLACEMENTS_FAST.add(runs.placements);
                 runs.placements = 0;
+                if (runs.patchTries > 0) {
+                    PatchRepeats.TRIED.add(runs.patchTries);
+                    PatchRepeats.SKIPPED.add(runs.patchSkipped);
+                    runs.patchTries = runs.patchSkipped = 0;
+                }
             }
         }
     }
@@ -209,6 +311,10 @@ public final class PlacementPipeline {
         private List<PlacementModifier> modifiers;
         /** {@link #kind} of each modifier ({@link #kinds}). Read only. */
         private byte[] kinds;
+        /** The modifiers only read and draw nothing ({@link KindsOf#readsOnly}). */
+        boolean readsOnly;
+        /** The walk reached the end: the feature, or another mod's wrapper of it. */
+        boolean fed;
         private int count;
         private ConfiguredFeature<?, ?> feature;
         private PlacementContext ctx;
@@ -254,7 +360,10 @@ public final class PlacementPipeline {
             this.wrap = wrap;
             this.modifiers = modifiers;
             this.count = modifiers.size();
-            this.kinds = kinds(placed, modifiers);
+            KindsOf of = kinds(placed, modifiers);
+            this.kinds = of.kinds();
+            this.readsOnly = of.readsOnly();
+            this.fed = false;
             this.feature = feature;
             this.ctx = ctx;
             this.random = random;
@@ -309,6 +418,7 @@ public final class PlacementPipeline {
          */
         void walk(int i, int x, int y, int z, BlockPos pos) {
             if (i == count) {
+                fed = true;
                 if (pos == null) {
                     pos = new BlockPos(x, y, z);
                 }

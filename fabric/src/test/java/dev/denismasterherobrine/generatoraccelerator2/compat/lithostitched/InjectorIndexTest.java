@@ -68,5 +68,7 @@ public class InjectorIndexTest {
         LithostitchedInjectors.noteBiome(biome);
         assertSame(list, LithostitchedInjectors.candidates(new Object(), list));
         assertSame(list, LithostitchedInjectors.candidates(ReplacePartially.CODEC, list));
+        // again: the list's kept index has no targets and must keep the whole walk (it was handed out as an index before)
+        assertSame(list, LithostitchedInjectors.candidates(ReplacePartially.CODEC, list));
     }
 }

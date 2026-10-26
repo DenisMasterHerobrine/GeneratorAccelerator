@@ -205,7 +205,9 @@ public final class GpuSteps {
                 NOISE_GPU.increment();
                 long t2 = System.nanoTime();
                 NOISE_APPLY.add(t2 - t1);
-                GpuTerrain.Spec spec = res.terrain() != null && gc != null && GpuTerrain.enabled() ? wg.terrainSpec(picker) : null;
+                // Only where the GPU builds the surface too. With the surface on the CPU, its step without a NoiseChunk cost more than
+                // it saved: in a 575-mod pack the surface step went from 22% to 27% of the workers' samples (GpuTerrain.WITHOUT_SURFACE)
+                GpuTerrain.Spec spec = res.terrain() != null && gc != null && GpuTerrain.enabled() && (wg.surfaceSpec != null || GpuTerrain.WITHOUT_SURFACE) ? wg.terrainSpec(picker) : null;
                 if (spec != null) {
                     // SURFACE and CARVERS read the GPU's surface levels and aquifer cells. No NoiseChunk is made.
                     GpuTerrain terrain = new GpuTerrain(spec, res.terrain(), pos.x, pos.z);

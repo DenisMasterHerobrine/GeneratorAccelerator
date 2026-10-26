@@ -117,43 +117,90 @@ public final class SurfaceProgram {
         if (e != null) {
             return e;
         }
+        // The answers, the folded rules and the compile happen outside the lock. A new biome's program took the lock for its whole
+        // compile before, and every thread meeting another new biome waited (1.1 s per square in a 575-mod pack).
+        java.util.BitSet answers = new java.util.BitSet(biomeTests.size());
+        for (int slot = 0; slot < biomeTests.size(); slot++) {
+            if (biomeTests.get(slot).test(biome)) {
+                answers.set(slot);
+            }
+        }
         synchronized (this) {
             if (epoch != byBiomeEpoch) {
                 // tag-based biome conditions may answer differently now
                 byBiome = new java.util.IdentityHashMap<>();
                 byAnswers.clear();
                 byFolded.clear();
+                compiling.clear();
                 byBiomeEpoch = epoch;
             }
             e = byBiome.get(biome);
-            if (e != null) {
-                return e;
+            if (e == null && (e = byAnswers.get(answers)) != null) {
+                keep(epoch, biome, answers, e);
             }
-            java.util.BitSet answers = new java.util.BitSet(biomeTests.size());
-            for (int slot = 0; slot < biomeTests.size(); slot++) {
-                if (biomeTests.get(slot).test(biome)) {
-                    answers.set(slot);
-                }
-            }
-            e = byAnswers.get(answers);
-            if (e == null) {
-                Ir.Rule folded = BiomeFold.fold(this.root, answers);
-                e = byFolded.get(folded);
-                if (e == null) {
-                    e = SurfaceCompiler.compile(new SurfaceProgram(this, folded));
-                    byFolded.put(folded, e);
-                    BIOME_PROGRAMS.increment();
-                } else {
-                    BIOME_PROGRAMS_SHARED.increment();
-                }
-                byAnswers.put(answers, e);
-            }
-            Map<Holder<Biome>, Evaluator> next = new java.util.IdentityHashMap<>(byBiome);
-            next.put(biome, e);
-            byBiome = next;
+        }
+        if (e != null) {
             return e;
         }
+        Ir.Rule folded = BiomeFold.fold(this.root, answers);
+        java.util.concurrent.CompletableFuture<Evaluator> mine = null;
+        java.util.concurrent.CompletableFuture<Evaluator> theirs;
+        synchronized (this) {
+            e = epoch == byBiomeEpoch ? byFolded.get(folded) : null;
+            theirs = e == null ? compiling.get(folded) : null;
+            if (e == null && theirs == null) {
+                mine = new java.util.concurrent.CompletableFuture<>();
+                compiling.put(folded, mine);
+            }
+        }
+        if (e == null && mine != null) {
+            try {
+                e = SurfaceCompiler.compile(new SurfaceProgram(this, folded));
+            } catch (RuntimeException | Error t) {
+                mine.completeExceptionally(t);
+                synchronized (this) {
+                    compiling.remove(folded, mine);
+                }
+                throw t;
+            }
+            mine.complete(e);
+            BIOME_PROGRAMS.increment();
+            synchronized (this) {
+                compiling.remove(folded, mine);
+                if (epoch == byBiomeEpoch) {
+                    byFolded.put(folded, e);
+                }
+            }
+        } else {
+            if (e == null) {
+                // another thread compiles the same folded rules: only this wait holds up this thread
+                try {
+                    e = theirs.join();
+                } catch (java.util.concurrent.CompletionException t) {
+                    throw t.getCause() instanceof RuntimeException r ? r : t;
+                }
+            }
+            BIOME_PROGRAMS_SHARED.increment();
+        }
+        synchronized (this) {
+            keep(epoch, biome, answers, e);
+        }
+        return e;
     }
+
+    /** Keeps {@code e} as {@code biome}'s program and that of its answers, unless tags were bound again meanwhile. Under the lock. */
+    private void keep(int epoch, Holder<Biome> biome, java.util.BitSet answers, Evaluator e) {
+        if (epoch != byBiomeEpoch) {
+            return;
+        }
+        byAnswers.put(answers, e);
+        Map<Holder<Biome>, Evaluator> next = new java.util.IdentityHashMap<>(byBiome);
+        next.put(biome, e);
+        byBiome = next;
+    }
+
+    /** Folded rules being compiled, so a second thread with the same rules waits for that compile. Under the lock. */
+    private final Map<Ir.Rule, java.util.concurrent.CompletableFuture<Evaluator>> compiling = new java.util.HashMap<>();
 
     /** The compiled evaluator, generated on first use (the interpreter if generation fails). */
     public Evaluator compiled() {

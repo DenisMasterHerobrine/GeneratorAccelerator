@@ -31,10 +31,22 @@ public abstract class EnvironmentScanPredicateMixin implements ScanPlacement {
     @Unique
     private Object ga2$allowedProgram;
 
-    /** {@code getPositions} without its stream. Its tests go through the programs as the wrapped calls below do. */
+    /** 1 when the allowed condition is vanilla's {@code true} predicate (the default), 2 when not, 0 before it was looked at. */
+    @Unique
+    private byte ga2$allowedAlways;
+
+    /**
+     * {@code getPositions} without its stream. Its tests go through the programs as the wrapped calls below do. The default allowed
+     * condition answers true and reads nothing, so it is not asked.
+     */
     @Override
     public boolean ga2$scan(WorldGenLevel level, BlockPos.MutableBlockPos pos) {
-        if (!this.ga2$test(this.allowedSearchCondition, level, pos)) {
+        byte always = this.ga2$allowedAlways;
+        if (always == 0) {
+            this.ga2$allowedAlways = always = PredicatePrograms.alwaysTrue(this.allowedSearchCondition) ? (byte) 1 : (byte) 2;
+        }
+        boolean ask = always != 1;
+        if (ask && !this.ga2$test(this.allowedSearchCondition, level, pos)) {
             return false;
         }
         for (int i = 0; i < this.maxSteps; i++) {
@@ -45,11 +57,16 @@ public abstract class EnvironmentScanPredicateMixin implements ScanPlacement {
             if (level.isOutsideBuildHeight(pos.getY())) {
                 return false;
             }
-            if (!this.ga2$test(this.allowedSearchCondition, level, pos)) {
+            if (ask && !this.ga2$test(this.allowedSearchCondition, level, pos)) {
                 break;
             }
         }
         return this.ga2$test(this.targetCondition, level, pos);
+    }
+
+    @Override
+    public boolean ga2$readsOnly() {
+        return PredicatePrograms.readsOnly(this.targetCondition) && PredicatePrograms.readsOnly(this.allowedSearchCondition);
     }
 
     @Unique

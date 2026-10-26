@@ -98,6 +98,13 @@ public final class StepsCommand {
                 + dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaClusters.OUT_OF_REACH.sum() + "), blocks asked whether a stone may go there "
                 + dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaClusters.ASKED.sum());
         }
+        if (dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Barnacles.PLACEMENTS.sum() > 0) {
+            send(source, "Supplementaries' barnacles searched once per direction: " + dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Barnacles.PLACEMENTS.sum()
+                + " placements, rounds left out " + dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Barnacles.ROUNDS_SKIPPED.sum());
+        }
+        send(source, "random patch tries whose inner feature only reads: " + dev.denismasterherobrine.generatoraccelerator2.features.placement.PatchRepeats.TRIED.sum()
+            + ", answered from an earlier try at the same position " + dev.denismasterherobrine.generatoraccelerator2.features.placement.PatchRepeats.SKIPPED.sum()
+            + (dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.allowed(dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets.PATCH_REPEATS) ? "" : " (off: another mod changes it)"));
         send(source, "structure references: parallel " + ParallelSteps.REFERENCES_ASYNC.sum() + ", inline " + ParallelSteps.REFERENCES_INLINE.sum()
             + "; light initializations on the pool " + ParallelSteps.LIGHT_INIT_ASYNC.sum());
         send(source, "light: fast engine " + (dev.denismasterherobrine.generatoraccelerator2.light.FastLight.on ? "on" : "off")

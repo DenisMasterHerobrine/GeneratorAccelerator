@@ -58,6 +58,7 @@ public final class KnownMixins {
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins.ENTRIES);
+        all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon.CobblemonMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelMixins.ENTRIES);

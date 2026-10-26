@@ -38,6 +38,11 @@ public abstract class BlockPredicateFilterPredicateMixin implements PredicatePro
         return PredicatePrograms.test(program, this.predicate, level, pos);
     }
 
+    @Override
+    public boolean ga2$readsOnly() {
+        return PredicatePrograms.readsOnly(this.predicate);
+    }
+
     @WrapOperation(method = "shouldPlace", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/blockpredicates/BlockPredicate;test(Ljava/lang/Object;Ljava/lang/Object;)Z"))
     private boolean ga2$program(BlockPredicate predicate, Object level, Object pos, Operation<Boolean> original) {

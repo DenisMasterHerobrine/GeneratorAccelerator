@@ -66,6 +66,34 @@ public class OreFastFuzzTest {
         assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
     }
 
+    /**
+     * Ores with no targets (Macabre's, of sizes 32 and 64): the fast path returns after the spheres' draws. Vanilla visits the blob
+     * and places nothing. The random's state must be the same, at every origin of the fuzz.
+     */
+    @Test
+    void emptyTargetsMatchVanilla() {
+        HarnessWorld.Registries2 r = HarnessWorld.registries();
+        List<String> failures = new ArrayList<>();
+        int compared = 0;
+        for (int size : new int[] { 32, 64, 9 }) {
+            net.minecraft.world.level.levelgen.feature.ConfiguredFeature<?, ?> ore = new net.minecraft.world.level.levelgen.feature.ConfiguredFeature<>(Feature.ORE,
+                new net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration(List.of(), size, 0.0F));
+            FeatureRun.ConfiguredCase c = new FeatureRun.ConfiguredCase("empty ore " + size, Holder.direct(ore), 0, HarnessWorld.Kind.OVERWORLD, 0);
+            for (int t = 0; t < TRIALS; t++) {
+                FeatureRun.Result ref = run(r, c, 20261026L, t, true);
+                FeatureRun.Result fast = run(r, c, 20261026L, t, false);
+                List<String> diff = FeatureRun.diff(ref, fast);
+                if (ref.error() != null || fast.error() != null || !diff.isEmpty()) {
+                    failures.add(c.name() + " trial " + t + ": " + (ref.error() != null ? "vanilla threw " + ref.error()
+                        : fast.error() != null ? fast.error().toString() : String.join("\n    ", diff)));
+                }
+                compared++;
+            }
+        }
+        System.out.println("OreFastFuzzTest: " + compared + " placements of ores without targets compared");
+        assertTrue(failures.isEmpty(), failures.size() + " differ:\n" + String.join("\n", failures.subList(0, Math.min(20, failures.size()))));
+    }
+
     /** The blocks around trial t's origin as the run left them (states by identity hash: stable within one JVM run). */
     private static long blocksHash(FeatureRun.Result r, int t) {
         int x0 = FeatureRun.CENTER_X * 16 + (t * 7) % 16, z0 = FeatureRun.CENTER_Z * 16 + (t * 11 + 3) % 16;

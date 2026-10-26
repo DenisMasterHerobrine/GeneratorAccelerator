@@ -171,7 +171,8 @@ public final class LithostitchedInjectors {
         int epoch = TagEpoch.current();
         Index index = indexes.get(injectors);
         if (index != null && index.epoch == epoch) {
-            return index;
+            // a list whose targets cannot be read keeps the walk of all its entries (its kept index has no subsets)
+            return index.targets == null ? null : index;
         }
         if (index != null && index.targets == null) {
             return null;

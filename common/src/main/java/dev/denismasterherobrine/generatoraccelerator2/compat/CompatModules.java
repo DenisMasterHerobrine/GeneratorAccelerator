@@ -124,6 +124,9 @@ public final class CompatModules {
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes.register();
         }
+        if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins.MOD_ID)) {
+            dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins.register();
+        }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesFeatures.register();
         }

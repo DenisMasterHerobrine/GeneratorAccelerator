@@ -48,6 +48,8 @@ config = "generatoraccelerator2.compat.zeta.mixins.json"
 config = "generatoraccelerator2.compat.quark.mixins.json"
 [[mixins]]
 config = "generatoraccelerator2.compat.spelunkery.mixins.json"
+[[mixins]]
+config = "generatoraccelerator2.compat.supplementaries.mixins.json"
 
 [[mixins]]
 config = "generatoraccelerator2.parallellight.mixins.json"

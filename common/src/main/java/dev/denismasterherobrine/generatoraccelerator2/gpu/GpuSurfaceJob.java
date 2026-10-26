@@ -110,7 +110,20 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         if (!dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferVanilla()) {
             mods.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets.aquiferChanges());
         }
-        return "other mods change the surface step " + (mods.isEmpty() ? "(or its hooks are not decided)" : mods.toString());
+        // the first condition that fails, so the line says why rather than only who is near
+        String why;
+        if (!GpuTerrain.enabled()) {
+            why = "no GPU terrain: " + GpuTerrain.disabledReason();
+        } else if (!GPU_SURFACE.allowed()) {
+            why = "gpu.surface off";
+        } else if (!SURFACE_ENTRY.unchanged() || !HookTargets.handled(HookTargets.SURFACE_ENTRY).isEmpty()) {
+            why = "the step's entry is changed";
+        } else if (!SURFACE_STEP.unchanged() || !SURFACE_STEP_BODY.unchanged()) {
+            why = "the step is changed";
+        } else {
+            why = "code before the step's generator call writes in biomes not declared";
+        }
+        return why + "; other mods in the surface step " + (mods.isEmpty() ? "(or its hooks are not decided)" : mods.toString());
     }
 
     /** Asks the GPU for the chunk's surface at the NOISE step, after the blocks are written. False when the GPU cannot build it. */

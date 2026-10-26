@@ -169,7 +169,7 @@ public final class TemplatePlacement {
 
     public static String stats() {
         return "structure templates clipped to their box: " + CLIPPED.sum() + " placements (" + VANILLA.sum() + " left to vanilla), blocks left out "
-            + SKIPPED.sum() + ", processed " + PROCESSED.sum() + "; template positions shared " + TemplatePositions.SHARED.sum() + " of "
-            + TemplatePositions.LOADED.sum() + " loaded (" + TemplatePositions.distinct() + " distinct)";
+            + SKIPPED.sum() + ", processed " + PROCESSED.sum() + "; " + TemplatePositions.counts() + "; templates loaded " + TemplateLoads.LOADED.sum()
+            + ", lookups that waited for the same template " + TemplateLoads.WAITED.sum();
     }
 }

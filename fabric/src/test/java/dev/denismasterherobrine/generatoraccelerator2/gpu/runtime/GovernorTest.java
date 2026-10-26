@@ -51,4 +51,52 @@ class GovernorTest {
         }
         assertTrue(g.asking(), "the window started empty after the pause");
     }
+
+    /** Late windows in a row double the pause up to the longest one. A window with few late answers starts the next pause short. */
+    @Test
+    void pausesGrowWhileWindowsStayLate() throws Exception {
+        long first = 10_000_000L, longest = 35_000_000L;
+        GpuWorldgen.Governor g = new GpuWorldgen.Governor("test", "chunks", "blocks", longest, first);
+        long[] expected = { first, 2 * first, longest, longest };
+        for (long pause : expected) {
+            lateWindow(g);
+            assertFalse(g.asking(), "paused");
+            org.junit.jupiter.api.Assertions.assertEquals(pause, g.lastPauseNs, "pause after another late window");
+            waitOut(g);
+        }
+        // a clean window, then a late one: the pause is the first one again
+        for (int i = 0; i < 64; i++) {
+            g.answered(false);
+        }
+        lateWindow(g);
+        org.junit.jupiter.api.Assertions.assertEquals(first, g.lastPauseNs, "after a clean window");
+    }
+
+    /** The pause this rule exists for still comes: a GPU late in every window is paused for the longest time within a few windows. */
+    @Test
+    void aSlowGpuReachesTheLongestPause() throws Exception {
+        long first = 5_000_000L, longest = 40_000_000L;
+        GpuWorldgen.Governor g = new GpuWorldgen.Governor("test", "chunks", "blocks", longest, first);
+        int windows = 0;
+        while (g.lastPauseNs < longest) {
+            lateWindow(g);
+            windows++;
+            waitOut(g);
+        }
+        assertTrue(windows <= 5, "longest pause after " + windows + " windows");
+    }
+
+    private static void lateWindow(GpuWorldgen.Governor g) {
+        for (int i = 0; i < 64; i++) {
+            g.answered(i % 8 == 0);
+        }
+    }
+
+    private static void waitOut(GpuWorldgen.Governor g) throws InterruptedException {
+        long until = System.nanoTime() + 2_000_000_000L;
+        while (!g.asking()) {
+            assertTrue(System.nanoTime() < until, "the pause ends");
+            Thread.sleep(1);
+        }
+    }
 }

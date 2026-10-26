@@ -24,6 +24,17 @@ public final class ModdedStructures {
 
     private static final Logger LOGGER = Ga2Log.get("Structures");
     private static final Object SHARED_LOCK = new Object();
+    /**
+     * Static fields reviewed as no part of a layout, which the scan does not count. Alex's Caves 2.0.10: its rare biome map's
+     * {@code init} writes the same values from the config each time (the biome step calls it on every worker thread too), and a
+     * flag stops a repeated log in {@code replaceBiomes}. Mowzie's Mobs: the boss's constructor stores a config value.
+     */
+    private static final java.util.Set<String> REVIEWED = java.util.Set.of(
+        "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.biomeSize",
+        "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.seperationDistance",
+        "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.initialized",
+        "com/github/alexmodguy/alexscaves/server/level/structure/piece/AbstractCaveGenerationStructurePiece.replaceBiomesError",
+        "com/bobmowzie/mowziesmobs/server/entity/umvuthana/EntityUmvuthi.HEALTH_LOST_BETWEEN_SUNBLOCKERS");
     private static final Object NONE = new Object();
     /** Classes already logged. Several threads may compute a class value at once. */
     private static final java.util.Set<String> LOGGED = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -36,7 +47,7 @@ public final class ModdedStructures {
             }
             String shared;
             try {
-                shared = FeatureSafetyScan.sharedState(type, true, 4000, true);
+                shared = FeatureSafetyScan.sharedState(type, true, 4000, true, REVIEWED);
             } catch (Throwable t) {
                 shared = "its code could not be checked (" + t + ")";
             }

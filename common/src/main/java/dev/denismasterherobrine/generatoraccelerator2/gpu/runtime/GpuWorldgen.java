@@ -1023,7 +1023,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     /** A GPU answer later than this many milliseconds leaves its chunk to the CPU ({@code -Dgeneratoraccelerator2.gpu.answerMs}). */
     public static final long ANSWER_MS = Long.getLong("generatoraccelerator2.gpu.answerMs", 400L);
-    /** How long a dimension's chunks go to the CPU once many answers were late ({@code -Dgeneratoraccelerator2.gpu.pauseSeconds}). */
+    /** The longest pause of a dimension's asks once many answers were late ({@code -Dgeneratoraccelerator2.gpu.pauseSeconds}, {@link Governor}). */
     private static final long PAUSE_NS = Long.getLong("generatoraccelerator2.gpu.pauseSeconds", 30L) * 1_000_000_000L;
     /** Answers given to the CPU because they were late, and the times a dimension stopped asking for a while. */
     public static final LongAdder LATE_ANSWERS = new LongAdder(), PAUSES = new LongAdder();
@@ -1049,8 +1049,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /**
      * Returns {@code answer}, or null when the GPU has not given it within {@link #ANSWER_MS} of now. On null, the CPU does the chunk.
      * The time the whole JVM stood still meanwhile is not counted ({@link #deadline}). If more than 4 of a window of 64 answers are
-     * late, this dimension stops asking for {@link #PAUSE_NS}. Such a GPU is slower than the CPU it was meant to relieve, and more
-     * asks only add load. Counting starts after the asks are made, so the CPU's own queues do not count.
+     * late, this dimension stops asking for a while ({@link Governor}: {@link #FIRST_PAUSE_NS} at first, up to {@link #PAUSE_NS}).
+     * Such a GPU is slower than the CPU it was meant to relieve, and more asks only add load. Counting starts after the asks are made, so the CPU's own queues do not count.
      */
     public <T> CompletableFuture<T> timed(CompletableFuture<T> answer) {
         return timed(answer, governor);
@@ -1142,29 +1142,47 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         governor.answered(late);
     }
 
+    /** The first pause of a run of late windows ({@code -Dgeneratoraccelerator2.gpu.firstPauseSeconds}). Each next one doubles, up to {@link #PAUSE_NS}. */
+    private static final long FIRST_PAUSE_NS = Long.getLong("generatoraccelerator2.gpu.firstPauseSeconds", 2L) * 1_000_000_000L;
+
     /**
      * One dimension's count of late answers ({@link #timed}). Answers that come while the dimension does not ask are to asks from
      * before the pause. They are not counted, so the window starts empty when the dimension asks again.
+     *
+     * <p>A pause starts short and doubles while window after window is late, up to the longest pause. A window with few late answers
+     * starts the next pause short again. When generation moves to a new area, the first asks (Chunky keeps 256 in flight) wait for
+     * new regions at once, and one window comes late. A fixed 30 s pause then kept a whole square's blocks on the CPU in a 575-mod
+     * pack (+15 ms of CPU per chunk). A GPU that stays slower than the CPU is late in every window and reaches the longest pause
+     * within a few of them.
      */
     static final class Governor {
         private final String name;
         /** What the log names: the answers counted, and the GPU work a pause keeps on the CPU. */
         private final String answers, work;
-        private final long pauseNs;
+        private final long pauseNs, firstPauseNs;
         private final java.util.concurrent.atomic.AtomicInteger windowAsked = new java.util.concurrent.atomic.AtomicInteger();
         private final java.util.concurrent.atomic.AtomicInteger windowLate = new java.util.concurrent.atomic.AtomicInteger();
         private volatile long pausedUntil;
         private volatile boolean paused;
+        /** Late windows in a row, each ending in a pause. A window with few late answers sets it back to 0. */
+        private volatile int lateWindows;
+        /** The length of the last pause (tests). */
+        volatile long lastPauseNs;
 
         Governor(String name, long pauseNs) {
             this(name, "chunks", "blocks and surfaces", pauseNs);
         }
 
         Governor(String name, String answers, String work, long pauseNs) {
+            this(name, answers, work, pauseNs, Math.min(FIRST_PAUSE_NS, pauseNs));
+        }
+
+        Governor(String name, String answers, String work, long pauseNs, long firstPauseNs) {
             this.name = name;
             this.answers = answers;
             this.work = work;
             this.pauseNs = pauseNs;
+            this.firstPauseNs = Math.max(1, Math.min(firstPauseNs, pauseNs));
         }
 
         boolean asking() {
@@ -1192,11 +1210,20 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 int lateOnes = windowLate.getAndSet(0);
                 windowAsked.set(0);
                 if (lateOnes > 4) {
-                    pausedUntil = System.nanoTime() + pauseNs;
+                    int inRow = lateWindows;
+                    long pause = Math.min(pauseNs, firstPauseNs << Math.min(inRow, 30));
+                    if (pause <= 0) {
+                        pause = pauseNs;
+                    }
+                    lateWindows = inRow + 1;
+                    lastPauseNs = pause;
+                    pausedUntil = System.nanoTime() + pause;
                     paused = true;
                     PAUSES.increment();
-                    GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s",
-                        lateOnes, answers, name, ANSWER_MS, work, pauseNs / 1_000_000_000L);
+                    GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s ({} late window(s) in a row)",
+                        lateOnes, answers, name, ANSWER_MS, work, String.format(java.util.Locale.ROOT, "%.1f", pause / 1e9), inRow + 1);
+                } else {
+                    lateWindows = 0;
                 }
             }
         }

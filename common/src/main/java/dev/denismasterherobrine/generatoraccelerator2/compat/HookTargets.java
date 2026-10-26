@@ -109,6 +109,23 @@ public final class HookTargets {
      */
     public static final String ZETA_CLUSTERS = "zeta.clusters";
     /**
+     * Supplementaries' barnacle growth ({@code BarnaclesMultifaceGrowthFeature.place} and the methods it calls) and the barnacle
+     * block's placement test ({@code isValidStateForPlacement}, {@code canBeAttachTo}). GA2 searches each direction once
+     * ({@code compat.supplementaries.Barnacles}). Any change to these methods keeps the mod's own search.
+     */
+    public static final String SUPPLEMENTARIES_BARNACLES = "supplementaries.barnacles";
+    /**
+     * {@code StructureTemplateManager.get}'s call of {@code computeIfAbsent}. A loaded template is answered by {@code get}, without the
+     * map's lock, and a template loads under a lock of its own id ({@code structure.TemplateLoads}). Any change to the call keeps it.
+     */
+    public static final String STRUCTURE_TEMPLATE_LOADS = "structures.templateLoads";
+    /**
+     * {@code RandomPatchFeature.place}'s call of {@code PlacedFeature.place}. A try at a position where the inner feature's modifiers
+     * gave no position, with no feature run since, gives none again ({@code features.placement.PatchRepeats}). Any change to the
+     * call keeps every try.
+     */
+    public static final String PATCH_REPEATS = "features.patchRepeats";
+    /**
      * {@code ServerLevel.onBlockStateChange}, {@code PoiTypes.forState} and the call in {@code WorldGenRegion.setBlock}. When a generation
      * region writes between two states without a POI type, the write leaves the call out ({@code state.PoiStates}). Any change to these
      * methods keeps every call.

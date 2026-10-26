@@ -63,6 +63,49 @@ public final class PredicatePrograms {
     /** A {@code block_predicate_filter} that keeps its predicate's program ({@code BlockPredicateFilterPredicateMixin}). */
     public interface FilterProgram {
         boolean ga2$test(WorldGenLevel level, BlockPos pos);
+
+        /** {@link #readsOnly} of the filter's predicate. */
+        boolean ga2$readsOnly();
+    }
+
+    /** True for vanilla's {@code true} predicate, unchanged by other mods: its test answers true and reads nothing. */
+    public static boolean alwaysTrue(BlockPredicate p) {
+        return p == BlockPredicate.alwaysTrue() && own(p.getClass());
+    }
+
+    /**
+     * True when the predicate's test only reads blocks and draws nothing: vanilla's combinators and block tests that ask the block
+     * state or its shape, unchanged by other mods, all the way down. Tests that ask a block's own code ({@code would_survive})
+     * or entities ({@code unobstructed}), and any other mod's predicate, are not taken as such.
+     */
+    public static boolean readsOnly(BlockPredicate p) {
+        Class<?> cls = p.getClass();
+        if (!own(cls)) {
+            return false;
+        }
+        String name = Names.mojangBinaryClass(cls.getName()).substring(PKG.length());
+        switch (name) {
+            case "AllOfPredicate", "AnyOfPredicate" -> {
+                for (BlockPredicate child : ((Combining) p).ga2$predicates()) {
+                    if (!readsOnly(child)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            case "NotPredicate" -> {
+                return readsOnly(((Negating) p).ga2$predicate());
+            }
+            case "TrueBlockPredicate", "InsideWorldBoundsPredicate", "HasSturdyFacePredicate" -> {
+                return true;
+            }
+            case "MatchingBlocksPredicate", "MatchingBlockTagPredicate", "MatchingFluidsPredicate", "SolidPredicate", "ReplaceablePredicate" -> {
+                return own(StateTestingPredicate.class);
+            }
+            default -> {
+                return false;
+            }
+        }
     }
 
     /** The parts of the vanilla predicate classes the compiler reads ({@code BlockPredicateAccessors}). */

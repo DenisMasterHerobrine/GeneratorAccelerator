@@ -25,9 +25,6 @@ public final class OreFast {
 
     /** Blocks already visited, indexed like vanilla's BitSet (including its overlap when a sphere reaches width/height past the box start). */
     private static final ThreadLocal<long[]> VISITED = ThreadLocal.withInitial(() -> new long[256]);
-    private static final ThreadLocal<double[]> SQ_Y = ThreadLocal.withInitial(() -> new double[16]);
-    private static final ThreadLocal<double[]> SPHERES = ThreadLocal.withInitial(() -> new double[256]);
-    private static final ThreadLocal<double[]> SQ_Z = ThreadLocal.withInitial(() -> new double[16]);
 
     /** Mirrors {@code BulkSectionAccess} on top of the region's chunk cache (one per thread, {@link #start}ed per placement). */
     private static final class Sections {
@@ -158,7 +155,8 @@ public final class OreFast {
             }
         }
         // the thread's cursor. The gate only reads heightmaps, and is done before doPlace.
-        dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor cursor = CELLS.get().ownCursor.reset(region);
+        Cells cells = CELLS.get();
+        dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor cursor = cells.ownCursor.reset(region);
         boolean gate = false;
         search:
         for (int l1 = k; l1 <= k + j1; l1++) {
@@ -171,23 +169,22 @@ public final class OreFast {
         }
         cursor.clear();
         if (gate) {
-            return doPlace(region, random, config, d0, d1, d2, d3, d4, d5, k, l, i1, j1, k1);
+            return doPlace(cells, region, random, config, d0, d1, d2, d3, d4, d5, k, l, i1, j1, k1);
         }
         FeatureStats.fast(OreFeature.class);
         return false;
     }
 
     /** Exact {@code OreFeature.doPlace}. */
-    public static boolean doPlace(Ga2Region region, RandomSource random, OreConfiguration config, double minX, double maxX, double minZ, double maxZ,
+    private static boolean doPlace(Cells cells, Ga2Region region, RandomSource random, OreConfiguration config, double minX, double maxX, double minZ, double maxZ,
                                   double minY, double maxY, int x, int y, int z, int width, int height) {
         OreTargets targets = OreTargets.of(config);
         int placed = 0;
         int size = config.size;
         // every slot below size * 4 is written before it is read
-        double[] spheres = SPHERES.get();
+        double[] spheres = cells.spheres;
         if (spheres.length < size * 4) {
-            spheres = new double[size * 4];
-            SPHERES.set(spheres);
+            spheres = cells.spheres = new double[size * 4];
         }
         for (int k = 0; k < size; k++) {
             float f = (float) k / (float) size;
@@ -200,6 +197,13 @@ public final class OreFast {
             spheres[k * 4 + 1] = d1;
             spheres[k * 4 + 2] = d2;
             spheres[k * 4 + 3] = d4;
+        }
+        // No target: vanilla visits the blob's blocks, asks no target there, draws nothing more and writes nothing. Macabre's three
+        // empty ores (sizes 32 and 64, 25 to 64 per chunk) walked about 1 ms per chunk for that. Only when every block lies within
+        // the write radius, where vanilla's write check logs nothing.
+        if (config.targetStates.isEmpty() && inWriteRadius(region, spheres, size)) {
+            FeatureStats.fast(OreFeature.class);
+            return false;
         }
         // a sphere can only hold another when the gap of their radii (under size / 16) exceeds the distance of their centres.
         // The centres step along a segment of length 2 * size / 8 in size steps (a quarter block each, more with the y slope).
@@ -226,13 +230,12 @@ public final class OreFast {
                 }
             }
         }
-        Cells cells = CELLS.get();
         // the thread's own instances. An ore placement never places another one inside it.
         BlockPos.MutableBlockPos mutable = cells.ownMutable;
         Sections sections = cells.ownSections.start(region);
         cells.start(region, random, config, targets, sections, mutable);
-        double[] ysq = SQ_Y.get();
-        double[] zsq = SQ_Z.get();
+        double[] ysq = cells.ysq;
+        double[] zsq = cells.zsq;
         int buildMin = region.ga2$minY();
         int buildMax = region.ga2$maxY();
         // vanilla's BitSet index: x + y * width + z * width * height from the box start. When no sphere reaches width (x) or height
@@ -257,12 +260,10 @@ public final class OreFast {
                     int y1 = Math.max(Mth.floor(cy + radius), y0);
                     int z1 = Math.max(Mth.floor(cz + radius), z0);
                     if (y1 - y0 >= ysq.length) {
-                        ysq = new double[y1 - y0 + 1];
-                        SQ_Y.set(ysq);
+                        ysq = cells.ysq = new double[y1 - y0 + 1];
                     }
                     if (z1 - z0 >= zsq.length) {
-                        zsq = new double[z1 - z0 + 1];
-                        SQ_Z.set(zsq);
+                        zsq = cells.zsq = new double[z1 - z0 + 1];
                     }
                     // the same quotients as vanilla's loops, squared once per sphere instead of per block
                     for (int by = y0; by <= y1; by++) {
@@ -349,6 +350,20 @@ public final class OreFast {
         return placed > 0;
     }
 
+    /** Whether every block any of the spheres can visit lies in a chunk within the region's write radius (the radius is a square). */
+    private static boolean inWriteRadius(Ga2Region region, double[] spheres, int size) {
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for (int s = 0; s < size; s++) {
+            double r = Math.abs(spheres[s * 4 + 3]);
+            minX = Math.min(minX, Mth.floor(spheres[s * 4] - r));
+            maxX = Math.max(maxX, Mth.floor(spheres[s * 4] + r));
+            minZ = Math.min(minZ, Mth.floor(spheres[s * 4 + 2] - r));
+            maxZ = Math.max(maxZ, Mth.floor(spheres[s * 4 + 2] + r));
+        }
+        return region.ga2$inWriteRadius(minX >> 4, minZ >> 4) && region.ga2$inWriteRadius(maxX >> 4, maxZ >> 4)
+            && region.ga2$inWriteRadius(minX >> 4, maxZ >> 4) && region.ga2$inWriteRadius(maxX >> 4, minZ >> 4);
+    }
+
     /** Bits [from, from + len) of a long. */
     private static long span(int from, int len) {
         return (len >= 64 ? -1L : (1L << len) - 1) << from;
@@ -393,6 +408,10 @@ public final class OreFast {
         final BlockPos.MutableBlockPos ownMutable = new BlockPos.MutableBlockPos();
         final dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor ownCursor =
             new dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCursor();
+        /** The spheres (four values each) and the squared quotients of a sphere's rows, grown as needed. */
+        double[] spheres = new double[256];
+        double[] ysq = new double[16];
+        double[] zsq = new double[16];
         Ga2Region region;
         RandomSource random;
         OreConfiguration config;

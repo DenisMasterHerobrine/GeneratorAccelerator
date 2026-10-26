@@ -175,14 +175,12 @@ public final class BiolithSearch {
         if (keys == null) {
             return null;
         }
-        ThreadLocal ultimateLast;
-        ThreadLocal penultimateLast;
-        try {
-            ultimateLast = (ThreadLocal) s.ultimate.get(tree);
-            penultimateLast = (ThreadLocal) s.penultimate.get(tree);
-        } catch (IllegalAccessException e) {
+        ThreadLocal[] lasts = lasts(flat, tree, s);
+        if (lasts == null) {
             return null;
         }
+        ThreadLocal ultimateLast = lasts[0];
+        ThreadLocal penultimateLast = lasts[1];
         Climate.RTree.Leaf<?> ultimateBefore = (Climate.RTree.Leaf<?>) ultimateLast.get();
         Climate.RTree.Leaf<?> penultimateBefore = (Climate.RTree.Leaf<?>) penultimateLast.get();
         int u = id(flat, ultimateBefore);
@@ -379,6 +377,26 @@ public final class BiolithSearch {
             }
         }
         return s instanceof Shape found ? found : null;
+    }
+
+    /**
+     * The tree's two thread-local last answers (Biolith's final fields on the tree), read once per tree and kept on its flat copy.
+     * Reading them by reflection on every search was 0.8% of the workers' time in a 575-mod pack.
+     */
+    @SuppressWarnings("rawtypes")
+    private static ThreadLocal[] lasts(FlatClimateTree flat, Climate.RTree<?> tree, Shape s) {
+        if (flat.compatFields instanceof ThreadLocal[] kept) {
+            return kept;
+        }
+        try {
+            ThreadLocal[] read = { (ThreadLocal) s.ultimate.get(tree), (ThreadLocal) s.penultimate.get(tree) };
+            if (java.lang.reflect.Modifier.isFinal(s.ultimate.getModifiers()) && java.lang.reflect.Modifier.isFinal(s.penultimate.getModifiers())) {
+                flat.compatFields = read;
+            }
+            return read;
+        } catch (IllegalAccessException e) {
+            return null;
+        }
     }
 
     private static Object resolve() {

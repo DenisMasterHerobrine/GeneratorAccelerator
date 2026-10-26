@@ -109,6 +109,16 @@ public final class BiolithSurface {
             return context;
         }
 
+        /**
+         * The wrappers themselves read the NoiseChunk only through the rule context's minimum surface level, which GA2 answers from
+         * the GPU's terrain in a chunk without one ({@code GpuSurfaceContextMixin}). A registered builder gets the chunk and may read
+         * its NoiseChunk.
+         */
+        @Override
+        public boolean readsNoiseChunk() {
+            return hasBuilders();
+        }
+
         @Override
         @SuppressWarnings("unchecked")
         public boolean wrap(ColumnHooks.Frame f, ResourceKey<Biome> key, ColumnHooks.Test original) throws Throwable {

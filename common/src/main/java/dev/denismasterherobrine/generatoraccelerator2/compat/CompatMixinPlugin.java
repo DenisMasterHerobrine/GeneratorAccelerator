@@ -57,6 +57,10 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
             // the cluster walk is for Quark's big stone clusters and relies on the code it was written against
             return Compat.isLoaded("quark") && dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins.codeKnown();
         }
+        if (active && dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins.MIXINS.contains(mixinClassName)) {
+            // the barnacle search relies on the code it was written against
+            return dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins.codeKnown();
+        }
         return active;
     }
 

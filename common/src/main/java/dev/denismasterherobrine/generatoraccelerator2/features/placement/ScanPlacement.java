@@ -10,4 +10,7 @@ public interface ScanPlacement {
      * {@code pos} is that position (vanilla hands on its own mutable position).
      */
     boolean ga2$scan(WorldGenLevel level, BlockPos.MutableBlockPos pos);
+
+    /** Both predicates only read ({@code PredicatePrograms.readsOnly}). */
+    boolean ga2$readsOnly();
 }

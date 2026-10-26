@@ -53,6 +53,8 @@ public final class FlatClimateTree {
 
     /** Per-tree data kept by compat code, e.g. Biolith's biome numbers per leaf. Built once on first use. */
     public volatile Object compatData;
+    /** Per-tree objects compat code reads from the tree itself, e.g. Biolith's two thread-local last answers. Read once on first use. */
+    public volatile Object compatFields;
 
     private FlatClimateTree(long[] bounds, long[] offsetTerm, int[] first, int[] count, Climate.RTree.Leaf<?>[] leaves, int depth, boolean small) {
         this.small = small;

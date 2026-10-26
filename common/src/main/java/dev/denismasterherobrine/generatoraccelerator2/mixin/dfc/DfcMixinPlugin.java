@@ -196,6 +196,16 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of("forEachChunkBlock", "isInside"), MergedMethods.Mode.BYPASS))),
         Map.entry("StoneClustersInspectMixin", List.of(
             new FeatureHook(HookTargets.ZETA_CLUSTERS, List.of("canPlaceBlock", "canPlaceAt"), MergedMethods.Mode.BYPASS))),
+        // Supplementaries' barnacle search (compat/supplementaries). GA2's callback takes place over. What it
+        // calls in its class and the block's placement test count wherever changed.
+        Map.entry("BarnaclesFeatureMixin", List.of(
+            new FeatureHook(HookTargets.SUPPLEMENTARIES_BARNACLES, List.of("place")))),
+        Map.entry("BarnaclesBlockInspectMixin", List.of(
+            new FeatureHook(HookTargets.SUPPLEMENTARIES_BARNACLES, List.of("isValidStateForPlacement", "canBeAttachTo"), MergedMethods.Mode.BYPASS))),
+        // the template loads (structure.TemplateLoads). GA2 wraps the repository's computeIfAbsent in get. Any other change there counts.
+        Map.entry("StructureTemplateLoadsMixin", List.of(
+            new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_LOADS, List.of("get(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;"),
+                List.of(), MergedMethods.Mode.WRAP, List.of()))),
         // the POI skip (state.PoiStates). GA2 wraps the call in setBlock. The call and the lookup it relies on count wherever
         // changed.
         Map.entry("PoiSkipMixin", List.of(
@@ -289,6 +299,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("DirectSetMixin", List.of(
             new FeatureHook(HookTargets.DIRECT_SETS, List.of("contains(Lnet/minecraft/core/Holder;)Z"), MergedMethods.Mode.BYPASS))),
         // the height skips getChunk(int, int). It still looks chunks up through getChunk(int, int, ChunkStatus, boolean).
+        // the random patch's repeated tries (features.placement.PatchRepeats). The skip relies on the loop changing no block between
+        // tries, so any change to the method counts
+        Map.entry("RandomPatchRepeatsMixin", List.of(
+            new FeatureHook(HookTargets.PATCH_REPEATS, List.of("place(Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;)Z"), MergedMethods.Mode.BYPASS))),
         Map.entry("WorldGenRegionHeightsMixin", List.of(
             new FeatureHook(HookTargets.REGION_HEIGHTS, List.of("getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I",
                 "getChunk(II)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
