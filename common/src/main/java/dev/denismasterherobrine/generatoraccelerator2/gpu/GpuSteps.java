@@ -237,7 +237,7 @@ public final class GpuSteps {
             return null;
         }
         GpuWorldgen wg = Gpu.worldgen(generator, settings, picker, randomState, chunk);
-        if (wg == null || !wg.ready() || !wg.biomeKernels() || !wg.asking() || !Apply.fits(wg, chunk)) {
+        if (wg == null || !wg.ready() || !wg.biomeKernels() || !wg.askingBiomes() || !Apply.fits(wg, chunk)) {
             return null;
         }
         if (!wg.takesRegion(chunk.getPos())) {
@@ -247,7 +247,7 @@ public final class GpuSteps {
         }
         Executor ex = executor();
         long t0 = System.nanoTime();
-        CompletableFuture<GpuWorldgen.BiomeResult> gpu = wg.timed(wg.biomes(chunk.getPos())).exceptionally(e -> {
+        CompletableFuture<GpuWorldgen.BiomeResult> gpu = wg.timedBiomes(wg.biomes(chunk.getPos())).exceptionally(e -> {
             GPU_ERRORS.increment();
             return null;
         });
@@ -312,8 +312,9 @@ public final class GpuSteps {
             return;
         }
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
-        if (gc == null || !wg.takesBlocks(chunk.getPos())) {
-            // a GPU that is behind is asked at the NOISE step again, or the CPU fills the chunk then
+        if (gc == null || !wg.asking() || !wg.takesBlocks(chunk.getPos())) {
+            // a GPU that is behind is asked at the NOISE step again, or the CPU fills the chunk then. So does one whose blocks
+            // are paused for late answers (the biomes have a governor of their own)
             return;
         }
         GpuWorldgen.Beard b = beard(wg, randomState, structures, chunk.getPos());

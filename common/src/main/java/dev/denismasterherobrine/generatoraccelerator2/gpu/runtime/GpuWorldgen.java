@@ -319,6 +319,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         this.settings = settings;
         this.randomState = randomState;
         this.governor = new Governor(name, PAUSE_NS);
+        this.biomeGovernor = new Governor(name, "biome answers", "biomes", PAUSE_NS);
     }
 
     public State state() {
@@ -1027,10 +1028,22 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Answers given to the CPU because they were late, and the times a dimension stopped asking for a while. */
     public static final LongAdder LATE_ANSWERS = new LongAdder(), PAUSES = new LongAdder();
     private final Governor governor;
+    /**
+     * Biome answers, counted apart. A biome answer waits for its region's first pass, so when generation moves to a new area every
+     * request in flight (Chunky keeps 256) waits for new regions at once. Those late answers said nothing about the blocks: in a
+     * 575-mod pack they paused the GPU's blocks for 30 s at the start of a square, while no block answer was late. Now they pause
+     * only the GPU's biomes.
+     */
+    private final Governor biomeGovernor;
 
-    /** False while late answers keep this dimension's chunks on the CPU ({@link #timed}). */
+    /** False while late answers keep this dimension's blocks and surfaces on the CPU ({@link #timed}). */
     public boolean asking() {
         return governor.asking();
+    }
+
+    /** False while late biome answers keep this dimension's biomes on the CPU ({@link #timedBiomes}). */
+    public boolean askingBiomes() {
+        return biomeGovernor.asking();
     }
 
     /**
@@ -1040,20 +1053,29 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * asks only add load. Counting starts after the asks are made, so the CPU's own queues do not count.
      */
     public <T> CompletableFuture<T> timed(CompletableFuture<T> answer) {
+        return timed(answer, governor);
+    }
+
+    /** {@link #timed} for a biome answer, counted by the biomes' own governor. */
+    public <T> CompletableFuture<T> timedBiomes(CompletableFuture<T> answer) {
+        return timed(answer, biomeGovernor);
+    }
+
+    private static <T> CompletableFuture<T> timed(CompletableFuture<T> answer, Governor g) {
         if (answer.isDone()) {
-            answered(false);
+            g.answered(false);
             return answer;
         }
         CompletableFuture<T> out = new CompletableFuture<>();
         deadline(answer, ANSWER_MS, () -> {
             if (out.complete(null)) {
-                answered(true);
+                g.answered(true);
             }
         });
         answer.whenComplete((r, e) -> {
             boolean won = e != null ? out.completeExceptionally(e) : out.complete(r);
             if (won) {
-                answered(false);
+                g.answered(false);
             }
         });
         return out;
@@ -1126,6 +1148,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      */
     static final class Governor {
         private final String name;
+        /** What the log names: the answers counted, and the GPU work a pause keeps on the CPU. */
+        private final String answers, work;
         private final long pauseNs;
         private final java.util.concurrent.atomic.AtomicInteger windowAsked = new java.util.concurrent.atomic.AtomicInteger();
         private final java.util.concurrent.atomic.AtomicInteger windowLate = new java.util.concurrent.atomic.AtomicInteger();
@@ -1133,7 +1157,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         private volatile boolean paused;
 
         Governor(String name, long pauseNs) {
+            this(name, "chunks", "blocks and surfaces", pauseNs);
+        }
+
+        Governor(String name, String answers, String work, long pauseNs) {
             this.name = name;
+            this.answers = answers;
+            this.work = work;
             this.pauseNs = pauseNs;
         }
 
@@ -1165,8 +1195,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                     pausedUntil = System.nanoTime() + pauseNs;
                     paused = true;
                     PAUSES.increment();
-                    GpuDevice.LOGGER.info("{}/64 recent chunks of {} answered after >{} ms -> CPU for {} s",
-                        lateOnes, name, ANSWER_MS, pauseNs / 1_000_000_000L);
+                    GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s",
+                        lateOnes, answers, name, ANSWER_MS, work, pauseNs / 1_000_000_000L);
                 }
             }
         }

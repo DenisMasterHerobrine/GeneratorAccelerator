@@ -515,6 +515,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 MergedMethods.Mode.BYPASS))),
         Map.entry("EntityLoadBudgetMixin", List.of(
             new FeatureHook(HookTargets.CHUNK_ENTITY_BUDGET, List.of("processPendingLoads()V"), MergedMethods.Mode.BYPASS))),
+        // a chunk asked off the server thread that already has the status skips the method's body (the task on the server thread)
+        Map.entry("ServerChunkCachePresentMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_PRESENT_OFF_THREAD,
+                List.of("getChunk(IILnet/minecraft/world/level/chunk/status/ChunkStatus;Z)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
         // a loaded section's palettes are decoded entry by entry, then built by unpack, as the codecs would
         Map.entry("PaletteCodecInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(

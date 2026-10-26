@@ -107,6 +107,12 @@ public final class CompatModules {
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelRules.register();
         }
+        if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesMixins.MOD_ID)) {
+            dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesChunks.register();
+        }
+        if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins.MOD_ID)) {
+            dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins.register();
+        }
         if (Compat.isLoaded(dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins.MOD_ID)) {
             dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes.register();
         }

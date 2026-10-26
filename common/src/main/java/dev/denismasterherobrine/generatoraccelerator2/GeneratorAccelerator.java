@@ -155,6 +155,7 @@ public final class GeneratorAccelerator {
         dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats.serverStopped();
         dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.serverStopped();
         dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast.forgetSeeds();
+        dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder.forgetShapes();
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
         dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch.forgetWorlds();

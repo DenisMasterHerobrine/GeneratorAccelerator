@@ -136,7 +136,8 @@ public final class StepsCommand {
         if (biomePrograms > 0) {
             send(source, "surface rules compiled per biome: " + biomePrograms + " programs (shared by biomes with the same folded rules "
                 + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PROGRAMS_SHARED.sum() + " times), picked "
-                + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PICKS.sum() + " times");
+                + dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfaceProgram.BIOME_PICKS.sum() + " times; rules asked as a new sequence of known rules "
+                + dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder.SHAPE_HITS.sum() + " times");
         }
         long columnAnswers = dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree.GROUP_ANSWERED.sum();
         if (columnAnswers > 0 || dev.denismasterherobrine.generatoraccelerator2.biome.ClimateSearch.VERIFIED.get() > 0) {

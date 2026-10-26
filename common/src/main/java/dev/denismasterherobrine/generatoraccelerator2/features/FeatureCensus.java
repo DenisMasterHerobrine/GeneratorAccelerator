@@ -39,6 +39,8 @@ public final class FeatureCensus {
     private static final int SAMPLE = 16;
 
     private static final Map<ServerLevel, Dim> DIMS = Collections.synchronizedMap(new WeakHashMap<>());
+    /** Raised by {@link #reset}. A thread holding the counts of an older one takes its dimension's new counts at the next decoration. */
+    private static volatile int epoch;
 
     private FeatureCensus() {}
 
@@ -89,6 +91,7 @@ public final class FeatureCensus {
     private static final class Local {
         boolean active;
         Dim dim;
+        int epoch;
         IdentityHashMap<PlacedFeature, Stat> cache = new IdentityHashMap<>();
         long t0;
         boolean structures;
@@ -114,8 +117,10 @@ public final class FeatureCensus {
         }
         ServerLevel level = region.getLevel();
         Local l = LOCAL.get();
-        if (l.dim == null || l.dim.level.get() != level) {
+        int e = epoch;
+        if (l.dim == null || l.epoch != e || l.dim.level.get() != level) {
             l.dim = dim(level);
+            l.epoch = e;
             l.cache.clear();
         }
         l.active = true;
@@ -191,6 +196,7 @@ public final class FeatureCensus {
     public static void reset() {
         synchronized (DIMS) {
             DIMS.clear();
+            epoch++;
         }
     }
 

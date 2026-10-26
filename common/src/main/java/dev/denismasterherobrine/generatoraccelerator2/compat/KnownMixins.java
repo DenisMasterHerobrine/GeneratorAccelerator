@@ -67,6 +67,8 @@ public final class KnownMixins {
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins.ENTRIES);
         all.addAll(C2MEMixins.ENTRIES);
         all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins.ENTRIES);
+        all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesMixins.ENTRIES);
+        all.addAll(dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins.ENTRIES);
         ENTRIES = List.copyOf(all);
     }
 

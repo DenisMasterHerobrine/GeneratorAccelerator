@@ -233,6 +233,11 @@ public final class HookTargets {
     public static final String CHUNK_PACKET_PREP = "chunkLoad.packetPrep";
     /** {@code PersistentEntitySectionManager.processPendingLoads}: loaded chunks' entities added within a budget per tick. */
     public static final String CHUNK_ENTITY_BUDGET = "chunkLoad.entityBudget";
+    /**
+     * {@code ServerChunkCache.getChunk(x, z, status, load)} off the server thread: a chunk that already has the status is
+     * answered at once instead of through a task on the server thread ({@code chunkload.PresentChunks}).
+     */
+    public static final String CHUNK_PRESENT_OFF_THREAD = "chunkLoad.presentOffThread";
     public static final String LIGHT_ENGINE = "light.engine";
     public static final String LIGHT_SOURCES = "light.sources";
     /** The propagation methods the parallel light propagation runs itself ({@code parallellight}). When changed, every batch runs vanilla's. */

@@ -229,6 +229,7 @@
     "chunkload.ChunkMapUpdatingInvoker",
     "chunkload.ServerChunkCacheHoldsMixin",
     "chunkload.ChunkMapKeptSaveMixin",
+    "chunkload.ServerChunkCachePresentMixin",
     "fluid.PostProcessFluidMixin",
     "fluid.FluidTickInspectMixin"
   ],

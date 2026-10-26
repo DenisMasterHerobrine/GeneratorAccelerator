@@ -47,9 +47,85 @@ public final class SurfaceBuilder {
     private static final org.slf4j.Logger LOGGER = Ga2Log.get("Surface");
     private static final java.util.Set<String> LOGGED_OPAQUE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /**
+     * Programs by the rule's shape ({@link Shape}), for a rule asked as a new object each time. Citadel (Alex's Caves, Alex's
+     * Mobs) merges its rules into the surface rule on every call, so each chunk came with a new sequence of the same rules. Each
+     * chunk then lowered and compiled them again, into classes the JIT never compiled: 3,086 such classes ran in one 49 s
+     * square of a 575-mod pack, and the surface step took half of the workers' time. Cleared when the server stops.
+     */
+    private static final ConcurrentMap<Shape, SurfaceProgram> BY_SHAPE = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Programs found by their shape after the rule object itself missed. */
+    public static final java.util.concurrent.atomic.LongAdder SHAPE_HITS = new java.util.concurrent.atomic.LongAdder();
+
+    /**
+     * A sequence rule by its parts: a nested sequence by its own shape, any other rule by identity. Two sequences of the same
+     * rule objects in the same order are the same rule, so they share one program.
+     */
+    static final class Shape {
+        private final Object[] parts;
+        private final int hash;
+
+        private Shape(Object[] parts) {
+            this.parts = parts;
+            int h = 1;
+            for (Object p : parts) {
+                h = 31 * h + (p instanceof Shape s ? s.hash : System.identityHashCode(p));
+            }
+            this.hash = h;
+        }
+
+        /** The shape of a sequence rule, or null for any other rule (whose identity is its key). */
+        static Shape of(SurfaceRules.RuleSource source) {
+            if (!(source instanceof SurfaceRules.SequenceRuleSource seq)) {
+                return null;
+            }
+            java.util.List<SurfaceRules.RuleSource> rules = seq.sequence();
+            Object[] parts = new Object[rules.size()];
+            for (int i = 0; i < parts.length; i++) {
+                SurfaceRules.RuleSource r = rules.get(i);
+                Shape inner = of(r);
+                parts[i] = inner != null ? inner : r;
+            }
+            return new Shape(parts);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Shape other) || other.hash != hash || other.parts.length != parts.length) {
+                return false;
+            }
+            for (int i = 0; i < parts.length; i++) {
+                Object a = parts[i], b = other.parts[i];
+                if (a instanceof Shape s ? !s.equals(b) : a != b) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
+    }
+
+    /** The server stopped: the shapes hold the rules of its settings. */
+    public static void forgetShapes() {
+        BY_SHAPE.clear();
+    }
+
     public static SurfaceProgram program(SurfaceRules.RuleSource source) {
         SurfaceProgram program = PROGRAMS.get(source);
         if (program == null) {
+            Shape shape = Shape.of(source);
+            if (shape != null) {
+                program = BY_SHAPE.get(shape);
+                if (program != null) {
+                    // a new sequence of known rules: not put under its own object, which is gone after this chunk
+                    SHAPE_HITS.increment();
+                    return program;
+                }
+            }
             program = SurfaceProgram.lower(source);
             if (program.hasOpaque) {
                 java.util.Set<String> kinds = new java.util.TreeSet<>();
@@ -69,6 +145,12 @@ public final class SurfaceBuilder {
             SurfaceProgram raced = PROGRAMS.putIfAbsent(source, program);
             if (raced != null) {
                 program = raced;
+            }
+            if (shape != null) {
+                raced = BY_SHAPE.putIfAbsent(shape, program);
+                if (raced != null) {
+                    program = raced;
+                }
             }
         }
         return program;

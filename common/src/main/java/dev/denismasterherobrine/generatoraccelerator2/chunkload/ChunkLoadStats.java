@@ -157,6 +157,7 @@ public final class ChunkLoadStats {
         }
         GRAPH_TRAVEL_MAX.set(0);
         dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.resetCounts();
+        PresentChunks.ANSWERED.reset();
         UNLOADED.clear();
         since = System.nanoTime();
     }
@@ -178,6 +179,10 @@ public final class ChunkLoadStats {
         String holds = dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds.report();
         if (holds != null) {
             out.add(holds);
+        }
+        long present = PresentChunks.ANSWERED.sum();
+        if (present > 0) {
+            out.add(String.format(Locale.ROOT, "chunks other threads asked of the server level, answered at once instead of by the server thread: %,d", present));
         }
         out.add("points of interest: read with the chunk " + String.format(Locale.ROOT, "%,d", POI_PREFETCHED.sum()) + " (used "
             + String.format(Locale.ROOT, "%,d", POI_PREFETCH_USED.sum()) + "); read on the server thread " + String.format(Locale.ROOT, "%,d", POI_READS.sum())
