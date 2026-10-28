@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.SectionStorage;
-import net.minecraft.world.level.chunk.storage.SimpleRegionStorage;
+import net.minecraft.world.level.chunk.storage.IOWorker;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -20,8 +20,8 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(SectionStorage.class)
 public abstract class SectionStoragePoiMixin {
     @WrapOperation(method = "tryRead", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/world/level/chunk/storage/SimpleRegionStorage;read(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"))
-    private CompletableFuture<Optional<CompoundTag>> ga2$readAhead(SimpleRegionStorage storage, ChunkPos pos,
+        target = "Lnet/minecraft/world/level/chunk/storage/IOWorker;loadAsync(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"))
+    private CompletableFuture<Optional<CompoundTag>> ga2$readAhead(IOWorker storage, ChunkPos pos,
         Operation<CompletableFuture<Optional<CompoundTag>>> original) {
         CompletableFuture<Optional<CompoundTag>> ahead = PoiPrefetch.take(this, pos);
         return ahead != null ? ahead : original.call(storage, pos);

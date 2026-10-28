@@ -25,7 +25,7 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 /**
  * A chunk's surface on the GPU. It is requested when the chunk's NOISE step writes the GPU's blocks. At that point the neighbours
@@ -237,9 +237,10 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
 
     /**
      * The SURFACE step. Writes the GPU's surface into the chunk. Returns false when the CPU must build it: no answer, a late answer, or a
-     * chunk the GPU left to the CPU.
+     * chunk the GPU left to the CPU. {@code records} runs other mods' recording code before the GPU's blocks are written, {@code after}
+     * their code that writes once the blocks are in ({@code ColumnHooks.afterBlocks}).
      */
-    public static boolean apply(ChunkAccess chunk, Consumer<ChunkAccess> cpuSurface, Runnable records) {
+    public static boolean apply(ChunkAccess chunk, Consumer<ChunkAccess> cpuSurface, Runnable records, Runnable after) {
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
         GpuSurfaceJob job = gc == null ? null : gc.ga2$gpuSurface();
         if (job == null) {
@@ -273,6 +274,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
             CPU.increment();
             return false;
         }
+        after.run();
         APPLIED.increment();
         if (compare != null) {
             compare.run();

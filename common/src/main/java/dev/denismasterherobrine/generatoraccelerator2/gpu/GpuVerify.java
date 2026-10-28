@@ -223,7 +223,7 @@ public final class GpuVerify {
             ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.registryAccess().registryOrThrow(Registries.BIOME), null);
             Beardifier beard = Beardifier.forStructuresInChunk(structures, chunk.getPos());
             cpu.getOrCreateNoiseChunk(c -> NoiseChunk.forChunk(c, randomState, beard, settings.value(), picker.get(), Blender.empty()));
-            GpuSteps.cpuOnly(() -> generator.fillFromNoise(Blender.empty(), randomState, structures, cpu)).join();
+            GpuSteps.cpuOnly(() -> generator.fillFromNoise(Runnable::run, Blender.empty(), randomState, structures, cpu)).join();
             String diff = ChunkCompare.blocks(cpu, chunk);
             VERIFIED.incrementAndGet();
             if (diff != null) {

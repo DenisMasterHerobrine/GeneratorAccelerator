@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.Fuzz;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -29,7 +30,7 @@ import org.junit.jupiter.api.Test;
  * and random seeds. Blocks, side effects and the random's state must be the same.
  */
 public class OreFastFuzzTest {
-    private static final int TRIALS = 48;
+    private static final int TRIALS = Fuzz.size(48, 8);
 
     @Test
     void oresMatchVanilla() {
@@ -47,7 +48,7 @@ public class OreFastFuzzTest {
         int compared = 0;
         int placed = 0;
         long checksum = 0;
-        for (long terrainSeed : new long[] { 20261002L, 777L }) {
+        for (long terrainSeed : Fuzz.seeds(20261002L, 777L)) {
             for (FeatureRun.ConfiguredCase c : ores) {
                 for (int t = 0; t < TRIALS; t++) {
                     FeatureRun.Result ref = run(r, c, terrainSeed, t, true);

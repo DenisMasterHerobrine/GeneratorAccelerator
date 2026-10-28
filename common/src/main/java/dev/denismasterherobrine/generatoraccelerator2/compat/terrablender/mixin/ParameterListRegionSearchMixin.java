@@ -34,7 +34,8 @@ public abstract class ParameterListRegionSearchMixin {
             Object expectedLast = last.get();
             last.set(before);
             Object actual = ClimateSearch.search(tree, target);
-            TerraBlenderMixins.verified(expected == actual && expectedLast == last.get(), target);
+            // a quiet search (ClimateSearch.quietly) leaves the last result where it was
+            TerraBlenderMixins.verified(expected == actual && (ClimateSearch.quiet() ? before : expectedLast) == last.get(), target);
             return actual;
         }
         return ClimateSearch.search(tree, target);

@@ -1,28 +1,16 @@
 package dev.denismasterherobrine.generatoraccelerator2.view.mixin;
 
-import com.mojang.blaze3d.vertex.VertexBuffer;
 import dev.denismasterherobrine.generatoraccelerator2.view.SectionBuffers;
-import java.util.Map;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
-import org.spongepowered.asm.mixin.Final;
+import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * A rebuilt section's layers without blocks give their VRAM back ({@link SectionBuffers}). A layer with blocks gets the new mesh
- * anyway. So after each rebuild a buffer holds the section's current mesh or nothing. A section moved by the view area is
- * rebuilt at its new place. It is not emptied at the move. Emptying every moved section costs GL calls on each chunk border the
- * camera crosses. The section also keeps when it was last in view, and the camera's column then ({@link SectionBuffers#evictHidden}).
+ * A render chunk keeps when it was last in view, the camera's column then, and whether its meshes were evicted
+ * ({@link SectionBuffers#evictHidden}).
  */
-@Mixin(SectionRenderDispatcher.RenderSection.class)
+@Mixin(ChunkRenderDispatcher.RenderChunk.class)
 public abstract class RenderSectionBuffersMixin implements SectionBuffers.Section {
-    @Shadow @Final private Map<RenderType, VertexBuffer> buffers;
-
     @Unique
     private long ga2$seen;
     @Unique
@@ -31,15 +19,6 @@ public abstract class RenderSectionBuffersMixin implements SectionBuffers.Sectio
     private int ga2$seenZ;
     @Unique
     private boolean ga2$evicted;
-
-    @Inject(method = "setCompiled", at = @At("RETURN"))
-    private void ga2$freeEmpty(SectionRenderDispatcher.CompiledSection compiled, CallbackInfo ci) {
-        for (Map.Entry<RenderType, VertexBuffer> e : this.buffers.entrySet()) {
-            if (compiled.isEmpty(e.getKey())) {
-                SectionBuffers.free(e.getValue());
-            }
-        }
-    }
 
     @Override
     public long ga2$seen() {

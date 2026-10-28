@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import org.junit.jupiter.api.Test;
@@ -115,7 +115,7 @@ public class GpuBuildBench {
             long t0 = System.nanoTime();
             List<Thread> threads = new ArrayList<>();
             for (String part : sources) {
-                threads.add(Thread.ofPlatform().start(() -> coldBuild(d, part)));
+                threads.add(start(() -> coldBuild(d, part), false));
             }
             for (Thread t : threads) {
                 t.join();
@@ -152,12 +152,12 @@ public class GpuBuildBench {
             AtomicBoolean stop = new AtomicBoolean();
             List<Thread> load = new ArrayList<>();
             for (int i = 0; i < n; i++) {
-                load.add(Thread.ofPlatform().daemon().start(() -> {
+                load.add(start(() -> {
                     double x = 1;
                     while (!stop.get()) {
                         x = Math.sin(x) + 1.0001;
                     }
-                }));
+                }, true));
             }
             try {
                 log("%s under load (%d busy threads):", file.getFileName(), n);
@@ -296,7 +296,7 @@ public class GpuBuildBench {
                 Apply.biomes(wg, c, b, () -> ((NoiseChunkSamplerInvoker) c
                     .getOrCreateNoiseChunk(x -> NoiseChunk.forChunk(x, s.world.randomState, structures, s.world.settings, s.world.fluidPicker,
                         Blender.empty()))).ga2$cachedClimateSampler(s.world.randomState.router(), s.world.settings.spawnTarget()));
-                c.setPersistedStatus(ChunkStatus.BIOMES);
+                c.setStatus(ChunkStatus.BIOMES);
                 chunks[i * n + j] = c;
             }
         }
@@ -396,5 +396,12 @@ public class GpuBuildBench {
             }
             log("  sum of kernels alone: %.1f s", sum);
         }
+    }
+
+    private static Thread start(Runnable body, boolean daemon) {
+        Thread t = new Thread(body);
+        t.setDaemon(daemon);
+        t.start();
+        return t;
     }
 }

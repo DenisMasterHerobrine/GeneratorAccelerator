@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
@@ -138,8 +139,8 @@ public final class SelfTest {
         // The level's own structure manager. Other mods' changes to the biome step and the fill read it (Confluence reads its registries).
         // The chunks' NoiseChunk is created here first, so vanilla's code asks the manager for no structures.
         StructureManager structures = heights instanceof ServerLevel level ? level.structureManager() : null;
-        Beardifier none = new Beardifier(new ObjectArrayList<Beardifier.Rigid>().iterator(),
-            new ObjectArrayList<JigsawJunction>().iterator());
+        Beardifier none = BeardExtras.withEmptyLists(new Beardifier(new ObjectArrayList<Beardifier.Rigid>().iterator(),
+            new ObjectArrayList<JigsawJunction>().iterator()));
         int compared = 0;
         for (int[] c : CHUNKS) {
             ChunkPos pos = new ChunkPos(c[0], c[1]);
@@ -164,9 +165,9 @@ public final class SelfTest {
                 if (handed != null && handed.hand() != null) {
                     // the CPU's own lookups with the GPU's points and searches, from the same last search results as the CPU's fill below
                     start = GpuVerify.handState(wg);
-                    BiomeHand.fill(wg, gpu, handed, () -> GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu))).join();
+                    BiomeHand.fill(wg, gpu, handed, () -> GpuSteps.cpuOnly(() -> generator.createBiomes(Runnable::run, randomState, Blender.empty(), structures, gpu))).join();
                 } else {
-                    GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, gpu)).join();
+                    GpuSteps.cpuOnly(() -> generator.createBiomes(Runnable::run, randomState, Blender.empty(), structures, gpu)).join();
                 }
             }
             // no structures, but the chunk's Better Caves liquid regions, which the CPU's aquifer applies too
@@ -187,8 +188,8 @@ public final class SelfTest {
                 GpuVerify.restoreHandState(wg, start);
             }
             cpu.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, randomState, none, settings.value(), picker.get(), Blender.empty()));
-            GpuSteps.cpuOnly(() -> generator.createBiomes(randomState, Blender.empty(), structures, cpu)).join();
-            GpuSteps.cpuOnly(() -> generator.fillFromNoise(Blender.empty(), randomState, structures, cpu)).join();
+            GpuSteps.cpuOnly(() -> generator.createBiomes(Runnable::run, randomState, Blender.empty(), structures, cpu)).join();
+            GpuSteps.cpuOnly(() -> generator.fillFromNoise(Runnable::run, Blender.empty(), randomState, structures, cpu)).join();
             String diff = ChunkCompare.blocks(cpu, gpu);
             if (diff == null && b != null) {
                 diff = ChunkCompare.biomes(cpu, gpu, b::tie);

@@ -67,29 +67,35 @@ public final class CellCacheOnce {
             return false;
         }
         seen.put(n, (before == null ? 0 : before) | bit);
-        return switch (n) {
-            case Node.Marker m -> switch (m.type()) {
-                case CACHE_ONCE -> !array || walk(m.child(), true, seen);
-                // Asked block by block. On vanilla's array path, a cache_once below would get the wrapper's point semantics.
-                case CACHE_2D -> array && reachesCacheOnce(m.child());
-                // the cell program reads these (corners, caches). It never evaluates their children per block
-                case INTERPOLATED, FLAT_CACHE, CACHE_ALL_IN_CELL -> false;
-            };
-            case Node.Ap2 a -> walk(a.a(), array, seen) || walk(a.b(), array && a.type() == Node.Ap2Type.ADD, seen);
-            case Node.MulOrAdd m -> walk(m.input(), array, seen);
-            case Node.Mapped m -> walk(m.input(), array, seen);
-            case Node.Clamp c -> walk(c.input(), array, seen);
-            case Node.BlendDensity b -> walk(b.input(), array, seen);
-            case Node.Weird w -> walk(w.input(), array, seen);
-            case Node.RangeChoice r -> walk(r.input(), array, seen) || walk(r.inRange(), false, seen) || walk(r.outRange(), false, seen);
-            default -> {
-                for (Node c : RefCount.children(n)) {
-                    if (walk(c, false, seen)) {
-                        yield true;
-                    }
-                }
-                yield false;
-            }
+        if (n instanceof Node.Marker m) {
+            return switch (m.type()) {
+            case CACHE_ONCE -> !array || walk(m.child(), true, seen);
+            // Asked block by block. On vanilla's array path, a cache_once below would get the wrapper's point semantics.
+            case CACHE_2D -> array && reachesCacheOnce(m.child());
+            // the cell program reads these (corners, caches). It never evaluates their children per block
+            case INTERPOLATED, FLAT_CACHE, CACHE_ALL_IN_CELL -> false;
         };
+        } else if (n instanceof Node.Ap2 a) {
+            return walk(a.a(), array, seen) || walk(a.b(), array && a.type() == Node.Ap2Type.ADD, seen);
+        } else if (n instanceof Node.MulOrAdd m) {
+            return walk(m.input(), array, seen);
+        } else if (n instanceof Node.Mapped m) {
+            return walk(m.input(), array, seen);
+        } else if (n instanceof Node.Clamp c) {
+            return walk(c.input(), array, seen);
+        } else if (n instanceof Node.BlendDensity b) {
+            return walk(b.input(), array, seen);
+        } else if (n instanceof Node.Weird w) {
+            return walk(w.input(), array, seen);
+        } else if (n instanceof Node.RangeChoice r) {
+            return walk(r.input(), array, seen) || walk(r.inRange(), false, seen) || walk(r.outRange(), false, seen);
+        } else {
+            for (Node c : RefCount.children(n)) {
+                if (walk(c, false, seen)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

@@ -79,7 +79,7 @@ public final class StepVerify {
                         Heightmap.Types ws = Heightmap.Types.WORLD_SURFACE_WG;
                         StringBuilder sb = new StringBuilder("x=" + (minX + lx) + " z=" + (minZ + lz) + " world surface before "
                             + (before == null ? "?" : before.getHeight(ws, lx, lz)) + ", vanilla " + expected.getHeight(ws, lx, lz) + ", fast "
-                            + actual.getHeight(ws, lx, lz) + "; status " + (before == null ? "?" : before.getPersistedStatus()) + " (y: before / vanilla / fast)");
+                            + actual.getHeight(ws, lx, lz) + "; status " + (before == null ? "?" : before.getStatus()) + " (y: before / vanilla / fast)");
                         for (int yy = Math.min(actual.getMaxBuildHeight() - 1, y + 6); yy >= Math.max(actual.getMinBuildHeight(), y - 40); yy--) {
                             pos.setY(yy);
                             sb.append("\n  ").append(yy).append(": ").append(before == null ? "?" : name(before.getBlockState(pos))).append(" / ")

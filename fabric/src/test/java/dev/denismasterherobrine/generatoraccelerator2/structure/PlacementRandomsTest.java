@@ -39,7 +39,7 @@ public class PlacementRandomsTest {
             RandomSpreadStructurePlacement p = new RandomSpreadStructurePlacement(Vec3i.ZERO, method, frequency, salt, Optional.empty(), spacing, separation, type);
             assertEquals(potentialChunk(seed, x, z, spacing, separation, type, salt), p.getPotentialStructureChunk(seed, x, z),
                 "potential chunk: seed " + seed + " at " + x + ", " + z + ", spacing " + spacing + ", separation " + separation + ", " + type + ", salt " + salt);
-            assertEquals(reduce(method, seed, salt, x, z, frequency), p.applyAdditionalChunkRestrictions(x, z, seed),
+            assertEquals(reduce(method, seed, salt, x, z, frequency), method.shouldGenerate(seed, salt, x, z, frequency),
                 "reducer " + method + ": seed " + seed + " at " + x + ", " + z + ", salt " + salt + ", frequency " + frequency);
             reducers++;
         }

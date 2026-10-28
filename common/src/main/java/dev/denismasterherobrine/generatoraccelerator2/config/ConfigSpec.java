@@ -11,8 +11,8 @@ import java.util.function.Supplier;
 
 /**
  * A config's layout and live values: a tree of tables holding typed, commented entries with defaults. Built once with a
- * {@link Builder}, then bound to a file by {@link ConfigManager#register}. The builder has the same shape as NeoForge's
- * {@code ModConfigSpec}, so the config classes read the same on both loaders. Until the file is loaded, every value reads
+ * {@link Builder}, then bound to a file by {@link ConfigManager#register}. The builder has the same shape as Forge's
+ * {@code ForgeConfigSpec}, so the config classes read the same on both loaders. Until the file is loaded, every value reads
  * as its default and {@link #isLoaded()} is false.
  */
 public final class ConfigSpec {

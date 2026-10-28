@@ -11,7 +11,7 @@ import java.util.List;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import org.junit.jupiter.api.Test;
 
@@ -57,7 +57,7 @@ class CarverExactnessTest {
     private static ProtoChunk afterSurface(TerrainHarness.Site site) {
         ProtoChunk chunk = site.center();
         TerrainHarness.vanillaSurface(site, chunk);
-        chunk.setPersistedStatus(ChunkStatus.SURFACE);
+        chunk.setStatus(ChunkStatus.SURFACE);
         return chunk;
     }
 

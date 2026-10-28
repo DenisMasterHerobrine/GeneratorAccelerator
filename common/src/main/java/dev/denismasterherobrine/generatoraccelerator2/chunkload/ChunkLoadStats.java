@@ -89,26 +89,8 @@ public final class ChunkLoadStats {
     // the client's water blocks given to the section mesher, and those that show no face (fluid.StillWater)
     public static final LongAdder WATER_MESHED = new LongAdder();
     public static final LongAdder WATER_HIDDEN = new LongAdder();
-    // the client's section occlusion graph (view.mixin.SectionOcclusionGraphMixin)
+    // the client's visibility graph (view.mixin.LevelRendererGraphMixin)
     public static final Timer GRAPH_REBUILD = new Timer();
-    public static final LongAdder GRAPH_SHOWN = new LongAdder();
-    public static final LongAdder GRAPH_TRAVEL = new LongAdder();
-    public static final AtomicLong GRAPH_TRAVEL_MAX = new AtomicLong();
-    public static final LongAdder GRAPH_KEPT = new LongAdder();
-    public static final LongAdder GRAPH_KEPT_TIMES = new LongAdder();
-
-    /** On the render thread, when a rebuilt graph is shown. {@code travel} is how far the camera moved meanwhile, in blocks. */
-    public static void graphShown(long travel, int kept) {
-        GRAPH_SHOWN.increment();
-        GRAPH_TRAVEL.add(travel);
-        if (travel > GRAPH_TRAVEL_MAX.get()) {
-            GRAPH_TRAVEL_MAX.set(travel);
-        }
-        if (kept > 0) {
-            GRAPH_KEPT.add(kept);
-            GRAPH_KEPT_TIMES.increment();
-        }
-    }
 
     /** Chunks counted as reloaded when they are read back from disk within this time of their unload. */
     private static final long RELOAD_WINDOW_MS = 60_000;
@@ -153,11 +135,9 @@ public final class ChunkLoadStats {
             t.reset();
         }
         for (LongAdder a : List.of(TICKETS_QUEUED, UNLOADS, RELOADS, RELOAD_AGE_MS, POI_PREFETCHED, POI_PREFETCH_USED, POI_READS,
-            ENTITY_CHUNKS, ENTITY_DEFERRED, FLUID_TICKS, FLUID_TICKS_SKIPPED, PREPARED, PREPARED_USED, PREPARED_STALE, WATER_MESHED, WATER_HIDDEN,
-            GRAPH_SHOWN, GRAPH_TRAVEL, GRAPH_KEPT, GRAPH_KEPT_TIMES)) {
+            ENTITY_CHUNKS, ENTITY_DEFERRED, FLUID_TICKS, FLUID_TICKS_SKIPPED, PREPARED, PREPARED_USED, PREPARED_STALE, WATER_MESHED, WATER_HIDDEN)) {
             a.reset();
         }
-        GRAPH_TRAVEL_MAX.set(0);
         ChunkyHolds.resetCounts();
         PresentChunks.ANSWERED.reset();
         UNLOADED.clear();
@@ -210,12 +190,8 @@ public final class ChunkLoadStats {
             out.add(String.format(Locale.ROOT, "client: water blocks meshed %,d, of them hidden in water left out %,d (%s)", meshed, hidden, percent(hidden, meshed))
                 + (StillWater.hiddenSkipOn() ? "" : " (skip off)"));
         }
-        long shown = GRAPH_SHOWN.sum();
         if (GRAPH_REBUILD.count() > 0) {
-            out.add("client: visible sections rebuilt " + GRAPH_REBUILD.describe() + "; camera moved until shown "
-                + (shown > 0 ? String.format(Locale.ROOT, "avg %.0f, max %d blocks", GRAPH_TRAVEL.sum() / (double) shown, GRAPH_TRAVEL_MAX.get()) : "-")
-                + "; sections at the view's edge kept " + String.format(Locale.ROOT, "%,d", GRAPH_KEPT.sum()) + " in "
-                + String.format(Locale.ROOT, "%,d", GRAPH_KEPT_TIMES.sum()) + " of " + String.format(Locale.ROOT, "%,d", shown) + " rebuilds");
+            out.add("client: visible sections rebuilt " + GRAPH_REBUILD.describe());
         }
         return out;
     }

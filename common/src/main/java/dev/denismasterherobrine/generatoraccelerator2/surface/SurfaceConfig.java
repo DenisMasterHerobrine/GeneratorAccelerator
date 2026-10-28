@@ -15,6 +15,7 @@ public final class SurfaceConfig {
     public static final ConfigSpec.BooleanValue DEEP_BANDS;
     public static final ConfigSpec.BooleanValue SECTION_BULK;
     public static final ConfigSpec.BooleanValue BIOME_PROGRAMS;
+    public static final ConfigSpec.BooleanValue LOOP_RULES;
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();
@@ -27,6 +28,8 @@ public final class SurfaceConfig {
         SECTION_BULK = b.comment("Rewrite whole sections at once where the deep part of the rules gives one result for every block.").define("sectionBulk", true);
         BIOME_PROGRAMS = b.comment("Compile, per biome met, the rules with that biome's biome conditions answered (mod packs test the biome against",
             "dozens of conditions per block).").define("biomePrograms", true);
+        LOOP_RULES = b.comment("Where vanilla builds a chunk's surface (another mod changes the build), apply the compiled rules inside vanilla's loop.").define(
+            "loopRules", true);
         b.pop();
         SPEC = b.build();
     }
@@ -50,4 +53,5 @@ public final class SurfaceConfig {
     public static boolean deepBands() { Boolean o = deepBandsOverride; return o != null ? o : get(DEEP_BANDS, true); }
     public static boolean sectionBulk() { Boolean o = sectionBulkOverride; return o != null ? o : get(SECTION_BULK, true); }
     public static boolean biomePrograms() { Boolean o = biomeProgramsOverride; return o != null ? o : get(BIOME_PROGRAMS, true); }
+    public static boolean loopRules() { return get(LOOP_RULES, true); }
 }

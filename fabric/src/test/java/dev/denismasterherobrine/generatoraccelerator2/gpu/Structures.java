@@ -62,7 +62,7 @@ final class Structures {
             int x = cx0 * 16 + r.nextInt(w * 16);
             int z = cz0 * 16 + r.nextInt(h * 16);
             boolean buried = r.nextInt(4) == 0;
-            TerrainAdjustment adj = buried ? TerrainAdjustment.ENCAPSULATE : surface[r.nextInt(surface.length)];
+            TerrainAdjustment adj = buried ? TerrainAdjustment.BURY : surface[r.nextInt(surface.length)];
             int baseY = buried ? -40 + r.nextInt(60) : 58 + r.nextInt(20);
             int count = 4 + r.nextInt(12);
             for (int p = 0; p < count; p++) {

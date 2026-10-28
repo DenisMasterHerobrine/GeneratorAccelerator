@@ -1,7 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
@@ -38,7 +37,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
@@ -121,10 +120,7 @@ public class GpuProbe {
             Method parameters = MultiNoiseBiomeSource.class.getDeclaredMethod("parameters");
             parameters.setAccessible(true);
             @SuppressWarnings("unchecked")
-            // under Lithostitched's injectors, the source they wrap
-            Object multi = LithostitchedGpuBiomes.isInjector(world.biomeSource)
-                ? LithostitchedGpuBiomes.base(world.biomeSource) : world.biomeSource;
-            Climate.ParameterList<Holder<Biome>> list = (Climate.ParameterList<Holder<Biome>>) parameters.invoke(multi);
+            Climate.ParameterList<Holder<Biome>> list = (Climate.ParameterList<Holder<Biome>>) parameters.invoke(world.biomeSource);
             Climate.RTree<Holder<Biome>> tree = list.index;
             List<Climate.RTree.Node<Holder<Biome>>> order = new ArrayList<>();
             List<int[]> children = new ArrayList<>();
@@ -821,10 +817,10 @@ public class GpuProbe {
         ProtoChunk c = w.emptyChunk(cx, cz);
         Beardifier beard = structures.beardifierFor(cx, cz);
         c.getOrCreateNoiseChunk(ch -> NoiseChunk.forChunk(ch, w.randomState, beard, w.settings, w.fluidPicker, Blender.empty()));
-        w.generator.createBiomes(w.randomState, Blender.empty(), null, c).join();
-        c.setPersistedStatus(ChunkStatus.BIOMES);
-        w.generator.fillFromNoise(Blender.empty(), w.randomState, null, c).join();
-        c.setPersistedStatus(ChunkStatus.NOISE);
+        w.generator.createBiomes(Runnable::run, w.randomState, Blender.empty(), null, c).join();
+        c.setStatus(ChunkStatus.BIOMES);
+        w.generator.fillFromNoise(Runnable::run, Blender.empty(), w.randomState, null, c).join();
+        c.setStatus(ChunkStatus.NOISE);
         return c;
     }
 
@@ -1192,13 +1188,13 @@ public class GpuProbe {
             long t0 = System.nanoTime();
             for (ProtoChunk c : chunks) {
                 world.noiseChunk(c);
-                world.generator.createBiomes(world.randomState, Blender.empty(), null, c).join();
-                c.setPersistedStatus(ChunkStatus.BIOMES);
+                world.generator.createBiomes(Runnable::run, world.randomState, Blender.empty(), null, c).join();
+                c.setStatus(ChunkStatus.BIOMES);
             }
             long t1 = System.nanoTime();
             for (ProtoChunk c : chunks) {
-                world.generator.fillFromNoise(Blender.empty(), world.randomState, null, c).join();
-                c.setPersistedStatus(ChunkStatus.NOISE);
+                world.generator.fillFromNoise(Runnable::run, Blender.empty(), world.randomState, null, c).join();
+                c.setStatus(ChunkStatus.NOISE);
             }
             long t2 = System.nanoTime();
             // the CPU's part of the same work when the GPU decides: rebuild 8x8 chunks from one region's output

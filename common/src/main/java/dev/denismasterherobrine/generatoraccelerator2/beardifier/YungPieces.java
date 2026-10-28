@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.beardifier;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Arrays;
 import java.util.Iterator;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunctions;
@@ -57,8 +58,10 @@ public final class YungPieces {
         }
         try {
             MethodType type = MethodType.methodType(Object.class, Beardifier.class);
-            pieces = MethodHandles.publicLookup().unreflect(beardifierClass.getMethod("yungsapi_getEnhancedPieceIterator")).asType(type);
-            junctions = MethodHandles.publicLookup().unreflect(beardifierClass.getMethod("yungsapi_getEnhancedJunctionIterator")).asType(type);
+            // YUNG's API 4.0 names the lists without its prefix
+            boolean prefixed = Arrays.stream(beardifierClass.getMethods()).anyMatch(m -> m.getName().equals("yungsapi_getEnhancedPieceIterator"));
+            pieces = MethodHandles.publicLookup().unreflect(beardifierClass.getMethod(prefixed ? "yungsapi_getEnhancedPieceIterator" : "getEnhancedRigidIterator")).asType(type);
+            junctions = MethodHandles.publicLookup().unreflect(beardifierClass.getMethod(prefixed ? "yungsapi_getEnhancedJunctionIterator" : "getEnhancedJunctionIterator")).asType(type);
         } catch (ReflectiveOperationException | RuntimeException e) {
             pieces = null;
             junctions = null;

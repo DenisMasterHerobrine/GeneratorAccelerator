@@ -87,7 +87,7 @@ public final class SurfaceCompiler {
 
         SurfaceProgram.Evaluator generate() throws Throwable {
             cw = new SafeClassWriter();
-            cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, "java/lang/Object", new String[] { EVALUATOR });
+            cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, "java/lang/Object", new String[] { EVALUATOR });
             cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "c", "[L" + STATE + ";", null, null).visitEnd();
             MethodVisitor ctor = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", CTOR_DESC, null, null);
             ctor.visitCode();
@@ -147,50 +147,43 @@ public final class SurfaceCompiler {
                 return;
             }
             budget -= rule instanceof Ir.Test t ? 1 + condSize(t.cond()) : 1;
-            switch (rule) {
-                case Ir.State s -> {
-                    mv.visitVarInsn(Opcodes.ALOAD, 0);
-                    mv.visitFieldInsn(Opcodes.GETFIELD, name, "c", "[L" + STATE + ";");
-                    push(mv, constant(s.state()));
-                    mv.visitInsn(Opcodes.AALOAD);
-                    if (s.state() == null) {
-                        mv.visitInsn(Opcodes.POP);
-                        mv.visitJumpInsn(Opcodes.GOTO, fail);
+            if (rule instanceof Ir.State s) {
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, name, "c", "[L" + STATE + ";");
+                push(mv, constant(s.state()));
+                mv.visitInsn(Opcodes.AALOAD);
+                if (s.state() == null) {
+                    mv.visitInsn(Opcodes.POP);
+                    mv.visitJumpInsn(Opcodes.GOTO, fail);
+                } else {
+                    mv.visitInsn(Opcodes.ARETURN);
+                }
+            } else if (rule instanceof Ir.Bands b) {
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "bands", "()L" + STATE + ";", false);
+                returnIfNonNull(mv, fail);
+            } else if (rule instanceof Ir.OpaqueRule o) {
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                push(mv, o.index());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "opaqueRule", "(I)L" + STATE + ";", false);
+                returnIfNonNull(mv, fail);
+            } else if (rule instanceof Ir.ExternRule e) {
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                push(mv, e.index());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "externRule", "(I)L" + STATE + ";", false);
+                returnIfNonNull(mv, fail);
+            } else if (rule instanceof Ir.Test t) {
+                emitCondJump(mv, t.cond(), fail, false);
+                emitRule(mv, t.then(), fail, false);
+            } else if (rule instanceof Ir.Seq seq) {
+                List<Ir.Rule> rules = seq.rules();
+                for (int i = 0; i < rules.size(); i++) {
+                    if (i == rules.size() - 1) {
+                        emitRule(mv, rules.get(i), fail, false);
                     } else {
-                        mv.visitInsn(Opcodes.ARETURN);
-                    }
-                }
-                case Ir.Bands b -> {
-                    mv.visitVarInsn(Opcodes.ALOAD, 1);
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "bands", "()L" + STATE + ";", false);
-                    returnIfNonNull(mv, fail);
-                }
-                case Ir.OpaqueRule o -> {
-                    mv.visitVarInsn(Opcodes.ALOAD, 1);
-                    push(mv, o.index());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "opaqueRule", "(I)L" + STATE + ";", false);
-                    returnIfNonNull(mv, fail);
-                }
-                case Ir.ExternRule e -> {
-                    mv.visitVarInsn(Opcodes.ALOAD, 1);
-                    push(mv, e.index());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "externRule", "(I)L" + STATE + ";", false);
-                    returnIfNonNull(mv, fail);
-                }
-                case Ir.Test t -> {
-                    emitCondJump(mv, t.cond(), fail, false);
-                    emitRule(mv, t.then(), fail, false);
-                }
-                case Ir.Seq seq -> {
-                    List<Ir.Rule> rules = seq.rules();
-                    for (int i = 0; i < rules.size(); i++) {
-                        if (i == rules.size() - 1) {
-                            emitRule(mv, rules.get(i), fail, false);
-                        } else {
-                            Label next = new Label();
-                            emitRule(mv, rules.get(i), next, false);
-                            mv.visitLabel(next);
-                        }
+                        Label next = new Label();
+                        emitRule(mv, rules.get(i), next, false);
+                        mv.visitLabel(next);
                     }
                 }
             }
@@ -238,68 +231,64 @@ public final class SurfaceCompiler {
                 return;
             }
             mv.visitVarInsn(Opcodes.ALOAD, 1);
-            switch (cond) {
-                case Ir.Biome b -> {
-                    push(mv, b.id());
-                    push(mv, b.slot());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedBiome", "(II)Z", false);
-                }
-                case Ir.Temperature t -> {
-                    push(mv, t.id());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedTemperature", "(I)Z", false);
-                }
-                case Ir.Gradient g -> {
-                    push(mv, g.id());
-                    push(mv, g.slot());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedGradient", "(II)Z", false);
-                }
-                case Ir.Noise n -> {
-                    push(mv, n.slot());
-                    mv.visitLdcInsn(n.min());
-                    mv.visitLdcInsn(n.max());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "noise", "(IDD)Z", false);
-                }
-                case Ir.YCheck y -> {
-                    push(mv, y.anchor());
-                    push(mv, y.mult());
-                    push(mv, y.addStone() ? 1 : 0);
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "yCheck", "(IIZ)Z", false);
-                }
-                case Ir.Water w -> {
-                    push(mv, w.offset());
-                    push(mv, w.mult());
-                    push(mv, w.addStone() ? 1 : 0);
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "water", "(IIZ)Z", false);
-                }
-                case Ir.StoneDepth d -> {
-                    push(mv, d.offset());
-                    push(mv, d.addSurface() ? 1 : 0);
-                    push(mv, d.secondaryRange());
-                    push(mv, d.ceiling() ? 1 : 0);
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "stoneDepth", "(IZIZ)Z", false);
-                }
-                case Ir.Steep s -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "steep", "()Z", false);
-                case Ir.Slope sl -> {
-                    push(mv, sl.id());
-                    push(mv, sl.min());
-                    push(mv, sl.max());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedSlope", "(III)Z", false);
-                }
-                case Ir.Hole h -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "hole", "()Z", false);
-                case Ir.AboveSurface a -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "aboveSurface", "()Z", false);
-                case Ir.OpaqueCond o -> {
-                    push(mv, o.index());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "opaqueCond", "(I)Z", false);
-                }
-                case Ir.ExternCond e -> {
-                    push(mv, e.id());
-                    push(mv, e.index());
-                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedExtern", "(II)Z", false);
-                }
-                case Ir.Const c -> throw new IllegalStateException();
-                case Ir.Not n -> throw new IllegalStateException();
-                case Ir.All a -> throw new IllegalStateException();
-                case Ir.Any a -> throw new IllegalStateException();
+            if (cond instanceof Ir.Biome b) {
+                push(mv, b.id());
+                push(mv, b.slot());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedBiome", "(II)Z", false);
+            } else if (cond instanceof Ir.Temperature t) {
+                push(mv, t.id());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedTemperature", "(I)Z", false);
+            } else if (cond instanceof Ir.Gradient g) {
+                push(mv, g.id());
+                push(mv, g.slot());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedGradient", "(II)Z", false);
+            } else if (cond instanceof Ir.Noise n) {
+                push(mv, n.slot());
+                mv.visitLdcInsn(n.min());
+                mv.visitLdcInsn(n.max());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "noise", "(IDD)Z", false);
+            } else if (cond instanceof Ir.YCheck y) {
+                push(mv, y.anchor());
+                push(mv, y.mult());
+                push(mv, y.addStone() ? 1 : 0);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "yCheck", "(IIZ)Z", false);
+            } else if (cond instanceof Ir.Water w) {
+                push(mv, w.offset());
+                push(mv, w.mult());
+                push(mv, w.addStone() ? 1 : 0);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "water", "(IIZ)Z", false);
+            } else if (cond instanceof Ir.StoneDepth d) {
+                push(mv, d.offset());
+                push(mv, d.addSurface() ? 1 : 0);
+                push(mv, d.secondaryRange());
+                push(mv, d.ceiling() ? 1 : 0);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "stoneDepth", "(IZIZ)Z", false);
+            } else if (cond instanceof Ir.Steep s) {
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "steep", "()Z", false);
+            } else if (cond instanceof Ir.Slope sl) {
+                push(mv, sl.id());
+                push(mv, sl.min());
+                push(mv, sl.max());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedSlope", "(III)Z", false);
+            } else if (cond instanceof Ir.Hole h) {
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "hole", "()Z", false);
+            } else if (cond instanceof Ir.AboveSurface a) {
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "aboveSurface", "()Z", false);
+            } else if (cond instanceof Ir.OpaqueCond o) {
+                push(mv, o.index());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "opaqueCond", "(I)Z", false);
+            } else if (cond instanceof Ir.ExternCond e) {
+                push(mv, e.id());
+                push(mv, e.index());
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, EVAL, "cachedExtern", "(II)Z", false);
+            } else if (cond instanceof Ir.Const c) {
+                throw new IllegalStateException();
+            } else if (cond instanceof Ir.Not n) {
+                throw new IllegalStateException();
+            } else if (cond instanceof Ir.All a) {
+                throw new IllegalStateException();
+            } else if (cond instanceof Ir.Any a) {
+                throw new IllegalStateException();
             }
             mv.visitJumpInsn(jumpIf ? Opcodes.IFNE : Opcodes.IFEQ, target);
         }
@@ -323,28 +312,32 @@ public final class SurfaceCompiler {
             if (cached != null) {
                 return cached;
             }
-            int n = switch (rule) {
-                case Ir.Seq seq -> {
-                    int sum = 1;
-                    for (Ir.Rule r : seq.rules()) {
-                        sum += size(r);
-                    }
-                    yield sum;
+            int n;
+            if (rule instanceof Ir.Seq seq) {
+                int sum = 1;
+                for (Ir.Rule r : seq.rules()) {
+                    sum += size(r);
                 }
-                case Ir.Test t -> 1 + condSize(t.cond()) + size(t.then());
-                default -> 1;
-            };
+                n = sum;
+            } else if (rule instanceof Ir.Test t) {
+                n = 1 + condSize(t.cond()) + size(t.then());
+            } else {
+                n = 1;
+            }
             sizes.put(rule, n);
             return n;
         }
 
         private static int condSize(Ir.Cond c) {
-            return switch (c) {
-                case Ir.Not n -> 1 + condSize(n.target());
-                case Ir.All a -> 1 + condsSize(a.conds());
-                case Ir.Any a -> 1 + condsSize(a.conds());
-                default -> 1;
-            };
+            if (c instanceof Ir.Not n) {
+                return 1 + condSize(n.target());
+            } else if (c instanceof Ir.All a) {
+                return 1 + condsSize(a.conds());
+            } else if (c instanceof Ir.Any a) {
+                return 1 + condsSize(a.conds());
+            } else {
+                return 1;
+            }
         }
 
         private static int condsSize(List<Ir.Cond> conds) {

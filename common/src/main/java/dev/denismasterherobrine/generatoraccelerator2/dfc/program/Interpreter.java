@@ -27,100 +27,122 @@ public final class Interpreter {
     }
 
     public double eval(Node node, DensityFunction.FunctionContext ctx) {
-        return switch (node) {
-            case Node.Const c -> c.value();
-            case Node.Ap2 a -> {
-                double d0 = eval(a.a(), ctx);
-                yield switch (a.type()) {
-                    case ADD -> d0 + eval(a.b(), ctx);
-                    case MUL -> d0 == 0.0 ? 0.0 : d0 * eval(a.b(), ctx);
-                    case MIN -> d0 < a.b().min() ? d0 : Math.min(d0, eval(a.b(), ctx));
-                    case MAX -> d0 > a.b().max() ? d0 : Math.max(d0, eval(a.b(), ctx));
+        if (node instanceof Node.Const c) {
+            return c.value();
+        } else if (node instanceof Node.Ap2 a) {
+            double d0 = eval(a.a(), ctx);
+            return switch (a.type()) {
+                case ADD -> d0 + eval(a.b(), ctx);
+                case MUL -> d0 == 0.0 ? 0.0 : d0 * eval(a.b(), ctx);
+                case MIN -> d0 < a.b().min() ? d0 : Math.min(d0, eval(a.b(), ctx));
+                case MAX -> d0 > a.b().max() ? d0 : Math.max(d0, eval(a.b(), ctx));
+            };
+        } else if (node instanceof Node.MulOrAdd m) {
+            double v = eval(m.input(), ctx);
+            return m.mul() ? v * m.argument() : v + m.argument();
+        } else if (node instanceof Node.Mapped m) {
+            return mapped(m.type(), eval(m.input(), ctx));
+        } else if (node instanceof Node.Clamp c) {
+            return clamp(eval(c.input(), ctx), c.lo(), c.hi());
+        } else if (node instanceof Node.RangeChoice r) {
+            double d0 = eval(r.input(), ctx);
+            return d0 >= r.minInclusive() && d0 < r.maxExclusive() ? eval(r.inRange(), ctx) : eval(r.outRange(), ctx);
+        } else if (node instanceof Node.YGradient y) {
+            return clampedMap((double) ctx.blockY(), (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
+        } else if (node instanceof Node.Noise n) {
+            return specs[n.spec()].getValue((double) ctx.blockX() * n.xzScale(), (double) ctx.blockY() * n.yScale(), (double) ctx.blockZ() * n.xzScale());
+        } else if (node instanceof Node.ShiftedNoise s) {
+            double d0 = (double) ctx.blockX() * s.xzScale() + eval(s.shiftX(), ctx);
+            double d1 = (double) ctx.blockY() * s.yScale() + eval(s.shiftY(), ctx);
+            double d2 = (double) ctx.blockZ() * s.xzScale() + eval(s.shiftZ(), ctx);
+            return specs[s.spec()].getValue(d0, d1, d2);
+        } else if (node instanceof Node.ShiftA s) {
+            return specs[s.spec()].getValue((double) ctx.blockX() * 0.25, 0.0, (double) ctx.blockZ() * 0.25) * 4.0;
+        } else if (node instanceof Node.ShiftB s) {
+            return specs[s.spec()].getValue((double) ctx.blockZ() * 0.25, (double) ctx.blockX() * 0.25, 0.0) * 4.0;
+        } else if (node instanceof Node.Shift s) {
+            return specs[s.spec()].getValue((double) ctx.blockX() * 0.25, (double) ctx.blockY() * 0.25, (double) ctx.blockZ() * 0.25) * 4.0;
+        } else if (node instanceof Node.Weird w) {
+            double input = eval(w.input(), ctx);
+            double d0 = w.type1() ? rarity3D(input) : rarity2D(input);
+            double noise = w.spec() < 0 ? 0.0 : specs[w.spec()].getValue((double) ctx.blockX() / d0, (double) ctx.blockY() / d0, (double) ctx.blockZ() / d0);
+            return d0 * Math.abs(noise);
+        } else if (node instanceof Node.Spline s) {
+            return (double) spline(s.spline(), ctx);
+        } else if (node instanceof Node.Blended b) {
+            return blended[b.spec()].compute(ctx.blockX(), ctx.blockY(), ctx.blockZ());
+        } else if (node instanceof Node.BlendDensity b) {
+            return ctx.getBlender().blendDensity(ctx, eval(b.input(), ctx));
+        } else if (node instanceof Node.BlendAlpha a) {
+            return 1.0;
+        } else if (node instanceof Node.BlendOffset o) {
+            return 0.0;
+        } else if (node instanceof Node.Beardifier b) {
+            return b.vanilla().compute(ctx);
+        } else if (node instanceof Node.EndIslands e) {
+            return e.vanilla().compute(ctx);
+        } else if (node instanceof Node.Marker m) {
+            return eval(m.child(), ctx);
+        } else if (node instanceof Node.Unsupported u) {
+            return u.vanilla().compute(ctx);
+        } else if (node instanceof Node.Select s) {
+            return jumps(s.cond(), ctx) ? eval(s.whenJump(), ctx) : eval(s.whenFall(), ctx);
+        } else if (node instanceof Node.StaticCall c) {
+            if (c.owner().equals("$op")) {
+                double a = eval((Node) c.args().get(0), ctx);
+                double b = eval((Node) c.args().get(1), ctx);
+                return switch (c.name()) {
+                    case "dadd" -> a + b;
+                    case "dsub" -> a - b;
+                    case "dmul" -> a * b;
+                    case "ddiv" -> a / b;
+                    default -> a % b;
                 };
             }
-            case Node.MulOrAdd m -> {
-                double v = eval(m.input(), ctx);
-                yield m.mul() ? v * m.argument() : v + m.argument();
-            }
-            case Node.Mapped m -> mapped(m.type(), eval(m.input(), ctx));
-            case Node.Clamp c -> clamp(eval(c.input(), ctx), c.lo(), c.hi());
-            case Node.RangeChoice r -> {
-                double d0 = eval(r.input(), ctx);
-                yield d0 >= r.minInclusive() && d0 < r.maxExclusive() ? eval(r.inRange(), ctx) : eval(r.outRange(), ctx);
-            }
-            case Node.YGradient y -> clampedMap((double) ctx.blockY(), (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
-            case Node.Noise n -> specs[n.spec()].getValue((double) ctx.blockX() * n.xzScale(), (double) ctx.blockY() * n.yScale(), (double) ctx.blockZ() * n.xzScale());
-            case Node.ShiftedNoise s -> {
-                double d0 = (double) ctx.blockX() * s.xzScale() + eval(s.shiftX(), ctx);
-                double d1 = (double) ctx.blockY() * s.yScale() + eval(s.shiftY(), ctx);
-                double d2 = (double) ctx.blockZ() * s.xzScale() + eval(s.shiftZ(), ctx);
-                yield specs[s.spec()].getValue(d0, d1, d2);
-            }
-            case Node.ShiftA s -> specs[s.spec()].getValue((double) ctx.blockX() * 0.25, 0.0, (double) ctx.blockZ() * 0.25) * 4.0;
-            case Node.ShiftB s -> specs[s.spec()].getValue((double) ctx.blockZ() * 0.25, (double) ctx.blockX() * 0.25, 0.0) * 4.0;
-            case Node.Shift s -> specs[s.spec()].getValue((double) ctx.blockX() * 0.25, (double) ctx.blockY() * 0.25, (double) ctx.blockZ() * 0.25) * 4.0;
-            case Node.Weird w -> {
-                double input = eval(w.input(), ctx);
-                double d0 = w.type1() ? rarity3D(input) : rarity2D(input);
-                double noise = w.spec() < 0 ? 0.0 : specs[w.spec()].getValue((double) ctx.blockX() / d0, (double) ctx.blockY() / d0, (double) ctx.blockZ() / d0);
-                yield d0 * Math.abs(noise);
-            }
-            case Node.Spline s -> (double) spline(s.spline(), ctx);
-            case Node.Blended b -> blended[b.spec()].compute(ctx.blockX(), ctx.blockY(), ctx.blockZ());
-            case Node.BlendDensity b -> ctx.getBlender().blendDensity(ctx, eval(b.input(), ctx));
-            case Node.BlendAlpha a -> 1.0;
-            case Node.BlendOffset o -> 0.0;
-            case Node.Beardifier b -> b.vanilla().compute(ctx);
-            case Node.EndIslands e -> e.vanilla().compute(ctx);
-            case Node.Marker m -> eval(m.child(), ctx);
-            case Node.Unsupported u -> u.vanilla().compute(ctx);
-            case Node.Select s -> jumps(s.cond(), ctx) ? eval(s.whenJump(), ctx) : eval(s.whenFall(), ctx);
-            case Node.StaticCall c -> {
-                if (c.owner().equals("$op")) {
-                    double a = eval((Node) c.args().get(0), ctx);
-                    double b = eval((Node) c.args().get(1), ctx);
-                    yield switch (c.name()) {
-                        case "dadd" -> a + b;
-                        case "dsub" -> a - b;
-                        case "dmul" -> a * b;
-                        case "ddiv" -> a / b;
-                        default -> a % b;
-                    };
-                }
-                yield (double) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
-            }
-            case Node.NoiseAt n -> specs[n.spec()].getValue(eval(n.x(), ctx), eval(n.y(), ctx), eval(n.z(), ctx));
-            case Node.IntToDouble i -> (double) evalInt(i.value(), ctx);
-            case Node.RoundFloat r -> (double) (float) eval(r.value(), ctx);
-        };
+            return (double) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
+        } else if (node instanceof Node.NoiseAt n) {
+            return specs[n.spec()].getValue(eval(n.x(), ctx), eval(n.y(), ctx), eval(n.z(), ctx));
+        } else if (node instanceof Node.IntToDouble i) {
+            return (double) evalInt(i.value(), ctx);
+        } else if (node instanceof Node.RoundFloat r) {
+            return (double) (float) eval(r.value(), ctx);
+        } else {
+            throw new IllegalStateException(String.valueOf(node));
+        }
     }
 
     public int evalInt(INode node, DensityFunction.FunctionContext ctx) {
-        return switch (node) {
-            case INode.IntConst c -> c.value();
-            case INode.IntCoord c -> c.axis() == 0 ? ctx.blockX() : c.axis() == 1 ? ctx.blockY() : ctx.blockZ();
-            case INode.IntBin b -> {
-                int x = evalInt(b.a(), ctx);
-                int y = evalInt(b.b(), ctx);
-                yield switch (b.op()) {
-                    case ADD -> x + y;
-                    case SUB -> x - y;
-                    case MUL -> x * y;
-                    case DIV -> x / y;
-                    case REM -> x % y;
-                    case SHL -> x << y;
-                    case SHR -> x >> y;
-                    case USHR -> x >>> y;
-                    case AND -> x & y;
-                    case OR -> x | y;
-                    case XOR -> x ^ y;
-                };
-            }
-            case INode.IntNeg g -> -evalInt(g.a(), ctx);
-            case INode.DoubleToInt d -> (int) eval(d.value(), ctx);
-            case INode.IntStaticCall c -> (int) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
-            case INode.SelectInt s -> jumps(s.cond(), ctx) ? evalInt(s.whenJump(), ctx) : evalInt(s.whenFall(), ctx);
-        };
+        if (node instanceof INode.IntConst c) {
+            return c.value();
+        } else if (node instanceof INode.IntCoord c) {
+            return c.axis() == 0 ? ctx.blockX() : c.axis() == 1 ? ctx.blockY() : ctx.blockZ();
+        } else if (node instanceof INode.IntBin b) {
+            int x = evalInt(b.a(), ctx);
+            int y = evalInt(b.b(), ctx);
+            return switch (b.op()) {
+                case ADD -> x + y;
+                case SUB -> x - y;
+                case MUL -> x * y;
+                case DIV -> x / y;
+                case REM -> x % y;
+                case SHL -> x << y;
+                case SHR -> x >> y;
+                case USHR -> x >>> y;
+                case AND -> x & y;
+                case OR -> x | y;
+                case XOR -> x ^ y;
+            };
+        } else if (node instanceof INode.IntNeg g) {
+            return -evalInt(g.a(), ctx);
+        } else if (node instanceof INode.DoubleToInt d) {
+            return (int) eval(d.value(), ctx);
+        } else if (node instanceof INode.IntStaticCall c) {
+            return (int) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
+        } else if (node instanceof INode.SelectInt s) {
+            return jumps(s.cond(), ctx) ? evalInt(s.whenJump(), ctx) : evalInt(s.whenFall(), ctx);
+        } else {
+            throw new IllegalStateException(String.valueOf(node));
+        }
     }
 
     private Object[] callArgs(List<Object> args, DensityFunction.FunctionContext ctx) {

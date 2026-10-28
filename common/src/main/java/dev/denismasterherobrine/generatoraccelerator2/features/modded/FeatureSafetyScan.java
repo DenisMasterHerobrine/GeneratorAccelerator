@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.modded;
 
+import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.io.InputStream;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -28,7 +29,9 @@ import org.objectweb.asm.tree.analysis.SourceValue;
 /**
  * Looks through a modded feature's code for state shared between placements. Two patterns count: a static field written
  * outside class initialization, and a static collection or array changed in place. A change in place is the receiver of
- * a JDK collection's mutating call, or the array of an element store, traced back through locals to a static field.
+ * a JDK collection's mutating call, or the array of an element store, traced back through locals to a static field. A
+ * feature is one object for every placement, so the same counts for the fields of its own class and its modded
+ * superclasses outside their constructors (Blueprint's trees keep their log positions in such fields).
  * Decorations run on several threads at once, each in its own part of the world. So a feature that keeps such state can
  * see another placement's half-done changes. Vanilla ran all decorations on one thread. The scan reads only the bytecode.
  * It covers the feature's own methods and those of its modded superclasses. It then follows the calls (and lambdas) into
@@ -72,27 +75,123 @@ public final class FeatureSafetyScan {
     @Nullable
     public static String sharedState(Class<?> type, boolean followInstantiated, int maxMethods, boolean capIsShared, Set<String> ignored) {
         if (CLASSES.get() != null) {
-            return scan(type, followInstantiated, maxMethods, capIsShared, ignored);
+            return scan(type, followInstantiated, maxMethods, capIsShared, ignored, null);
         }
         CLASSES.set(new HashMap<>());
         try {
-            return scan(type, followInstantiated, maxMethods, capIsShared, ignored);
+            return scan(type, followInstantiated, maxMethods, capIsShared, ignored, null);
         } finally {
             CLASSES.remove();
         }
     }
 
+    /** The shared object's own fields a scan met outside constructors: the ones written, and the collections and arrays read. */
+    private static final class OwnFields {
+        final Set<String> written = new HashSet<>();
+        final Set<String> containersRead = new HashSet<>();
+    }
+
+    private static final String PLACE = "place(Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;)Z";
+
+    /**
+     * True when a feature's placements share state only through the feature's own fields, and its {@code place} assigns every one
+     * of those fields anew before anything reads them (Blueprint's trees: their log and foliage sets). Each placement then starts
+     * from fresh values, so a placement on a copy of the feature object does what a placement on the object itself does, and
+     * copies on several threads share nothing ({@link FeatureCopies}). Static state, or a field read before it is assigned, rules
+     * that out.
+     */
+    public static boolean perPlacementState(Class<?> type) {
+        boolean outer = CLASSES.get() == null;
+        if (outer) {
+            CLASSES.set(new HashMap<>());
+        }
+        try {
+            OwnFields ownFields = new OwnFields();
+            if (scan(type, false, MAX_METHODS, true, Set.of(), ownFields) != null) {
+                return false;
+            }
+            Set<String> needed = new HashSet<>(ownFields.written);
+            needed.addAll(ownFields.containersRead);
+            Set<String> assigned = assignedFirst(type);
+            return !needed.isEmpty() && assigned != null && assigned.containsAll(needed);
+        } finally {
+            if (outer) {
+                CLASSES.remove();
+            }
+        }
+    }
+
+    /**
+     * The own fields the feature's {@code place} assigns before anything else can read them: the stores at its start, where only
+     * locals, constants, new JDK or library objects and calls into vanilla or library classes come first. Null without such a method.
+     */
     @Nullable
-    private static String scan(Class<?> type, boolean followInstantiated, int maxMethods, boolean capIsShared, Set<String> ignored) {
+    private static Set<String> assignedFirst(Class<?> type) {
+        ClassLoader loader = type.getClassLoader();
+        Set<String> own = new HashSet<>();
+        MethodNode place = null;
+        for (Class<?> c = type; c != null && !isVanillaOrLibrary(c.getName()); c = c.getSuperclass()) {
+            ClassNode node = node(c.getName().replace('.', '/'), loader);
+            if (node == null) {
+                return null;
+            }
+            own.add(node.name);
+            for (MethodNode m : node.methods) {
+                if (place == null && (m.access & Opcodes.ACC_STATIC) == 0 && Names.mojangMethodKey(m.name, m.desc).equals(PLACE)) {
+                    place = m;
+                }
+            }
+        }
+        if (place == null || place.instructions == null) {
+            return null;
+        }
+        Set<String> assigned = new HashSet<>();
+        for (AbstractInsnNode insn = place.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            int op = insn.getOpcode();
+            if (op < 0) {
+                // labels, line numbers, frames
+                continue;
+            }
+            if (insn instanceof FieldInsnNode f && op == Opcodes.PUTFIELD && own.contains(f.owner)) {
+                assigned.add(f.name);
+            } else if (insn instanceof MethodInsnNode call) {
+                // a private method or a super call may read a field
+                boolean special = op == Opcodes.INVOKESPECIAL && !call.name.equals("<init>");
+                if (special || own.contains(call.owner) || !isVanillaOrLibrary(call.owner.replace('/', '.'))) {
+                    break;
+                }
+            } else if (insn instanceof TypeInsnNode t) {
+                if (op == Opcodes.NEW && !isVanillaOrLibrary(t.desc.replace('/', '.'))) {
+                    break;
+                }
+            } else if (!(op >= Opcodes.ACONST_NULL && op <= Opcodes.ALOAD || op >= Opcodes.ISTORE && op <= Opcodes.ASTORE || op == Opcodes.DUP
+                || op == Opcodes.POP)) {
+                // a branch, a field read, an array access, a lambda: anything that could read a field comes after
+                break;
+            }
+        }
+        return assigned;
+    }
+
+    /**
+     * @param ownFields where the writes of the shared object's own fields and the reads of its own collections go, instead of
+     *                  counting as shared state; null to count them
+     */
+    @Nullable
+    private static String scan(Class<?> type, boolean followInstantiated, int maxMethods, boolean capIsShared, Set<String> ignored,
+                               @Nullable OwnFields ownFields) {
         ClassLoader loader = type.getClassLoader();
         ArrayDeque<String[]> work = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();
+        // the classes of the one object every placement shares: the type and its modded superclasses
+        Set<String> own = new HashSet<>();
         Set<String> instantiated = new HashSet<>();
         for (Class<?> c = type; c != null && !isVanillaOrLibrary(c.getName()); c = c.getSuperclass()) {
             ClassNode node = node(c.getName().replace('.', '/'), loader);
             if (node == null) {
                 return "its bytecode could not be read";
             }
+            own.add(node.name);
             for (MethodNode m : node.methods) {
                 work.add(new String[] { node.name, m.name, m.desc });
             }
@@ -119,8 +218,21 @@ public final class FeatureSafetyScan {
                     if (f.getOpcode() == Opcodes.PUTSTATIC && !init && !isJdk(f.owner) && !ignored.contains(f.owner + "." + f.name)) {
                         return "writes the static field " + simple(f.owner) + "." + f.name + " (in " + simple(declaring[0].name) + "." + method.name + ")";
                     }
+                    if (f.getOpcode() == Opcodes.PUTFIELD && own.contains(f.owner) && !method.name.equals("<init>") && !ignored.contains(f.owner + "." + f.name)) {
+                        if (ownFields != null) {
+                            ownFields.written.add(f.name);
+                            continue;
+                        }
+                        return "writes its own field " + simple(f.owner) + "." + f.name + " (in " + simple(declaring[0].name) + "." + method.name + ")";
+                    }
                     if (f.getOpcode() == Opcodes.GETSTATIC && sharedContainer(f)) {
                         readsContainer = true;
+                    } else if (f.getOpcode() == Opcodes.GETFIELD && own.contains(f.owner) && container(f.desc) && !method.name.equals("<init>")) {
+                        if (ownFields != null) {
+                            ownFields.containersRead.add(f.name);
+                        } else {
+                            readsContainer = true;
+                        }
                     }
                 } else if (insn instanceof MethodInsnNode call) {
                     if (!isVanillaOrLibrary(call.owner.replace('/', '.'))) {
@@ -148,9 +260,9 @@ public final class FeatureSafetyScan {
                 }
             }
             if (readsContainer && !init) {
-                String changed = changesStaticContainer(declaring[0].name, method, ignored);
+                String changed = changesContainer(declaring[0].name, method, ignored, ownFields != null ? Set.of() : own);
                 if (changed != null) {
-                    return "changes the static " + changed + " (in " + simple(declaring[0].name) + "." + method.name + ")";
+                    return "changes the " + changed + " (in " + simple(declaring[0].name) + "." + method.name + ")";
                 }
             }
         }
@@ -200,11 +312,12 @@ public final class FeatureSafetyScan {
     }
 
     /**
-     * The static field whose collection or array this method changes in place, or null. A change is a mutating JDK collection
-     * call on the field's value, or an element store into it. The value is traced back through locals and casts.
+     * The static field, or the field of the shared object's own classes ({@code own}), whose collection or array this method
+     * changes in place, or null. A change is a mutating JDK collection call on the field's value, or an element store into it.
+     * The value is traced back through locals and casts.
      */
     @Nullable
-    private static String changesStaticContainer(String owner, MethodNode method, Set<String> ignored) {
+    private static String changesContainer(String owner, MethodNode method, Set<String> ignored, Set<String> own) {
         Frame<SourceValue>[] frames;
         try {
             frames = new Analyzer<>(new SourceInterpreter()).analyze(owner, method);
@@ -228,23 +341,25 @@ public final class FeatureSafetyScan {
                 target = frame.getStack(frame.getStackSize() - 1 - Type.getArgumentTypes(call.desc).length);
             }
             if (target != null) {
-                FieldInsnNode field = staticSource(target, frames, method, 0);
-                if (field != null && !ignored.contains(field.owner + "." + field.name) && (field.desc.startsWith("[") || !concurrentStatic(field))) {
-                    return (field.desc.startsWith("[") ? "array " : "collection ") + simple(field.owner) + "." + field.name;
+                FieldInsnNode field = containerSource(target, frames, method, 0, own);
+                boolean isStatic = field != null && field.getOpcode() == Opcodes.GETSTATIC;
+                if (field != null && !ignored.contains(field.owner + "." + field.name) && (field.desc.startsWith("[") || !isStatic || !concurrentStatic(field))) {
+                    return (isStatic ? "static " : "own ") + (field.desc.startsWith("[") ? "array " : "collection ") + simple(field.owner) + "." + field.name;
                 }
             }
         }
         return null;
     }
 
-    /** The GETSTATIC of a shared container a value comes from, through local variables, casts and duplicates. */
+    /** The read of a shared container a value comes from (a static field, or a field of {@code own}), through local variables, casts and duplicates. */
     @Nullable
-    private static FieldInsnNode staticSource(SourceValue value, Frame<SourceValue>[] frames, MethodNode method, int depth) {
+    private static FieldInsnNode containerSource(SourceValue value, Frame<SourceValue>[] frames, MethodNode method, int depth, Set<String> own) {
         if (depth > 8) {
             return null;
         }
         for (AbstractInsnNode source : value.insns) {
-            if (source instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETSTATIC && sharedContainer(f)) {
+            if (source instanceof FieldInsnNode f && (f.getOpcode() == Opcodes.GETSTATIC && sharedContainer(f)
+                || f.getOpcode() == Opcodes.GETFIELD && own.contains(f.owner) && container(f.desc))) {
                 return f;
             }
             int index = method.instructions.indexOf(source);
@@ -259,7 +374,7 @@ public final class FeatureSafetyScan {
                 next = before.getStack(before.getStackSize() - 1);
             }
             if (next != null) {
-                FieldInsnNode f = staticSource(next, frames, method, depth + 1);
+                FieldInsnNode f = containerSource(next, frames, method, depth + 1, own);
                 if (f != null) {
                     return f;
                 }
@@ -270,10 +385,11 @@ public final class FeatureSafetyScan {
 
     /** A static field of a modded class holding changeable contents: an array or one of the JDK's non-concurrent collections. */
     private static boolean sharedContainer(FieldInsnNode f) {
-        if (isVanillaOrLibrary(f.owner.replace('/', '.'))) {
-            return false;
-        }
-        String desc = f.desc;
+        return !isVanillaOrLibrary(f.owner.replace('/', '.')) && container(f.desc);
+    }
+
+    /** A field type holding changeable contents: an array or one of the JDK's non-concurrent collections. */
+    private static boolean container(String desc) {
         if (desc.startsWith("[")) {
             return true;
         }
@@ -307,11 +423,11 @@ public final class FeatureSafetyScan {
         return internal.startsWith("java/") || internal.startsWith("javax/") || internal.startsWith("jdk/") || internal.startsWith("sun/");
     }
 
-    /** Vanilla's, the JDK's and the libraries Minecraft and NeoForge ship. Not followed: their static state is not the feature's. */
+    /** Vanilla's, the JDK's and the libraries Minecraft and Forge ship. Not followed: their static state is not the feature's. */
     static boolean isVanillaOrLibrary(String name) {
         return name.startsWith("net.minecraft.") || name.startsWith("com.mojang.") || name.startsWith("java.") || name.startsWith("javax.")
             || name.startsWith("jdk.") || name.startsWith("sun.") || name.startsWith("it.unimi.dsi.") || name.startsWith("com.google.")
-            || name.startsWith("org.slf4j.") || name.startsWith("org.apache.") || name.startsWith("net.neoforged.") || name.startsWith("net.fabricmc.") || name.startsWith("org.joml.");
+            || name.startsWith("org.slf4j.") || name.startsWith("org.apache.") || name.startsWith("net.minecraftforge.") || name.startsWith("cpw.mods.") || name.startsWith("net.fabricmc.") || name.startsWith("org.joml.");
     }
 
     private static String simple(String internal) {

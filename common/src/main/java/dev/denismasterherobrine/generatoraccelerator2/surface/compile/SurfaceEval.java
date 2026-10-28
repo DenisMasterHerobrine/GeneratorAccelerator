@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface.compile;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.SurfaceContextAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.SurfaceSystemAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
 import java.util.Arrays;
@@ -185,10 +186,46 @@ public final class SurfaceEval {
         blockStamp += 2;
     }
 
+    // vanilla's rule context, when vanilla's loop drives this evaluation (surface.LoopRules)
+    private SurfaceContextAccessor external;
+    private long followedXZ = Long.MIN_VALUE;
+    private long followedY = Long.MIN_VALUE;
+    private int minSurfaceStamp;
+
+    /**
+     * Makes vanilla's rule context the source of the column's and the block's values. Vanilla's loop updates that context,
+     * {@link #sync} copies what changed. The biome comes from the context's own lookup.
+     */
+    public void follow(SurfaceContextAccessor context) {
+        external = context;
+    }
+
+    /** Takes the column and the block vanilla's context is at, where they changed since the last block. */
+    public void sync() {
+        SurfaceContextAccessor c = external;
+        long xz = c.ga2$lastUpdateXZ();
+        if (xz != followedXZ) {
+            followedXZ = xz;
+            blockX = c.ga2$blockX();
+            blockZ = c.ga2$blockZ();
+            surfaceDepth = c.ga2$surfaceDepth();
+            Arrays.fill(noiseDone, false);
+            secondaryDone = false;
+            steep = 0;
+            columnStamp += 2;
+            blockStamp += 2;
+        }
+        long y = c.ga2$lastUpdateY();
+        if (y != followedY) {
+            followedY = y;
+            updateY(c.ga2$stoneDepthAbove(), c.ga2$stoneDepthBelow(), c.ga2$waterHeight(), c.ga2$blockY());
+        }
+    }
+
     public Holder<Biome> biome() {
         Holder<Biome> b = biome;
         if (b == null) {
-            b = zoom.biome(blockX, blockY, blockZ);
+            b = zoom != null ? zoom.biome(blockX, blockY, blockZ) : external.ga2$biome().get();
             biome = b;
         }
         return b;
@@ -312,6 +349,11 @@ public final class SurfaceEval {
     }
 
     public boolean aboveSurface() {
+        if (external != null && minSurfaceStamp != columnStamp) {
+            // vanilla asks the level only where the condition is tested
+            minSurface = external.ga2$minSurfaceLevel();
+            minSurfaceStamp = columnStamp;
+        }
         return blockY >= minSurface;
     }
 

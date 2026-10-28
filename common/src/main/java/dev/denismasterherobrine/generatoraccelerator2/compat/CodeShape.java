@@ -106,29 +106,34 @@ public final class CodeShape {
                 continue;
             }
             b.append(op);
-            switch (insn) {
-                case MethodInsnNode n -> b.append(' ').append(Names.mojangClass(n.owner)).append('.').append(Names.mojangMethod(n.name)).append(Names.mojangDesc(n.desc)).append(n.itf ? " i" : "");
-                case FieldInsnNode n -> b.append(' ').append(Names.mojangClass(n.owner)).append('.').append(Names.mojangField(n.name)).append(':').append(Names.mojangDesc(n.desc));
-                case TypeInsnNode n -> b.append(' ').append(n.desc.startsWith("[") ? Names.mojangDesc(n.desc) : Names.mojangClass(n.desc));
-                case VarInsnNode n -> b.append(' ').append(n.var);
-                case IntInsnNode n -> b.append(' ').append(n.operand);
-                case LdcInsnNode n -> b.append(' ').append(n.cst.getClass().getSimpleName()).append(' ').append(n.cst);
-                case IincInsnNode n -> b.append(' ').append(n.var).append(',').append(n.incr);
-                case JumpInsnNode n -> b.append(" @").append(at.get(n.label));
-                case InvokeDynamicInsnNode n -> b.append(' ').append(n.name).append(n.desc).append(' ').append(n.bsm).append(Arrays.deepToString(n.bsmArgs));
-                case TableSwitchInsnNode n -> {
-                    b.append(' ').append(n.min).append(',').append(n.max).append(" @").append(at.get(n.dflt));
-                    n.labels.forEach(l -> b.append(',').append(at.get(l)));
+            if (insn instanceof MethodInsnNode n) {
+                b.append(' ').append(Names.mojangClass(n.owner)).append('.').append(Names.mojangMethod(n.name)).append(Names.mojangDesc(n.desc)).append(n.itf ? " i" : "");
+            } else if (insn instanceof FieldInsnNode n) {
+                b.append(' ').append(Names.mojangClass(n.owner)).append('.').append(Names.mojangField(n.name)).append(':').append(Names.mojangDesc(n.desc));
+            } else if (insn instanceof TypeInsnNode n) {
+                b.append(' ').append(n.desc.startsWith("[") ? Names.mojangDesc(n.desc) : Names.mojangClass(n.desc));
+            } else if (insn instanceof VarInsnNode n) {
+                b.append(' ').append(n.var);
+            } else if (insn instanceof IntInsnNode n) {
+                b.append(' ').append(n.operand);
+            } else if (insn instanceof LdcInsnNode n) {
+                b.append(' ').append(n.cst.getClass().getSimpleName()).append(' ').append(n.cst);
+            } else if (insn instanceof IincInsnNode n) {
+                b.append(' ').append(n.var).append(',').append(n.incr);
+            } else if (insn instanceof JumpInsnNode n) {
+                b.append(" @").append(at.get(n.label));
+            } else if (insn instanceof InvokeDynamicInsnNode n) {
+                b.append(' ').append(n.name).append(n.desc).append(' ').append(n.bsm).append(Arrays.deepToString(n.bsmArgs));
+            } else if (insn instanceof TableSwitchInsnNode n) {
+                b.append(' ').append(n.min).append(',').append(n.max).append(" @").append(at.get(n.dflt));
+                n.labels.forEach(l -> b.append(',').append(at.get(l)));
+            } else if (insn instanceof LookupSwitchInsnNode n) {
+                b.append(" @").append(at.get(n.dflt));
+                for (int i = 0; i < n.keys.size(); i++) {
+                    b.append(',').append(n.keys.get(i)).append(':').append(at.get(n.labels.get(i)));
                 }
-                case LookupSwitchInsnNode n -> {
-                    b.append(" @").append(at.get(n.dflt));
-                    for (int i = 0; i < n.keys.size(); i++) {
-                        b.append(',').append(n.keys.get(i)).append(':').append(at.get(n.labels.get(i)));
-                    }
-                }
-                case MultiANewArrayInsnNode n -> b.append(' ').append(Names.mojangDesc(n.desc)).append(' ').append(n.dims);
-                default -> {
-                }
+            } else if (insn instanceof MultiANewArrayInsnNode n) {
+                b.append(' ').append(Names.mojangDesc(n.desc)).append(' ').append(n.dims);
             }
             b.append(';');
         }

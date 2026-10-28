@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
  * The biome's own climate, read by {@code platform.fabric.FabricPlatformHooks}. This is an accessor rather than an access
- * widener entry because the common access widener also becomes NeoForge's access transformer. NeoForge has a coremod that
+ * widener entry because the common access widener also becomes Forge's access transformer. Forge has a coremod that
  * routes this field through the biome modifiers, and that coremod requires the field to stay private.
  */
 @Mixin(Biome.class)

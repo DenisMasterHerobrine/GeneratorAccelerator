@@ -11,8 +11,6 @@ import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch;
 import dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedInjectors;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryCells;
 import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Barnacles;
 import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaClusters;
@@ -32,6 +30,9 @@ import dev.denismasterherobrine.generatoraccelerator2.storage.RegionSync;
 import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import dev.denismasterherobrine.generatoraccelerator2.structure.HeightProbes;
 import dev.denismasterherobrine.generatoraccelerator2.structure.TemplatePlacement;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.FeatureCopies;
+import dev.denismasterherobrine.generatoraccelerator2.surface.LoopRules;
 import dev.denismasterherobrine.generatoraccelerator2.surface.NoiseBiomeMemo;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
@@ -46,7 +47,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 /** {@code /ga2 steps stats}: how many surface and carver steps ran on the worker pool or inline. */
 public final class StepsCommand {
@@ -59,41 +60,34 @@ public final class StepsCommand {
     }
 
     /**
-     * The dimension's chunk holders: loaded ones by their latest status, and those waiting to unload by why they still wait
-     * (a generation task's claim, a pending save dependency). A holder stays loaded, with its chunk, as long as either holds.
+     * The dimension's chunk holders: loaded ones by their latest status, and those waiting to unload. A holder waiting to unload
+     * keeps its chunk as long as a save dependency of it is pending.
      */
     private static int holders(CommandSourceStack source) {
         ChunkMap map = source.getLevel().getChunkSource().chunkMap;
         var acc = (ChunkMapHoldersAccessor) map;
         Map<String, Integer> byStatus = new TreeMap<>();
-        int loaded = 0, claimed = 0, saving = 0;
+        int loaded = 0, saving = 0;
         for (ChunkHolder holder : acc.ga2$updatingChunkMap().values()) {
             loaded++;
-            ChunkStatus status = holder.getLatestStatus();
-            byStatus.merge(status == null ? "none" : status.getName(), 1, Integer::sum);
-            if (holder.getGenerationRefCount() > 0) {
-                claimed++;
-            }
-            if (!holder.getSaveSyncFuture().isDone()) {
+            ChunkStatus status = holder.getLastAvailableStatus();
+            byStatus.merge(status == null ? "none" : status.toString(), 1, Integer::sum);
+            if (!holder.getChunkToSave().isDone()) {
                 saving++;
             }
         }
-        int pending = 0, pendingClaimed = 0, pendingSaving = 0;
+        int pending = 0, pendingSaving = 0;
         Map<String, Integer> pendingByStatus = new TreeMap<>();
         for (ChunkHolder holder : acc.ga2$pendingUnloads().values()) {
             pending++;
-            ChunkStatus status = holder.getLatestStatus();
-            pendingByStatus.merge(status == null ? "none" : status.getName(), 1, Integer::sum);
-            if (holder.getGenerationRefCount() > 0) {
-                pendingClaimed++;
-            }
-            if (!holder.getSaveSyncFuture().isDone()) {
+            ChunkStatus status = holder.getLastAvailableStatus();
+            pendingByStatus.merge(status == null ? "none" : status.toString(), 1, Integer::sum);
+            if (!holder.getChunkToSave().isDone()) {
                 pendingSaving++;
             }
         }
-        send(source, "holders loaded: " + loaded + " " + byStatus + "; claimed by generation tasks " + claimed + ", save dependency pending " + saving);
-        send(source, "holders waiting to unload: " + pending + " " + pendingByStatus + "; claimed by generation tasks " + pendingClaimed
-            + ", save dependency pending " + pendingSaving);
+        send(source, "holders loaded: " + loaded + " " + byStatus + "; save dependency pending " + saving);
+        send(source, "holders waiting to unload: " + pending + " " + pendingByStatus + "; save dependency pending " + pendingSaving);
         return 1;
     }
 
@@ -118,9 +112,14 @@ public final class StepsCommand {
         send(source, "surface builder: GA2 " + SurfaceHooks.CHUNKS_FAST.sum() + " (with other mods' rules "
             + SurfaceHooks.CHUNKS_OPAQUE.sum() + ", with their column code "
             + SurfaceHooks.CHUNKS_HOOKED.sum() + "), vanilla "
-            + SurfaceHooks.CHUNKS_VANILLA.sum() + "; deep columns "
+            + SurfaceHooks.CHUNKS_VANILLA.sum() + " (with the compiled rules " + LoopRules.CHUNKS.sum() + "); deep columns "
             + SurfaceHooks.COLUMNS_DEEP.sum() + ", bulk sections "
             + SurfaceHooks.SECTIONS_BULK.sum());
+        if (FrostedCaves.active()) {
+            send(source, "YUNG's Frosted Caves water by GA2: aquifers with every cell's biome sure " + FrostedCaves.SURE.sum() + ", in vanilla's order "
+                + FrostedCaves.UNSURE.sum() + ", without the step " + FrostedCaves.NO_REGISTRY.sum());
+        }
+        send(source, "modded features on per-thread copies: " + FeatureCopies.MADE.sum() + " copies made");
         send(source, "carver runner: GA2 " + CarverRunner.CHUNKS_FAST.sum() + ", vanilla "
             + CarverRunner.CHUNKS_VANILLA.sum() + "; starts replayed "
             + CarverRunner.CARVES_REPLAYED.sum() + ", other carvers "
@@ -226,18 +225,6 @@ public final class StepsCommand {
             long verified = BiolithSearch.VERIFIED.get();
             send(source, "Biolith's climate searches: through GA2's flat tree " + biolithFlat + ", its own " + biolithOwn
                 + (verified > 0 ? "; verified " + verified + ", differing " + BiolithSearch.DIFFERING.get() : ""));
-        }
-        long regionComputed = LithostitchedRegions.COMPUTED.sum();
-        long regionRemembered = LithostitchedRegions.REMEMBERED.sum();
-        if (regionComputed + regionRemembered > 0) {
-            send(source, "Lithostitched's region function (column-only): computed " + regionComputed + ", remembered " + regionRemembered);
-        }
-        long walks = LithostitchedInjectors.filtered();
-        if (walks > 0) {
-            long checked = LithostitchedInjectors.CHECKED.sum();
-            send(source, "Lithostitched's partial replacements: " + walks + " walks over the biome's subset, "
-                + LithostitchedInjectors.skipped() + " replacements skipped"
-                + (checked > 0 ? "; noted biome checked " + checked + ", wrong " + LithostitchedInjectors.MISNOTED.sum() : ""));
         }
         if (!HookTargets.unchanged(HookTargets.SURFACE_ENTRY)) {
             send(source, "buildSurface(WorldGenRegion, ...) is changed by " + HookTargets.foreign(HookTargets.SURFACE_ENTRY) + "; it is called as is");

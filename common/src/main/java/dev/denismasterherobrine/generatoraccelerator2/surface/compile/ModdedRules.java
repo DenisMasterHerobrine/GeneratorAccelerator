@@ -24,6 +24,9 @@ import net.minecraft.world.level.levelgen.SurfaceRules;
  * <li>Lithostitched's {@code TransientMergedRule(rules, original)}. Its surface rule modifiers merge rules into a
  * dimension's rules this way. Applies as vanilla's sequence of {@code rules}. {@code original} is only kept for saving.</li>
  * <li>Blueprint's {@code TransientMergedRuleSource(sequence, original)}: the same, for Team Abnormals' mods.</li>
+ * <li>Lithostitched's {@code TransientMergedRuleSource(sequence, original)} on 1.20.1 (1.4). One rule is that rule. More rules
+ * apply as vanilla's sequence of {@code sequence} followed by {@code original}. Lithostitched's own {@code sequence} already
+ * ends with {@code original}. A rule that gave no block gives none again, so that second {@code original} is left out.</li>
  * <li>Lithostitched's {@code ReferenceRule(rules)}: the referenced rules in order. The first block wins. If none gives
  * a block, the result is nothing.</li>
  * <li>Regions Unexplored's {@code ConfigRuleSource(key, onEnabled, onDisabled)}: one of two rules by a config switch,
@@ -41,6 +44,7 @@ final class ModdedRules {
     private ModdedRules() {}
 
     static final String LITHO_MERGED = "dev.worldgen.lithostitched.impl.worldgen.surface.rule.TransientMergedRule";
+    static final String LITHO_MERGED_1_20 = "dev.worldgen.lithostitched.worldgen.surface.LithostitchedSurfaceRules$TransientMergedRuleSource";
     static final String LITHO_REFERENCE = "dev.worldgen.lithostitched.impl.worldgen.surface.rule.ReferenceRule";
     static final String LITHO_ALL_OF = "dev.worldgen.lithostitched.impl.worldgen.surface.condition.AllOfCondition";
     static final String LITHO_ANY_OF = "dev.worldgen.lithostitched.impl.worldgen.surface.condition.AnyOfCondition";
@@ -53,17 +57,51 @@ final class ModdedRules {
      * with vanilla's sequence semantics. {@code original} is only kept for saving.
      */
     static final String BLUEPRINT_MERGED = "com.teamabnormals.blueprint.core.registry.BlueprintSurfaceRules$TransientMergedRuleSource";
+    /**
+     * Citadel's {@code CitadelSurfaceRuleWrapper(vanillaRules, citadelRules)}, the overworld's rules without TerraBlender: Citadel's
+     * rules first, then vanilla's ({@code CitadelSurfaceRule.tryApply}). A missing part leaves the other alone.
+     */
+    static final String CITADEL_WRAPPER = "com.github.alexthe666.citadel.server.generation.CitadelSurfaceRuleWrapper";
     static final String ELYSIUM_BIOME_TAG = "net.jadenxgamer.elysium_api.api.surface_rules.condition.BiomeTagConditionSource";
     private static final String RU_CONFIG_HANDLER = "net.regions_unexplored.config.RUConfigHandler";
 
-    /** Lithostitched's or Blueprint's merged rules, or null when {@code source} is not one. */
+    /** Lithostitched's, Blueprint's or Citadel's merged rules, or null when {@code source} is not one. */
     @Nullable
     static List<SurfaceRules.RuleSource> merged(SurfaceRules.RuleSource source) {
         Object[] c = components(source, LITHO_MERGED, "rules", "original");
         if (c == null) {
             c = components(source, BLUEPRINT_MERGED, "sequence", "original");
         }
-        return c != null && c[0] instanceof List<?> list ? ruleSources(list) : null;
+        if (c == null) {
+            Object[] w = components(source, CITADEL_WRAPPER, "vanillaRules", "citadelRules");
+            if (w != null) {
+                List<SurfaceRules.RuleSource> parts = new ArrayList<>(2);
+                if (w[1] instanceof SurfaceRules.RuleSource citadel) {
+                    parts.add(citadel);
+                }
+                if (w[0] instanceof SurfaceRules.RuleSource vanilla) {
+                    parts.add(vanilla);
+                }
+                return parts.isEmpty() ? null : parts;
+            }
+            return mergedWithOriginal(components(source, LITHO_MERGED_1_20, "sequence", "original"));
+        }
+        return c[0] instanceof List<?> list ? ruleSources(list) : null;
+    }
+
+    /** {@code sequence} then {@code original} unless {@code sequence} ends with it. One rule alone is that rule. */
+    @Nullable
+    private static List<SurfaceRules.RuleSource> mergedWithOriginal(@Nullable Object[] c) {
+        if (c == null || !(c[0] instanceof List<?> list) || !(c[1] instanceof SurfaceRules.RuleSource original)) {
+            return null;
+        }
+        List<SurfaceRules.RuleSource> sequence = ruleSources(list);
+        if (sequence == null || sequence.size() == 1 || !sequence.isEmpty() && sequence.get(sequence.size() - 1) == original) {
+            return sequence;
+        }
+        List<SurfaceRules.RuleSource> all = new ArrayList<>(sequence);
+        all.add(original);
+        return all;
     }
 
     /** Lithostitched's referenced rules, or null when {@code source} is not a reference rule. */

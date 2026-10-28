@@ -207,7 +207,7 @@ public class PredicateProgramsTest {
     }
 
     private static final Block[] BLOCKS = { Blocks.AIR, Blocks.STONE, Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.WATER, Blocks.SAND, Blocks.GRAVEL,
-        Blocks.DEEPSLATE, Blocks.BEDROCK, Blocks.CAVE_AIR, Blocks.OAK_LOG, Blocks.SHORT_GRASS, Blocks.SNOW, Blocks.LAVA, Blocks.ANDESITE };
+        Blocks.DEEPSLATE, Blocks.BEDROCK, Blocks.CAVE_AIR, Blocks.OAK_LOG, Blocks.GRASS, Blocks.SNOW, Blocks.LAVA, Blocks.ANDESITE };
 
     private static BlockPredicate randomTree(Random random, int depth) {
         int kind = depth >= 3 ? 3 + random.nextInt(9) : random.nextInt(12);
@@ -223,12 +223,12 @@ public class PredicateProgramsTest {
             case 6 -> BlockPredicate.matchesTag(offset, random.nextBoolean() ? BlockTags.LOGS : BlockTags.DIRT);
             case 7 -> BlockPredicate.matchesFluids(offset, random.nextBoolean() ? Fluids.WATER : Fluids.LAVA);
             case 8 -> random.nextBoolean() ? BlockPredicate.solid(offset) : BlockPredicate.replaceable(offset);
-            case 9 -> BlockPredicate.wouldSurvive(Blocks.SHORT_GRASS.defaultBlockState(), offset);
+            case 9 -> BlockPredicate.wouldSurvive(Blocks.GRASS.defaultBlockState(), offset);
             case 10 -> random.nextBoolean() ? BlockPredicate.hasSturdyFace(offset, Direction.UP) : BlockPredicate.insideWorld(offset);
             default -> switch (random.nextInt(3)) {
                 case 0 -> BlockPredicate.alwaysTrue();
                 case 1 -> BlockPredicate.noFluid(offset);
-                default -> BlockPredicate.unobstructed(offset);
+                default -> BlockPredicate.ONLY_IN_AIR_PREDICATE;
             };
         };
     }

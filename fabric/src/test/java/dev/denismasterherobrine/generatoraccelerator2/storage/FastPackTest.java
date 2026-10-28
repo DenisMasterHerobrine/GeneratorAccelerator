@@ -59,8 +59,8 @@ public class FastPackTest {
                 for (ProtoChunk chunk : new ProtoChunk[] { noise, surface }) {
                     for (LevelChunkSection section : chunk.getSections()) {
                         String where = preset + " chunk " + c[0] + "," + c[1] + " section " + sections;
-                        same(() -> STATES.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow(), where + " states");
-                        same(() -> biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow(), where + " biomes");
+                        same(() -> STATES.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow(false, error -> {}), where + " states");
+                        same(() -> biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow(false, error -> {}), where + " biomes");
                         sections++;
                     }
                 }
@@ -90,8 +90,8 @@ public class FastPackTest {
                         container.getAndSetUnchecked(i & 15, i >> 8, (i >> 4) & 15, values.get(0));
                     }
                 }
-                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(), "states n=" + n + " pattern " + pattern);
-                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container.copy()).getOrThrow(), "states copy n=" + n + " pattern " + pattern);
+                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {}), "states n=" + n + " pattern " + pattern);
+                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container.copy()).getOrThrow(false, error -> {}), "states copy n=" + n + " pattern " + pattern);
                 compared++;
             }
         }
@@ -116,7 +116,7 @@ public class FastPackTest {
                         container.getAndSetUnchecked(i & 3, i >> 4, (i >> 2) & 3, values.get(0));
                     }
                 }
-                same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(), "biomes n=" + n + " pattern " + pattern);
+                same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {}), "biomes n=" + n + " pattern " + pattern);
             }
         }
     }
@@ -145,22 +145,22 @@ public class FastPackTest {
                 for (Tag t : tag.getList("sections", Tag.TAG_COMPOUND)) {
                     CompoundTag section = (CompoundTag) t;
                     if (section.contains("block_states", Tag.TAG_COMPOUND)) {
-                        states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow());
+                        states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow(false, error -> {}));
                     }
                     if (section.contains("biomes", Tag.TAG_COMPOUND)) {
-                        biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow());
+                        biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow(false, error -> {}));
                     }
                 }
             }
         }
         for (int i = 0; i < states.size(); i++) {
-            Tag vanilla = STATES.encodeStart(NbtOps.INSTANCE, states.get(i)).getOrThrow();
+            Tag vanilla = STATES.encodeStart(NbtOps.INSTANCE, states.get(i)).getOrThrow(false, error -> {});
             Tag fast = SectionCodec.blockStates(states.get(i));
             assertEquals(vanilla, fast, "block states " + i);
             assertArrayEquals(bytes(vanilla), bytes(fast), "block states bytes " + i);
         }
         for (int i = 0; i < biomeList.size(); i++) {
-            Tag vanilla = biomes.encodeStart(NbtOps.INSTANCE, biomeList.get(i)).getOrThrow();
+            Tag vanilla = biomes.encodeStart(NbtOps.INSTANCE, biomeList.get(i)).getOrThrow(false, error -> {});
             Tag fast = SectionCodec.biomes(biomeList.get(i), world.registries.biomes);
             assertEquals(vanilla, fast, "biomes " + i);
             assertArrayEquals(bytes(vanilla), bytes(fast), "biomes bytes " + i);
@@ -217,7 +217,7 @@ public class FastPackTest {
     private static byte[] bytes(Tag tag) {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            NbtIo.writeAnyTag(tag, new DataOutputStream(out));
+            NbtIo.writeUnnamedTag(tag, new DataOutputStream(out));
             return out.toByteArray();
         } catch (IOException e) {
             throw new IllegalStateException(e);

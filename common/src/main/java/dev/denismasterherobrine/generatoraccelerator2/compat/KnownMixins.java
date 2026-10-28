@@ -1,32 +1,34 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.atmospheric.AtmosphericMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.blockswap.BlockSwapMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.create.CreateMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.environmental.EnvironmentalMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.formations.FormationsMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.hybridaquatic.HybridAquaticMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.vanillabackport.VanillaBackportMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biomeswevegone.BiomesWeveGoneMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.c2me.C2MEMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon.CobblemonMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.ConfluenceMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.saturn.SaturnMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.repurposedstructures.RepurposedStructuresMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spawn.SpawnMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestCoremods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
@@ -58,9 +60,15 @@ public final class KnownMixins {
      */
     public record Entry(String modId, String hook, String mixin, Set<String> handlers, String what) {}
 
-    private static final List<Entry> ENTRIES;
+    /**
+     * Every table's entries, read on first use. The tables call {@link #overwrite} while they initialize, so this class must not
+     * read them while it initializes itself.
+     */
+    private static final class All {
+        static final List<Entry> ENTRIES = collect();
+    }
 
-    static {
+    private static List<Entry> collect() {
         List<Entry> all = new ArrayList<>();
         all.addAll(NaturesSpiritMixins.ENTRIES);
         all.addAll(EclipticSeasonsMixins.ENTRIES);
@@ -68,32 +76,34 @@ public final class KnownMixins {
         all.addAll(BiolithMixins.ENTRIES);
         all.addAll(RegionsUnexploredMixins.ENTRIES);
         all.addAll(RepurposedStructuresMixins.ENTRIES);
-        all.addAll(LithostitchedMixins.ENTRIES);
-        all.addAll(QuarkMixins.ENTRIES);
-        all.addAll(TwilightForestCoremods.ENTRIES);
         all.addAll(ModernFixMixins.ENTRIES);
+        all.addAll(SaturnMixins.ENTRIES);
         all.addAll(ConfluenceMixins.ENTRIES);
-        all.addAll(EternalStarlightMixins.ENTRIES);
         all.addAll(ChunkLoadMixins.ENTRIES);
         all.addAll(TectonicMixins.ENTRIES);
         all.addAll(OwoMixins.ENTRIES);
         all.addAll(YungsCaveBiomesMixins.ENTRIES);
         all.addAll(BetterCavesMixins.ENTRIES);
         all.addAll(LithiumMixins.ENTRIES);
-        all.addAll(PastelMixins.ENTRIES);
         all.addAll(SpectrumMixins.ENTRIES);
         all.addAll(VariantsAndVenturesMixins.ENTRIES);
         all.addAll(CobblemonMixins.ENTRIES);
-        all.addAll(CitadelMixins.ENTRIES);
         all.addAll(SpawnMixins.ENTRIES);
         all.addAll(WinterlyMixins.ENTRIES);
+        all.addAll(AtmosphericMixins.ENTRIES);
+        all.addAll(EnvironmentalMixins.ENTRIES);
+        all.addAll(BlockSwapMixins.ENTRIES);
+        all.addAll(FormationsMixins.ENTRIES);
+        all.addAll(CreateMixins.ENTRIES);
+        all.addAll(AlexsCavesMixins.ENTRIES);
+        all.addAll(HybridAquaticMixins.ENTRIES);
+        all.addAll(VanillaBackportMixins.ENTRIES);
         all.addAll(RedirectedMixins.ENTRIES);
         all.addAll(FabricApiMixins.ENTRIES);
         all.addAll(C2MEMixins.ENTRIES);
         all.addAll(TerraBlenderMixins.ENTRIES);
-        all.addAll(AlexsCavesMixins.ENTRIES);
         all.addAll(BetterChunkLoadingMixins.ENTRIES);
-        ENTRIES = List.copyOf(all);
+        return List.copyOf(all);
     }
 
     /** MixinExtras routes a handler that takes sugar (@Local, @Share) through a generated bridge named after it. */
@@ -105,7 +115,7 @@ public final class KnownMixins {
      * @param merged names of the merged methods the inspection found (handlers, their bridges, or an overwritten method)
      */
     public static Entry find(String hook, String mixin, Collection<String> merged) {
-        for (Entry e : ENTRIES) {
+        for (Entry e : All.ENTRIES) {
             if (!e.hook().equals(hook) || !e.mixin().equals(mixin)) {
                 continue;
             }

@@ -24,7 +24,7 @@ import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
  * point's answer is looked up once and kept.
  *
  * <p>That gives vanilla's answer only for a source that answers from the position alone. Kept for the levels whose source is
- * vanilla's multi-noise source, or a wrapper that compat code knows ({@link #knownSource}, Lithostitched's injector source). Other
+ * vanilla's multi-noise source, or a wrapper that compat code knows ({@link #knownSource}). Other
  * mods' changes to that source's lookup keep vanilla's lookup, unless compat code reviewed them ({@code biomes.regionAnswers}).
  * Mods set their sources up while the server starts, so nothing is kept before the server's first tick or before compat code
  * says its mod is ready ({@link #requireReady}). Vanilla's tree search starts from the thread's last answer, which decides

@@ -15,11 +15,13 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.LevelSimulatedReader;
 import net.minecraft.world.level.block.BeehiveBlock;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.feature.treedecorators.BeehiveDecorator;
@@ -103,7 +105,9 @@ public final class TreeBees {
                 context.level().getBlockEntity(nest.get(), BlockEntityType.BEEHIVE).ifPresent(hive -> {
                     int bees = 2 + random.nextInt(2);
                     for (int i = 0; i < bees; i++) {
-                        hive.storeBee(BeehiveBlockEntity.Occupant.create(random.nextInt(599)));
+                        CompoundTag bee = new CompoundTag();
+                        bee.putString("id", BuiltInRegistries.ENTITY_TYPE.getKey(EntityType.BEE).toString());
+                        hive.storeBee(bee, random.nextInt(599), false);
                     }
                 });
             }

@@ -2,6 +2,8 @@ package dev.denismasterherobrine.generatoraccelerator2.features.tree;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CallbackReplay;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
@@ -34,11 +36,14 @@ import net.minecraft.world.level.levelgen.feature.trunkplacers.TrunkPlacer;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape;
 import net.minecraft.world.phys.shapes.DiscreteVoxelShape;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Transcription of {@code TreeFeature.place}. The trunk, foliage and root placers and the decorators
- * are the configuration's own objects and run unchanged against the real region (NeoForge's dirt hook
+ * are the configuration's own objects and run unchanged against the real region (Forge's dirt hook
  * casts the simulated reader to a level, so no stand-in reader is possible). The position sets the
  * placers and decorators see are vanilla's own {@code HashSet}s, so their order is identical by construction.
  * The leaf distance sets are {@link LeafSets}, which reproduce {@code HashSet}'s order. They are checked
@@ -71,7 +76,52 @@ public final class TreeFast {
         });
     }
 
-    public static boolean place(FeaturePlaceContext<?> ctx, Ga2Region region) {
+    private static final MethodType DO_PLACE_CALLBACK = MethodType.methodType(void.class, TreeFeature.class, WorldGenLevel.class, RandomSource.class,
+        BlockPos.class, BiConsumer.class, BiConsumer.class, FoliagePlacer.FoliageSetter.class, TreeConfiguration.class, CallbackInfoReturnable.class);
+    /** Other mods' callbacks at the head of {@code doPlace} ({@link CallbackReplay}). Null until first asked. */
+    private static volatile MethodHandle[] doPlaceHeads;
+    private static volatile boolean callbacksOk;
+
+    /** True when every callback the transcription calls could be opened. Otherwise vanilla's method runs, with them. */
+    public static boolean callbacksReady() {
+        if (doPlaceHeads == null) {
+            synchronized (TreeFast.class) {
+                if (doPlaceHeads == null) {
+                    boolean any = CallbackReplay.any(CallbackReplay.TREES, "doPlace");
+                    callbacksOk = !any || CallbackReplay.complete(CallbackReplay.TREES, "doPlace", DO_PLACE_CALLBACK, null);
+                    doPlaceHeads = any ? CallbackReplay.handles(CallbackReplay.TREES, "doPlace", CallbackReplay.Point.HEAD, DO_PLACE_CALLBACK)
+                        : new MethodHandle[0];
+                }
+            }
+        }
+        return callbacksOk;
+    }
+
+    /**
+     * Runs other mods' callbacks at the head of {@code doPlace} with the transcription's arguments. The result of a callback that
+     * cancels, or null to go on.
+     */
+    private static Boolean doPlaceHeads(TreeFeature feature, WorldGenLevel level, RandomSource random, BlockPos origin, BiConsumer<BlockPos, BlockState> rootSetter,
+                                        BiConsumer<BlockPos, BlockState> logSetter, FoliagePlacer.FoliageSetter foliageSetter, TreeConfiguration config) {
+        MethodHandle[] heads = doPlaceHeads;
+        if (heads.length == 0) {
+            return null;
+        }
+        try {
+            for (MethodHandle h : heads) {
+                CallbackInfoReturnable<Boolean> cir = new CallbackInfoReturnable<>("doPlace", true);
+                h.invokeExact(feature, level, random, origin, rootSetter, logSetter, foliageSetter, config, cir);
+                if (cir.isCancelled()) {
+                    return cir.getReturnValue() != null && cir.getReturnValue();
+                }
+            }
+        } catch (Throwable t) {
+            throw Reflect.unchecked(t);
+        }
+        return null;
+    }
+
+    public static boolean place(TreeFeature feature, FeaturePlaceContext<?> ctx, Ga2Region region) {
         WorldGenLevel level = ctx.level();
         RandomSource random = ctx.random();
         BlockPos origin = ctx.origin();
@@ -88,7 +138,7 @@ public final class TreeFast {
         LongOpenHashSet leafKeys = setLeaves ? null : LeafKeys.take();
         Set<BlockPos> decorations = Sets.newHashSet();
         try {
-            return place(level, random, origin, config, cursor, region, roots, logs, leaves, leafKeys, decorations);
+            return place(feature, level, random, origin, config, cursor, region, roots, logs, leaves, leafKeys, decorations);
         } finally {
             if (leafKeys != null) {
                 LeafKeys.give(leafKeys);
@@ -96,7 +146,7 @@ public final class TreeFast {
         }
     }
 
-    private static boolean place(WorldGenLevel level, RandomSource random, BlockPos origin, TreeConfiguration config, SectionCursor cursor, Ga2Region region,
+    private static boolean place(TreeFeature feature, WorldGenLevel level, RandomSource random, BlockPos origin, TreeConfiguration config, SectionCursor cursor, Ga2Region region,
                                  Set<BlockPos> roots, Set<BlockPos> logs, Set<BlockPos> leaves, LongOpenHashSet leafKeys, Set<BlockPos> decorations) {
         BiConsumer<BlockPos, BlockState> rootSetter = (pos, state) -> {
             roots.add(pos.immutable());
@@ -126,7 +176,8 @@ public final class TreeFast {
             decorations.add(pos.immutable());
             RegionWriter.setBlock(region, pos, state);
         };
-        boolean placed = doPlace(level, cursor, random, origin, rootSetter, logSetter, foliageSetter, config);
+        Boolean cancelled = doPlaceHeads(feature, level, random, origin, rootSetter, logSetter, foliageSetter, config);
+        boolean placed = cancelled != null ? cancelled : doPlace(level, cursor, random, origin, rootSetter, logSetter, foliageSetter, config);
         if (placed && (!logs.isEmpty() || (leaves != null ? !leaves.isEmpty() : !leafKeys.isEmpty()))) {
             if (leaves != null) {
                 TreeDecorator.Context context = new TreeDecorator.Context(level, decorationSetter, random, logs, leaves, roots);

@@ -27,52 +27,57 @@ final class BiomeFold {
 
     /** The folded rule, or null when it gives nothing and asks nothing that matters. */
     private static Ir.Rule rule(Ir.Rule rule, BitSet answers) {
-        return switch (rule) {
-            case Ir.State s -> s.state() == null ? null : s;
-            case Ir.Bands b -> b;
-            case Ir.OpaqueRule o -> o;
-            case Ir.ExternRule e -> e;
-            case Ir.Test t -> {
-                Ir.Cond c = cond(t.cond(), answers);
-                if (c instanceof Ir.Const k) {
-                    yield k.value() ? rule(t.then(), answers) : null;
-                }
-                Ir.Rule then = alwaysFalse(c) ? null : rule(t.then(), answers);
-                if (then == null) {
-                    // gives nothing either way: kept only to ask a condition whose asking matters
-                    yield free(c) ? null : new Ir.Test(c, new Ir.State(null));
-                }
-                yield new Ir.Test(c, then);
+        if (rule instanceof Ir.State s) {
+            return s.state() == null ? null : s;
+        } else if (rule instanceof Ir.Bands b) {
+            return b;
+        } else if (rule instanceof Ir.OpaqueRule o) {
+            return o;
+        } else if (rule instanceof Ir.ExternRule e) {
+            return e;
+        } else if (rule instanceof Ir.Test t) {
+            Ir.Cond c = cond(t.cond(), answers);
+            if (c instanceof Ir.Const k) {
+                return k.value() ? rule(t.then(), answers) : null;
             }
-            case Ir.Seq seq -> {
-                List<Ir.Rule> out = new ArrayList<>(seq.rules().size());
-                for (Ir.Rule child : seq.rules()) {
-                    Ir.Rule f = rule(child, answers);
-                    if (f == null) {
-                        continue;
-                    }
-                    out.add(f);
-                    if (f instanceof Ir.State) {
-                        // always gives its block: nothing after it is reached
-                        break;
-                    }
-                }
-                yield out.isEmpty() ? null : out.size() == 1 ? out.get(0) : new Ir.Seq(List.copyOf(out));
+            Ir.Rule then = alwaysFalse(c) ? null : rule(t.then(), answers);
+            if (then == null) {
+                // gives nothing either way: kept only to ask a condition whose asking matters
+                return free(c) ? null : new Ir.Test(c, new Ir.State(null));
             }
-        };
+            return new Ir.Test(c, then);
+        } else if (rule instanceof Ir.Seq seq) {
+            List<Ir.Rule> out = new ArrayList<>(seq.rules().size());
+            for (Ir.Rule child : seq.rules()) {
+                Ir.Rule f = rule(child, answers);
+                if (f == null) {
+                    continue;
+                }
+                out.add(f);
+                if (f instanceof Ir.State) {
+                    // always gives its block: nothing after it is reached
+                    break;
+                }
+            }
+            return out.isEmpty() ? null : out.size() == 1 ? out.get(0) : new Ir.Seq(List.copyOf(out));
+        } else {
+            throw new IllegalStateException(String.valueOf(rule));
+        }
     }
 
     private static Ir.Cond cond(Ir.Cond cond, BitSet answers) {
-        return switch (cond) {
-            case Ir.Biome b -> new Ir.Const(b.id(), answers.get(b.slot()));
-            case Ir.Not n -> {
-                Ir.Cond t = cond(n.target(), answers);
-                yield t instanceof Ir.Const k ? new Ir.Const(n.id(), !k.value()) : t == n.target() ? n : new Ir.Not(n.id(), t);
-            }
-            case Ir.All a -> parts(a.id(), a.conds(), false, answers);
-            case Ir.Any a -> parts(a.id(), a.conds(), true, answers);
-            default -> cond;
-        };
+        if (cond instanceof Ir.Biome b) {
+            return new Ir.Const(b.id(), answers.get(b.slot()));
+        } else if (cond instanceof Ir.Not n) {
+            Ir.Cond t = cond(n.target(), answers);
+            return t instanceof Ir.Const k ? new Ir.Const(n.id(), !k.value()) : t == n.target() ? n : new Ir.Not(n.id(), t);
+        } else if (cond instanceof Ir.All a) {
+            return parts(a.id(), a.conds(), false, answers);
+        } else if (cond instanceof Ir.Any a) {
+            return parts(a.id(), a.conds(), true, answers);
+        } else {
+            return cond;
+        }
     }
 
     /**
@@ -129,15 +134,22 @@ final class BiomeFold {
      * conditions are their own objects.
      */
     static boolean free(Ir.Cond c) {
-        return switch (c) {
-            case Ir.Steep s -> false;
-            case Ir.Slope s -> false;
-            case Ir.OpaqueCond o -> false;
-            case Ir.ExternCond e -> false;
-            case Ir.Not n -> free(n.target());
-            case Ir.All a -> free(a.conds());
-            case Ir.Any a -> free(a.conds());
-            default -> true;
-        };
+        if (c instanceof Ir.Steep s) {
+            return false;
+        } else if (c instanceof Ir.Slope s) {
+            return false;
+        } else if (c instanceof Ir.OpaqueCond o) {
+            return false;
+        } else if (c instanceof Ir.ExternCond e) {
+            return false;
+        } else if (c instanceof Ir.Not n) {
+            return free(n.target());
+        } else if (c instanceof Ir.All a) {
+            return free(a.conds());
+        } else if (c instanceof Ir.Any a) {
+            return free(a.conds());
+        } else {
+            return true;
+        }
     }
 }

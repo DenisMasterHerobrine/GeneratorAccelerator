@@ -4,7 +4,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 /**
  * {@code -Dgeneratoraccelerator2.stepTrace=true}: where generated chunks spend their time. Per step, it sums how long chunks waited
@@ -84,7 +84,7 @@ public final class StepTrace {
             if (n == 0) {
                 continue;
             }
-            b.append(String.format(Locale.ROOT, " %s %.1f/%.1f", s.getName(), g == 0 ? 0.0 : GAP[i].sum() / 1e6 / g, RUN[i].sum() / 1e6 / n));
+            b.append(String.format(Locale.ROOT, " %s %.1f/%.1f", s, g == 0 ? 0.0 : GAP[i].sum() / 1e6 / g, RUN[i].sum() / 1e6 / n));
         }
         long lives = LIVES.sum();
         b.append(String.format(Locale.ROOT, "; first step to full avg %.0f ms over %d chunks", lives == 0 ? 0.0 : LIFE.sum() / 1e6 / lives, lives));

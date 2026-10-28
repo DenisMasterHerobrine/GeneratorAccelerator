@@ -546,26 +546,36 @@ public final class ClEmitter {
         if (b != null) {
             return b;
         }
-        boolean r = switch (n) {
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise x -> true;
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.Shift x -> true;
-            case Node.Weird x -> true;
-            case Node.Spline x -> true;
-            case Node.Blended x -> true;
-            case Node.NoiseAt x -> true;
-            case Node.EndIslands x -> true;
-            case Node.Marker m when m.type() == Node.MarkerType.FLAT_CACHE -> false;
-            default -> {
-                boolean any = false;
-                for (Node c : RefCount.children(n)) {
-                    any |= isExpensive(c);
-                }
-                yield any;
+        boolean r;
+        if (n instanceof Node.Noise x) {
+            r = true;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            r = true;
+        } else if (n instanceof Node.ShiftA x) {
+            r = true;
+        } else if (n instanceof Node.ShiftB x) {
+            r = true;
+        } else if (n instanceof Node.Shift x) {
+            r = true;
+        } else if (n instanceof Node.Weird x) {
+            r = true;
+        } else if (n instanceof Node.Spline x) {
+            r = true;
+        } else if (n instanceof Node.Blended x) {
+            r = true;
+        } else if (n instanceof Node.NoiseAt x) {
+            r = true;
+        } else if (n instanceof Node.EndIslands x) {
+            r = true;
+        } else if (n instanceof Node.Marker m && m.type() == Node.MarkerType.FLAT_CACHE) {
+            r = false;
+        } else {
+            boolean any = false;
+            for (Node c : RefCount.children(n)) {
+                any |= isExpensive(c);
             }
-        };
+            r = any;
+        }
         expensive.put(n, r);
         return r;
     }
@@ -1449,91 +1459,103 @@ public final class ClEmitter {
         }
 
         private String compute(Node n, StringBuilder sb) {
-            return switch (n) {
-                case Node.Const c -> lit(c.value());
-                case Node.Ap2 a -> ap2(a, sb);
-                case Node.MulOrAdd m -> tmp(sb, ev(m.input(), sb) + (m.mul() ? " * " : " + ") + lit(m.argument()));
-                case Node.Mapped m -> {
-                    String v = ev(m.input(), sb);
-                    yield tmp(sb, switch (m.type()) {
-                        case ABS -> "fabs(" + v + ")";
-                        case SQUARE -> v + " * " + v;
-                        case CUBE -> v + " * " + v + " * " + v;
-                        case HALF_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.5);
-                        case QUARTER_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.25);
-                        case SQUEEZE -> "jsqueeze(" + v + ")";
-                    });
+            if (n instanceof Node.Const c) {
+                return lit(c.value());
+            } else if (n instanceof Node.Ap2 a) {
+                return ap2(a, sb);
+            } else if (n instanceof Node.MulOrAdd m) {
+                return tmp(sb, ev(m.input(), sb) + (m.mul() ? " * " : " + ") + lit(m.argument()));
+            } else if (n instanceof Node.Mapped m) {
+                String v = ev(m.input(), sb);
+                return tmp(sb, switch (m.type()) {
+                    case ABS -> "fabs(" + v + ")";
+                    case SQUARE -> v + " * " + v;
+                    case CUBE -> v + " * " + v + " * " + v;
+                    case HALF_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.5);
+                    case QUARTER_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.25);
+                    case SQUEEZE -> "jsqueeze(" + v + ")";
+                });
+            } else if (n instanceof Node.Clamp c) {
+                return tmp(sb, "jclamp(" + ev(c.input(), sb) + ", " + lit(c.lo()) + ", " + lit(c.hi()) + ")");
+            } else if (n instanceof Node.RangeChoice r) {
+                String in = ev(r.input(), sb);
+                String out = t();
+                sb.append("  R ").append(out).append(";\n");
+                sb.append("  if (").append(in).append(" >= ").append(lit(r.minInclusive())).append(" && ").append(in).append(" < ").append(lit(r.maxExclusive())).append(") {\n");
+                String a = ev(r.inRange(), sb);
+                sb.append("  ").append(out).append(" = ").append(a).append(";\n  } else {\n");
+                String b = ev(r.outRange(), sb);
+                sb.append("  ").append(out).append(" = ").append(b).append(";\n  }\n");
+                return out;
+            } else if (n instanceof Node.YGradient y) {
+                return tmp(sb, "(R) jclampedMap((double) c->by, " + dlit(y.fromY()) + ", " + dlit(y.toY()) + ", " + dlit(y.fromValue()) + ", " + dlit(y.toValue()) + ")");
+            } else if (n instanceof Node.Noise no) {
+                return tmp(sb, noise(no.spec(), "(double) c->bx * " + dlit(no.xzScale()), "(double) c->by * " + dlit(no.yScale()), "(double) c->bz * " + dlit(no.xzScale())));
+            } else if (n instanceof Node.ShiftedNoise s) {
+                String sx = ev(s.shiftX(), sb);
+                String sy = ev(s.shiftY(), sb);
+                String sz = ev(s.shiftZ(), sb);
+                return tmp(sb, noise(s.spec(), "(double) c->bx * " + dlit(s.xzScale()) + " + (double) " + sx,
+                    "(double) c->by * " + dlit(s.yScale()) + " + (double) " + sy, "(double) c->bz * " + dlit(s.xzScale()) + " + (double) " + sz));
+            } else if (n instanceof Node.ShiftA s) {
+                return tmp(sb, noise(s.spec(), "(double) c->bx * 0.25", "0.0", "(double) c->bz * 0.25") + " * " + lit(4.0));
+            } else if (n instanceof Node.ShiftB s) {
+                return tmp(sb, noise(s.spec(), "(double) c->bz * 0.25", "(double) c->bx * 0.25", "0.0") + " * " + lit(4.0));
+            } else if (n instanceof Node.Shift s) {
+                return tmp(sb, noise(s.spec(), "(double) c->bx * 0.25", "(double) c->by * 0.25", "(double) c->bz * 0.25") + " * " + lit(4.0));
+            } else if (n instanceof Node.Weird w) {
+                String in = ev(w.input(), sb);
+                String r = t();
+                sb.append("  double ").append(r).append(" = ").append(w.type1() ? "rarity3D" : "rarity2D").append("((double) ").append(in).append(");\n");
+                if (w.spec() < 0) {
+                    return tmp(sb, "(R) " + r + " * " + lit(0.0));
                 }
-                case Node.Clamp c -> tmp(sb, "jclamp(" + ev(c.input(), sb) + ", " + lit(c.lo()) + ", " + lit(c.hi()) + ")");
-                case Node.RangeChoice r -> {
-                    String in = ev(r.input(), sb);
-                    String out = t();
-                    sb.append("  R ").append(out).append(";\n");
-                    sb.append("  if (").append(in).append(" >= ").append(lit(r.minInclusive())).append(" && ").append(in).append(" < ").append(lit(r.maxExclusive())).append(") {\n");
-                    String a = ev(r.inRange(), sb);
-                    sb.append("  ").append(out).append(" = ").append(a).append(";\n  } else {\n");
-                    String b = ev(r.outRange(), sb);
-                    sb.append("  ").append(out).append(" = ").append(b).append(";\n  }\n");
-                    yield out;
+                return tmp(sb, "(R) " + r + " * fabs(" + noise(w.spec(), "(double) c->bx / " + r, "(double) c->by / " + r, "(double) c->bz / " + r) + ")");
+            } else if (n instanceof Node.Spline s) {
+                return spline(s, sb);
+            } else if (n instanceof Node.Blended b) {
+                usedBlended.set(b.spec());
+                return tmp(sb, (tables ? "bn(c, " + b.spec() + ", " : "bn_" + b.spec() + "(c, ") + "c->bx, c->by, c->bz)");
+            } else if (n instanceof Node.BlendDensity b) {
+                return ev(b.input(), sb); // Blender.empty(): the input unchanged
+            } else if (n instanceof Node.BlendAlpha a) {
+                return lit(1.0);
+            } else if (n instanceof Node.BlendOffset o) {
+                return lit(0.0);
+            } else if (n instanceof Node.Beardifier b) {
+                if (mode != Mode.BLOCK && mode != Mode.XZBLOCK && !(mode == Mode.CORNER && perChunkCorners)) {
+                    throw new Unsupported("beardifier outside the block tree");
                 }
-                case Node.YGradient y -> tmp(sb, "(R) jclampedMap((double) c->by, " + dlit(y.fromY()) + ", " + dlit(y.toY()) + ", " + dlit(y.fromValue()) + ", " + dlit(y.toValue()) + ")");
-                case Node.Noise no -> tmp(sb, noise(no.spec(), "(double) c->bx * " + dlit(no.xzScale()), "(double) c->by * " + dlit(no.yScale()), "(double) c->bz * " + dlit(no.xzScale())));
-                case Node.ShiftedNoise s -> {
-                    String sx = ev(s.shiftX(), sb);
-                    String sy = ev(s.shiftY(), sb);
-                    String sz = ev(s.shiftZ(), sb);
-                    yield tmp(sb, noise(s.spec(), "(double) c->bx * " + dlit(s.xzScale()) + " + (double) " + sx,
-                        "(double) c->by * " + dlit(s.yScale()) + " + (double) " + sy, "(double) c->bz * " + dlit(s.xzScale()) + " + (double) " + sz));
-                }
-                case Node.ShiftA s -> tmp(sb, noise(s.spec(), "(double) c->bx * 0.25", "0.0", "(double) c->bz * 0.25") + " * " + lit(4.0));
-                case Node.ShiftB s -> tmp(sb, noise(s.spec(), "(double) c->bz * 0.25", "(double) c->bx * 0.25", "0.0") + " * " + lit(4.0));
-                case Node.Shift s -> tmp(sb, noise(s.spec(), "(double) c->bx * 0.25", "(double) c->by * 0.25", "(double) c->bz * 0.25") + " * " + lit(4.0));
-                case Node.Weird w -> {
-                    String in = ev(w.input(), sb);
-                    String r = t();
-                    sb.append("  double ").append(r).append(" = ").append(w.type1() ? "rarity3D" : "rarity2D").append("((double) ").append(in).append(");\n");
-                    if (w.spec() < 0) {
-                        yield tmp(sb, "(R) " + r + " * " + lit(0.0));
-                    }
-                    yield tmp(sb, "(R) " + r + " * fabs(" + noise(w.spec(), "(double) c->bx / " + r, "(double) c->by / " + r, "(double) c->bz / " + r) + ")");
-                }
-                case Node.Spline s -> spline(s, sb);
-                case Node.Blended b -> {
-                    usedBlended.set(b.spec());
-                    yield tmp(sb, (tables ? "bn(c, " + b.spec() + ", " : "bn_" + b.spec() + "(c, ") + "c->bx, c->by, c->bz)");
-                }
-                case Node.BlendDensity b -> ev(b.input(), sb);     // Blender.empty(): the input unchanged
-                case Node.BlendAlpha a -> lit(1.0);
-                case Node.BlendOffset o -> lit(0.0);
-                case Node.Beardifier b -> {
-                    if (mode != Mode.BLOCK && mode != Mode.XZBLOCK && !(mode == Mode.CORNER && perChunkCorners)) {
-                        throw new Unsupported("beardifier outside the block tree");
-                    }
-                    yield tmp(sb, "(R) beard(c)"); // the chunk's structure pieces and jigsaw junctions (Beardifier.compute)
-                }
-                case Node.EndIslands e -> throw new Unsupported("end islands (the End generates fast on the CPU; a GPU port differed near the islands' bottom)");
-                case Node.Marker m -> marker(m, sb);
-                case Node.Unsupported u -> throw new Unsupported("uncompiled density function " + Names.mojangName(u.vanilla().getClass()) + ": " + u.reason());
-                case Node.Select s -> {
-                    String cond = cond(s.cond(), sb);
-                    String out = t();
-                    sb.append("  R ").append(out).append(";\n  if (").append(cond).append(") {\n");
-                    String a = ev(s.whenJump(), sb);
-                    sb.append("  ").append(out).append(" = ").append(a).append(";\n  } else {\n");
-                    String b = ev(s.whenFall(), sb);
-                    sb.append("  ").append(out).append(" = ").append(b).append(";\n  }\n");
-                    yield out;
-                }
-                case Node.StaticCall c -> staticCall(c, sb);
-                case Node.NoiseAt na -> {
-                    String x = ev(na.x(), sb);
-                    String y = ev(na.y(), sb);
-                    String z = ev(na.z(), sb);
-                    yield tmp(sb, noise(na.spec(), "(double) " + x, "(double) " + y, "(double) " + z));
-                }
-                case Node.IntToDouble i -> tmp(sb, "(R) (double) (" + evInt(i.value(), sb) + ")");
-                case Node.RoundFloat r -> tmp(sb, "(R) (float) " + ev(r.value(), sb));
-            };
+                return tmp(sb, "(R) beard(c)"); // the chunk's structure pieces and jigsaw junctions (Beardifier.compute)
+            } else if (n instanceof Node.EndIslands e) {
+                throw new Unsupported("end islands (the End generates fast on the CPU; a GPU port differed near the islands' bottom)");
+            } else if (n instanceof Node.Marker m) {
+                return marker(m, sb);
+            } else if (n instanceof Node.Unsupported u) {
+                throw new Unsupported("uncompiled density function " + Names.mojangName(u.vanilla().getClass()) + ": " + u.reason());
+            } else if (n instanceof Node.Select s) {
+                String cond = cond(s.cond(), sb);
+                String out = t();
+                sb.append("  R ").append(out).append(";\n  if (").append(cond).append(") {\n");
+                String a = ev(s.whenJump(), sb);
+                sb.append("  ").append(out).append(" = ").append(a).append(";\n  } else {\n");
+                String b = ev(s.whenFall(), sb);
+                sb.append("  ").append(out).append(" = ").append(b).append(";\n  }\n");
+                return out;
+            } else if (n instanceof Node.StaticCall c) {
+                return staticCall(c, sb);
+            } else if (n instanceof Node.NoiseAt na) {
+                String x = ev(na.x(), sb);
+                String y = ev(na.y(), sb);
+                String z = ev(na.z(), sb);
+                return tmp(sb, noise(na.spec(), "(double) " + x, "(double) " + y, "(double) " + z));
+            } else if (n instanceof Node.IntToDouble i) {
+                return tmp(sb, "(R) (double) (" + evInt(i.value(), sb) + ")");
+            } else if (n instanceof Node.RoundFloat r) {
+                return tmp(sb, "(R) (float) " + ev(r.value(), sb));
+            } else {
+                throw new IllegalStateException(String.valueOf(n));
+            }
         }
 
         private String ap2(Node.Ap2 a, StringBuilder sb) {
@@ -1707,42 +1729,44 @@ public final class ClEmitter {
         }
 
         private String evInt(INode n, StringBuilder sb) {
-            return switch (n) {
-                case INode.IntConst c -> Integer.toString(c.value());
-                case INode.IntCoord c -> c.axis() == 0 ? "c->bx" : c.axis() == 1 ? "c->by" : "c->bz";
-                case INode.IntBin b -> {
-                    String x = evInt(b.a(), sb);
-                    String y = evInt(b.b(), sb);
-                    yield switch (b.op()) {
-                        case ADD -> "(" + x + " + " + y + ")";
-                        case SUB -> "(" + x + " - " + y + ")";
-                        case MUL -> "(" + x + " * " + y + ")";
-                        case DIV -> "(" + x + " / " + y + ")";
-                        case REM -> "(" + x + " % " + y + ")";
-                        case SHL -> "(" + x + " << (" + y + " & 31))";
-                        case SHR -> "(" + x + " >> (" + y + " & 31))";
-                        case USHR -> "(int) ((uint) " + x + " >> (" + y + " & 31))";
-                        case AND -> "(" + x + " & " + y + ")";
-                        case OR -> "(" + x + " | " + y + ")";
-                        case XOR -> "(" + x + " ^ " + y + ")";
-                    };
+            if (n instanceof INode.IntConst c) {
+                return Integer.toString(c.value());
+            } else if (n instanceof INode.IntCoord c) {
+                return c.axis() == 0 ? "c->bx" : c.axis() == 1 ? "c->by" : "c->bz";
+            } else if (n instanceof INode.IntBin b) {
+                String x = evInt(b.a(), sb);
+                String y = evInt(b.b(), sb);
+                return switch (b.op()) {
+                    case ADD -> "(" + x + " + " + y + ")";
+                    case SUB -> "(" + x + " - " + y + ")";
+                    case MUL -> "(" + x + " * " + y + ")";
+                    case DIV -> "(" + x + " / " + y + ")";
+                    case REM -> "(" + x + " % " + y + ")";
+                    case SHL -> "(" + x + " << (" + y + " & 31))";
+                    case SHR -> "(" + x + " >> (" + y + " & 31))";
+                    case USHR -> "(int) ((uint) " + x + " >> (" + y + " & 31))";
+                    case AND -> "(" + x + " & " + y + ")";
+                    case OR -> "(" + x + " | " + y + ")";
+                    case XOR -> "(" + x + " ^ " + y + ")";
+                };
+            } else if (n instanceof INode.IntNeg g) {
+                return "(-" + evInt(g.a(), sb) + ")";
+            } else if (n instanceof INode.DoubleToInt d) {
+                return "convert_int_sat_rtz((double) " + ev(d.value(), sb) + ")";
+            } else if (n instanceof INode.IntStaticCall c) {
+                String key = staticKey(c.owner(), c.name(), c.desc());
+                if (key.equals("net/minecraft/util/Mth.floor(D)I")) {
+                    return "jfloor((double) " + ev((Node) c.args().get(0), sb) + ")";
                 }
-                case INode.IntNeg g -> "(-" + evInt(g.a(), sb) + ")";
-                case INode.DoubleToInt d -> "convert_int_sat_rtz((double) " + ev(d.value(), sb) + ")";
-                case INode.IntStaticCall c -> {
-                    String key = staticKey(c.owner(), c.name(), c.desc());
-                    if (key.equals("net/minecraft/util/Mth.floor(D)I")) {
-                        yield "jfloor((double) " + ev((Node) c.args().get(0), sb) + ")";
-                    }
-                    throw new Unsupported("int static call " + key);
-                }
-                case INode.SelectInt s -> {
-                    String cond = cond(s.cond(), sb);
-                    String a = evInt(s.whenJump(), sb);
-                    String b = evInt(s.whenFall(), sb);
-                    yield "((" + cond + ") ? (" + a + ") : (" + b + "))";
-                }
-            };
+                throw new Unsupported("int static call " + key);
+            } else if (n instanceof INode.SelectInt s) {
+                String cond = cond(s.cond(), sb);
+                String a = evInt(s.whenJump(), sb);
+                String b = evInt(s.whenFall(), sb);
+                return "((" + cond + ") ? (" + a + ") : (" + b + "))";
+            } else {
+                throw new IllegalStateException(String.valueOf(n));
+            }
         }
     }
 
@@ -1923,89 +1947,98 @@ public final class ClEmitter {
         }
 
         private V compute(Node n, StringBuilder sb) {
-            return switch (n) {
-                case Node.Const c -> constant(c.value());
-                case Node.Ap2 a -> ap2(a, sb);
-                case Node.MulOrAdd m -> mulOrAdd(ev(m.input(), sb), m.mul(), m.argument(), sb);
-                case Node.Mapped m -> mapped(m, sb);
-                case Node.Clamp c -> {
-                    V a = ev(c.input(), sb);
-                    float lo = (float) c.lo(), hi = (float) c.hi();
-                    String eb = up(Math.max(Math.abs(c.lo() - lo), Math.abs(c.hi() - hi)));
-                    // an input clearly outside the range gives the bound itself
-                    yield tmp(sb, "(" + a.v() + " < " + flit(lo) + " ? " + flit(lo) + " : jminf(" + a.v() + ", " + flit(hi) + "))", "((" + a.v() + " - " + flit(hi) + " > SAFE("
-                        + a.e() + ") || " + flit(lo) + " - " + a.v() + " > SAFE(" + a.e() + ")) ? " + eb + " : fmax(" + a.e() + ", " + eb + "))");
+            if (n instanceof Node.Const c) {
+                return constant(c.value());
+            } else if (n instanceof Node.Ap2 a) {
+                return ap2(a, sb);
+            } else if (n instanceof Node.MulOrAdd m) {
+                return mulOrAdd(ev(m.input(), sb), m.mul(), m.argument(), sb);
+            } else if (n instanceof Node.Mapped m) {
+                return mapped(m, sb);
+            } else if (n instanceof Node.Clamp c) {
+                V a = ev(c.input(), sb);
+                float lo = (float) c.lo(), hi = (float) c.hi();
+                String eb = up(Math.max(Math.abs(c.lo() - lo), Math.abs(c.hi() - hi)));
+                // an input clearly outside the range gives the bound itself
+                return tmp(sb, "(" + a.v() + " < " + flit(lo) + " ? " + flit(lo) + " : jminf(" + a.v() + ", " + flit(hi) + "))", "((" + a.v() + " - " + flit(hi) + " > SAFE("
+                    + a.e() + ") || " + flit(lo) + " - " + a.v() + " > SAFE(" + a.e() + ")) ? " + eb + " : fmax(" + a.e() + ", " + eb + "))");
+            } else if (n instanceof Node.RangeChoice r) {
+                return rangeChoice(r, sb);
+            } else if (n instanceof Node.YGradient y) {
+                return readRounded(sb, "jclampedMap((double) c->by, " + dlit(y.fromY()) + ", " + dlit(y.toY()) + ", " + dlit(y.fromValue()) + ", "
+                + dlit(y.toValue()) + ")");
+            } else if (n instanceof Node.Noise no) {
+                return noise32(no.spec(), ffCoord("c->bx", no.xzScale()), ffCoord("c->by", no.yScale()), ffCoord("c->bz", no.xzScale()), "0.0f", "0.0f",
+                "0.0f", sb);
+            } else if (n instanceof Node.ShiftedNoise s) {
+                V sx = ev(s.shiftX(), sb);
+                V sy = ev(s.shiftY(), sb);
+                V sz = ev(s.shiftZ(), sb);
+                // the coordinate is vanilla's double sum. The shift's float error moves it by at most that error. The sums' roundings
+                // are accounted for by the lattice (see lat).
+                String x = "ff_add(" + ffCoord("c->bx", s.xzScale()) + ", (ff) (" + sx.v() + ", 0.0f))";
+                String y = "ff_add(" + ffCoord("c->by", s.yScale()) + ", (ff) (" + sy.v() + ", 0.0f))";
+                String z = "ff_add(" + ffCoord("c->bz", s.xzScale()) + ", (ff) (" + sz.v() + ", 0.0f))";
+                return noise32(s.spec(), x, y, z, sx.e(), sy.e(), sz.e(), sb);
+            } else if (n instanceof Node.ShiftA s) {
+                return scale4(noise32(s.spec(), ffCoord("c->bx", 0.25), FF_ZERO, ffCoord("c->bz", 0.25), "0.0f", "0.0f", "0.0f", sb), sb);
+            } else if (n instanceof Node.ShiftB s) {
+                return scale4(noise32(s.spec(), ffCoord("c->bz", 0.25), ffCoord("c->bx", 0.25), FF_ZERO, "0.0f", "0.0f", "0.0f", sb), sb);
+            } else if (n instanceof Node.Shift s) {
+                return scale4(noise32(s.spec(), ffCoord("c->bx", 0.25), ffCoord("c->by", 0.25), ffCoord("c->bz", 0.25), "0.0f", "0.0f", "0.0f", sb), sb);
+            } else if (n instanceof Node.Weird w) {
+                return weird(w, sb);
+            } else if (n instanceof Node.Spline s) {
+                return spline32(s, sb);
+            } else if (n instanceof Node.Blended b) {
+                usedBlended.set(b.spec());
+                String n0 = "t" + tmp;
+                String e0 = "e" + tmp;
+                tmp++;
+                sb.append("  float ").append(e0).append(";\n  float ").append(n0).append(" = bn32(c, ").append(b.spec()).append(", c->bx, c->by, c->bz, &").append(e0)
+                    .append(");\n");
+                return new V(n0, e0);
+            } else if (n instanceof Node.BlendDensity b) {
+                return ev(b.input(), sb);
+            } else if (n instanceof Node.BlendAlpha a) {
+                return new V("1.0f", "0.0f");
+            } else if (n instanceof Node.BlendOffset o) {
+                return new V("0.0f", "0.0f");
+            } else if (n instanceof Node.Beardifier b) {
+                if (mode != CMode.BLOCK && !(mode == CMode.CORNER && perChunkCorners)) {
+                    throw new Unsupported("beardifier outside the block tree");
                 }
-                case Node.RangeChoice r -> rangeChoice(r, sb);
-                case Node.YGradient y -> readRounded(sb, "jclampedMap((double) c->by, " + dlit(y.fromY()) + ", " + dlit(y.toY()) + ", " + dlit(y.fromValue()) + ", "
-                    + dlit(y.toValue()) + ")");
-                case Node.Noise no -> noise32(no.spec(), ffCoord("c->bx", no.xzScale()), ffCoord("c->by", no.yScale()), ffCoord("c->bz", no.xzScale()), "0.0f", "0.0f",
-                    "0.0f", sb);
-                case Node.ShiftedNoise s -> {
-                    V sx = ev(s.shiftX(), sb);
-                    V sy = ev(s.shiftY(), sb);
-                    V sz = ev(s.shiftZ(), sb);
-                    // the coordinate is vanilla's double sum. The shift's float error moves it by at most that error. The sums' roundings
-                    // are accounted for by the lattice (see lat).
-                    String x = "ff_add(" + ffCoord("c->bx", s.xzScale()) + ", (ff) (" + sx.v() + ", 0.0f))";
-                    String y = "ff_add(" + ffCoord("c->by", s.yScale()) + ", (ff) (" + sy.v() + ", 0.0f))";
-                    String z = "ff_add(" + ffCoord("c->bz", s.xzScale()) + ", (ff) (" + sz.v() + ", 0.0f))";
-                    yield noise32(s.spec(), x, y, z, sx.e(), sy.e(), sz.e(), sb);
-                }
-                case Node.ShiftA s -> scale4(noise32(s.spec(), ffCoord("c->bx", 0.25), FF_ZERO, ffCoord("c->bz", 0.25), "0.0f", "0.0f", "0.0f", sb), sb);
-                case Node.ShiftB s -> scale4(noise32(s.spec(), ffCoord("c->bz", 0.25), ffCoord("c->bx", 0.25), FF_ZERO, "0.0f", "0.0f", "0.0f", sb), sb);
-                case Node.Shift s -> scale4(noise32(s.spec(), ffCoord("c->bx", 0.25), ffCoord("c->by", 0.25), ffCoord("c->bz", 0.25), "0.0f", "0.0f", "0.0f", sb), sb);
-                case Node.Weird w -> weird(w, sb);
-                case Node.Spline s -> spline32(s, sb);
-                case Node.Blended b -> {
-                    usedBlended.set(b.spec());
-                    String n0 = "t" + tmp;
-                    String e0 = "e" + tmp;
-                    tmp++;
-                    sb.append("  float ").append(e0).append(";\n  float ").append(n0).append(" = bn32(c, ").append(b.spec()).append(", c->bx, c->by, c->bz, &").append(e0)
-                        .append(");\n");
-                    yield new V(n0, e0);
-                }
-                case Node.BlendDensity b -> ev(b.input(), sb);
-                case Node.BlendAlpha a -> new V("1.0f", "0.0f");
-                case Node.BlendOffset o -> new V("0.0f", "0.0f");
-                case Node.Beardifier b -> {
-                    if (mode != CMode.BLOCK && !(mode == CMode.CORNER && perChunkCorners)) {
-                        throw new Unsupported("beardifier outside the block tree");
-                    }
-                    yield readRounded(sb, "(double) beard(c)");
-                }
-                case Node.Marker m -> marker(m, sb);
-                case Node.StaticCall c -> staticCall32(c, sb);
-                case Node.Select s -> {
-                    String cond = cond32(s.cond(), sb);
-                    V out = decl(sb);
-                    sb.append("  if (").append(cond).append(") {\n");
-                    V a = ev(s.whenJump(), sb);
-                    sb.append("  ").append(out.v()).append(" = ").append(a.v()).append("; ").append(out.e()).append(" = ").append(a.e()).append(";\n  } else {\n");
-                    V b = ev(s.whenFall(), sb);
-                    sb.append("  ").append(out.v()).append(" = ").append(b.v()).append("; ").append(out.e()).append(" = ").append(b.e()).append(";\n  }\n");
-                    yield out;
-                }
-                case Node.IntToDouble i -> {
-                    // an exact int. Its float conversion rounds only beyond 2^24.
-                    String iv = evInt32(i.value(), sb);
-                    String n0 = "t" + tmp;
-                    V v = tmp(sb, "(float) (" + iv + ")", "0.0f");
-                    sb.append("  if (fabs(").append(n0).append(") >= 0x1p24f) ").append(v.e()).append(" = RND(").append(n0).append(");\n");
-                    yield v;
-                }
-                case Node.RoundFloat r -> {
-                    // (float) of the double value. Exact when the float value is exact (no error). Otherwise, the error plus one rounding.
-                    V a = ev(r.value(), sb);
-                    yield tmp(sb, a.v(), "(" + a.e() + " > 0.0f ? " + a.e() + " + RND(" + a.v() + ") : 0.0f)");
-                }
-                case Node.NoiseAt na -> {
-                    String[] x = ffCoordinate(na.x(), sb), y = ffCoordinate(na.y(), sb), z = ffCoordinate(na.z(), sb);
-                    yield noise32(na.spec(), x[0], y[0], z[0], x[1], y[1], z[1], sb);
-                }
-                default -> throw new Unsupported("certified fp32 does not cover " + n.getClass().getSimpleName());
-            };
+                return readRounded(sb, "(double) beard(c)");
+            } else if (n instanceof Node.Marker m) {
+                return marker(m, sb);
+            } else if (n instanceof Node.StaticCall c) {
+                return staticCall32(c, sb);
+            } else if (n instanceof Node.Select s) {
+                String cond = cond32(s.cond(), sb);
+                V out = decl(sb);
+                sb.append("  if (").append(cond).append(") {\n");
+                V a = ev(s.whenJump(), sb);
+                sb.append("  ").append(out.v()).append(" = ").append(a.v()).append("; ").append(out.e()).append(" = ").append(a.e()).append(";\n  } else {\n");
+                V b = ev(s.whenFall(), sb);
+                sb.append("  ").append(out.v()).append(" = ").append(b.v()).append("; ").append(out.e()).append(" = ").append(b.e()).append(";\n  }\n");
+                return out;
+            } else if (n instanceof Node.IntToDouble i) {
+                // an exact int. Its float conversion rounds only beyond 2^24.
+                String iv = evInt32(i.value(), sb);
+                String n0 = "t" + tmp;
+                V v = tmp(sb, "(float) (" + iv + ")", "0.0f");
+                sb.append("  if (fabs(").append(n0).append(") >= 0x1p24f) ").append(v.e()).append(" = RND(").append(n0).append(");\n");
+                return v;
+            } else if (n instanceof Node.RoundFloat r) {
+                // (float) of the double value. Exact when the float value is exact (no error). Otherwise, the error plus one rounding.
+                V a = ev(r.value(), sb);
+                return tmp(sb, a.v(), "(" + a.e() + " > 0.0f ? " + a.e() + " + RND(" + a.v() + ") : 0.0f)");
+            } else if (n instanceof Node.NoiseAt na) {
+                String[] x = ffCoordinate(na.x(), sb), y = ffCoordinate(na.y(), sb), z = ffCoordinate(na.z(), sb);
+                return noise32(na.spec(), x[0], y[0], z[0], x[1], y[1], z[1], sb);
+            } else {
+                throw new Unsupported("certified fp32 does not cover " + n.getClass().getSimpleName());
+            }
         }
 
         /** Lifted code's static calls: double arithmetic and the {@code Math}/{@code Mth} functions GA2's emitter knows to be exact. */
@@ -2144,67 +2177,66 @@ public final class ClEmitter {
 
         /** Int expressions are exact. A cast or floor of a float value marks the cell when the value's error reaches across a step. */
         private String evInt32(INode n, StringBuilder sb) {
-            return switch (n) {
-                case INode.IntConst c -> Integer.toString(c.value());
-                case INode.IntCoord c -> c.axis() == 0 ? "c->bx" : c.axis() == 1 ? "c->by" : "c->bz";
-                case INode.IntBin b -> {
-                    String x = evInt32(b.a(), sb);
-                    String y = evInt32(b.b(), sb);
-                    yield switch (b.op()) {
-                        case ADD -> "(" + x + " + " + y + ")";
-                        case SUB -> "(" + x + " - " + y + ")";
-                        case MUL -> "(" + x + " * " + y + ")";
-                        case DIV -> "(" + x + " / " + y + ")";
-                        case REM -> "(" + x + " % " + y + ")";
-                        case SHL -> "(" + x + " << (" + y + " & 31))";
-                        case SHR -> "(" + x + " >> (" + y + " & 31))";
-                        case USHR -> "(int) ((uint) " + x + " >> (" + y + " & 31))";
-                        case AND -> "(" + x + " & " + y + ")";
-                        case OR -> "(" + x + " | " + y + ")";
-                        case XOR -> "(" + x + " ^ " + y + ")";
-                    };
+            if (n instanceof INode.IntConst c) {
+                return Integer.toString(c.value());
+            } else if (n instanceof INode.IntCoord c) {
+                return c.axis() == 0 ? "c->bx" : c.axis() == 1 ? "c->by" : "c->bz";
+            } else if (n instanceof INode.IntBin b) {
+                String x = evInt32(b.a(), sb);
+                String y = evInt32(b.b(), sb);
+                return switch (b.op()) {
+                    case ADD -> "(" + x + " + " + y + ")";
+                    case SUB -> "(" + x + " - " + y + ")";
+                    case MUL -> "(" + x + " * " + y + ")";
+                    case DIV -> "(" + x + " / " + y + ")";
+                    case REM -> "(" + x + " % " + y + ")";
+                    case SHL -> "(" + x + " << (" + y + " & 31))";
+                    case SHR -> "(" + x + " >> (" + y + " & 31))";
+                    case USHR -> "(int) ((uint) " + x + " >> (" + y + " & 31))";
+                    case AND -> "(" + x + " & " + y + ")";
+                    case OR -> "(" + x + " | " + y + ")";
+                    case XOR -> "(" + x + " ^ " + y + ")";
+                };
+            } else if (n instanceof INode.IntNeg g) {
+                return "(-" + evInt32(g.a(), sb) + ")";
+            } else if (n instanceof INode.DoubleToInt d && d.value() instanceof Node.StaticCall s && s.owner().equals("$op") && s.name().equals("dadd")
+                    && s.args().get(0) instanceof Node.IntToDouble i && s.args().get(1) instanceof Node shift) {
+                // (int) ((double) coordinate + shift), a shifted position: the int part stays exact in double. Only the shift's error
+                // can move the result across an integer
+                String base = "(double) (" + evInt32(i.value(), sb) + ")";
+                V v = ev(shift, sb);
+                String r = "q" + tmp++;
+                sb.append("  int ").append(r).append(" = convert_int_sat_rtz(").append(base).append(" + (double) ").append(v.v()).append(");\n");
+                sb.append("  if (convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" - (double) ").append(v.e())
+                    .append(")) != convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" + (double) ").append(v.e())
+                    .append("))) c->unc |= 256;\n");
+                return r;
+            } else if (n instanceof INode.DoubleToInt d) {
+                V v = ev(d.value(), sb);
+                String r = "q" + tmp++;
+                sb.append("  int ").append(r).append(" = convert_int_sat_rtz((double) ").append(v.v()).append(");\n");
+                sb.append("  if (convert_int_sat_rtz((double) ").append(v.v()).append(" - (double) ").append(v.e()).append(") != convert_int_sat_rtz((double) ").append(v.v())
+                    .append(" + (double) ").append(v.e()).append(")) c->unc |= 256;\n");
+                return r;
+            } else if (n instanceof INode.IntStaticCall c) {
+                String key = staticKey(c.owner(), c.name(), c.desc());
+                if (!key.equals("net/minecraft/util/Mth.floor(D)I")) {
+                    throw new Unsupported("certified fp32: int static call " + key);
                 }
-                case INode.IntNeg g -> "(-" + evInt32(g.a(), sb) + ")";
-                case INode.DoubleToInt d when d.value() instanceof Node.StaticCall s && s.owner().equals("$op") && s.name().equals("dadd")
-                    && s.args().get(0) instanceof Node.IntToDouble i && s.args().get(1) instanceof Node shift -> {
-                    // (int) ((double) coordinate + shift), a shifted position: the int part stays exact in double. Only the shift's error
-                    // can move the result across an integer
-                    String base = "(double) (" + evInt32(i.value(), sb) + ")";
-                    V v = ev(shift, sb);
-                    String r = "q" + tmp++;
-                    sb.append("  int ").append(r).append(" = convert_int_sat_rtz(").append(base).append(" + (double) ").append(v.v()).append(");\n");
-                    sb.append("  if (convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" - (double) ").append(v.e())
-                        .append(")) != convert_int_sat_rtz(").append(base).append(" + ((double) ").append(v.v()).append(" + (double) ").append(v.e())
-                        .append("))) c->unc |= 256;\n");
-                    yield r;
-                }
-                case INode.DoubleToInt d -> {
-                    V v = ev(d.value(), sb);
-                    String r = "q" + tmp++;
-                    sb.append("  int ").append(r).append(" = convert_int_sat_rtz((double) ").append(v.v()).append(");\n");
-                    sb.append("  if (convert_int_sat_rtz((double) ").append(v.v()).append(" - (double) ").append(v.e()).append(") != convert_int_sat_rtz((double) ").append(v.v())
-                        .append(" + (double) ").append(v.e()).append(")) c->unc |= 256;\n");
-                    yield r;
-                }
-                case INode.IntStaticCall c -> {
-                    String key = staticKey(c.owner(), c.name(), c.desc());
-                    if (!key.equals("net/minecraft/util/Mth.floor(D)I")) {
-                        throw new Unsupported("certified fp32: int static call " + key);
-                    }
-                    V v = ev((Node) c.args().get(0), sb);
-                    String r = "q" + tmp++;
-                    sb.append("  int ").append(r).append(" = jfloor((double) ").append(v.v()).append(");\n");
-                    sb.append("  if (jfloor((double) ").append(v.v()).append(" - (double) ").append(v.e()).append(") != jfloor((double) ").append(v.v()).append(" + (double) ")
-                        .append(v.e()).append(")) c->unc |= 256;\n");
-                    yield r;
-                }
-                case INode.SelectInt s -> {
-                    String cond = cond32(s.cond(), sb);
-                    String a = evInt32(s.whenJump(), sb);
-                    String b = evInt32(s.whenFall(), sb);
-                    yield "((" + cond + ") ? (" + a + ") : (" + b + "))";
-                }
-            };
+                V v = ev((Node) c.args().get(0), sb);
+                String r = "q" + tmp++;
+                sb.append("  int ").append(r).append(" = jfloor((double) ").append(v.v()).append(");\n");
+                sb.append("  if (jfloor((double) ").append(v.v()).append(" - (double) ").append(v.e()).append(") != jfloor((double) ").append(v.v()).append(" + (double) ")
+                    .append(v.e()).append(")) c->unc |= 256;\n");
+                return r;
+            } else if (n instanceof INode.SelectInt s) {
+                String cond = cond32(s.cond(), sb);
+                String a = evInt32(s.whenJump(), sb);
+                String b = evInt32(s.whenFall(), sb);
+                return "((" + cond + ") ? (" + a + ") : (" + b + "))";
+            } else {
+                throw new IllegalStateException(String.valueOf(n));
+            }
         }
 
         /**
@@ -3877,16 +3909,16 @@ public final class ClEmitter {
      * (the same operations Java does, so the same value), or null.
      */
     static String exactDouble(Node n) {
-        return switch (n) {
-            case Node.Const k -> dlit(k.value());
-            case Node.IntToDouble i when i.value() instanceof INode.IntCoord ic ->
-                "(double) c->" + (ic.axis() == 0 ? "bx" : ic.axis() == 1 ? "by" : "bz");
-            case Node.StaticCall s when s.owner().equals("$op") && s.args().size() == 2 && (s.name().equals("dadd") || s.name().equals("dsub") || s.name().equals("dmul")) -> {
-                String a = s.args().get(0) instanceof Node na ? exactDouble(na) : null, b = s.args().get(1) instanceof Node nb ? exactDouble(nb) : null;
-                yield a == null || b == null ? null : "(" + a + (s.name().equals("dadd") ? " + " : s.name().equals("dsub") ? " - " : " * ") + b + ")";
-            }
-            default -> null;
-        };
+        if (n instanceof Node.Const k) {
+            return dlit(k.value());
+        } else if (n instanceof Node.IntToDouble i && i.value() instanceof INode.IntCoord ic) {
+            return "(double) c->" + (ic.axis() == 0 ? "bx" : ic.axis() == 1 ? "by" : "bz");
+        } else if (n instanceof Node.StaticCall s && s.owner().equals("$op") && s.args().size() == 2 && (s.name().equals("dadd") || s.name().equals("dsub") || s.name().equals("dmul"))) {
+            String a = s.args().get(0) instanceof Node na ? exactDouble(na) : null, b = s.args().get(1) instanceof Node nb ? exactDouble(nb) : null;
+            return a == null || b == null ? null : "(" + a + (s.name().equals("dadd") ? " + " : s.name().equals("dsub") ? " - " : " * ") + b + ")";
+        } else {
+            return null;
+        }
     }
 
     /** The OpenCL function of a call to an extern sampler the GPU computes ({@code ExternSamplers.GpuForm}), or null. */
@@ -3952,7 +3984,8 @@ public final class ClEmitter {
     static final String BEARD = """
         double bury(double a, double b, double cz) { double d = sqrt(a * a + b * b + cz * cz); return jclampedMap(d, 0.0, 6.0, 1.0, 0.0); }
         double fast_inv_sqrt(double n) { double d0 = 0.5 * n; long i = as_long(n); i = 6910469410427058090L - (i >> 1); double x = as_double(i); return x * (1.5 - d0 * x * x); }
-        /* EnhancedTerrainAdaptation.computeDensityFactor of YUNG's API (t[7] == 0) and Integrated API, over the batch's adaptation table */
+        /* EnhancedTerrainAdaptation.computeDensityFactor of YUNG's API (bit 0 of t[7] clear) and Integrated API, over the batch's
+           adaptation table. Bit 1: the mod takes Mth.invSqrt (JOML's 1 / sqrt), else Mth.fastInvSqrt */
         double enh_factor(__global const int* ek, __global const int* t, int dx, int dy, int dz, int yRel) {
           int size = t[0]; int rad = size / 2;
           int i = dx + rad, j = dy + rad, k = dz + rad;
@@ -3960,12 +3993,13 @@ public final class ClEmitter {
           float kv = as_float(ek[t[1] + (k * size * size + i * size + j)]);
           double d0 = (double) yRel + 0.5;
           double d1 = (double) dx * (double) dx + d0 * d0 + (double) dz * (double) dz;
-          if (t[7] == 0) {
-            double d2 = fabs((d0 * fast_inv_sqrt(d1 / 2.0)) / 2.0);
+          double root = (t[7] & 2) != 0 ? 1.0 / sqrt(d1 / 2.0) : fast_inv_sqrt(d1 / 2.0);
+          if ((t[7] & 1) == 0) {
+            double d2 = fabs((d0 * root) / 2.0);
             int mod = d0 > 0.0 ? t[2] : t[3];
             return (d2 * (double) kv) * (double) mod;
           }
-          double d2 = ((-d0) * fast_inv_sqrt(d1 / 2.0)) / 2.0;
+          double d2 = ((-d0) * root) / 2.0;
           if (d2 > 0.0 && !t[5]) return 0.0;
           if (d2 < 0.0 && !t[4]) return 0.0;
           return d2 * (double) kv;
@@ -3990,12 +4024,11 @@ public final class ClEmitter {
             int k1 = r[1] + r[7];
             int l1 = y - k1;
             int adj = r[6];
-            int i2 = adj == 0 ? 0 : (adj == 1 || adj == 2) ? l1 : adj == 3 ? max(0, max(k1 - y, y - r[4])) : max(0, max(r[1] - y, y - r[4]));
+            int i2 = adj == 0 ? 0 : (adj == 1 || adj == 2) ? l1 : max(0, max(k1 - y, y - r[4]));
             double v;
             if (adj == 0) v = 0.0;
             else if (adj == 1) v = bury((double) i1, (double) i2 / 2.0, (double) j1);
-            else if (adj == 2 || adj == 3) v = beard_c(c->bk, i1, i2, j1, l1) * 0.8;
-            else v = bury((double) i1 / 2.0, (double) i2 / 2.0, (double) j1 / 2.0) * 0.8;
+            else v = beard_c(c->bk, i1, i2, j1, l1) * 0.8;
             d0 += v;
           }
           for (int q = c->bjs; q < c->bjs + c->bjn; q++) {

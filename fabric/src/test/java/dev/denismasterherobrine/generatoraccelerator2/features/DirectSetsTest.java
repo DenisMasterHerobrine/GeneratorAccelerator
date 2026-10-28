@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,7 +19,7 @@ import java.lang.reflect.Field;
 /**
  * {@code HolderSet.Direct.contains} by bits ({@code state.DirectSets}) against membership by vanilla's comparison, for random
  * block lists and every block. Vanilla's reference holders compare by identity, so a holder of the same key that is another
- * object is not a member. NeoForge's compare by key, which the bits answer for both.
+ * object is not a member.
  */
 public class DirectSetsTest {
     @Test
@@ -39,7 +40,7 @@ public class DirectSetsTest {
                 for (Holder.Reference<Block> b : blocks) {
                     boolean truth = list.stream().anyMatch(h -> h == b);
                     if (set.contains(b) != truth) {
-                        wrong.add(n + " entries, " + b.getRegisteredName() + ": " + !truth);
+                        wrong.add(n + " entries, " + HolderNames.name(b) + ": " + !truth);
                     }
                     checked++;
                 }
@@ -48,7 +49,7 @@ public class DirectSetsTest {
                     Holder.Reference<Block> member = (Holder.Reference<Block>) list.get(0);
                     Holder.Reference<Block> other = Holder.Reference.createStandAlone(BuiltInRegistries.BLOCK.holderOwner(), member.key());
                     if (set.contains(other)) {
-                        wrong.add(n + " entries, stand-alone " + member.getRegisteredName() + ": true");
+                        wrong.add(n + " entries, stand-alone " + HolderNames.name(member) + ": true");
                     }
                 }
             }
@@ -65,8 +66,7 @@ public class DirectSetsTest {
         long[] bits = DirectSets.bits(list);
         for (Holder.Reference<Block> b : blocks) {
             boolean member = list.contains(b);
-            assertEquals(member ? DirectSets.YES : DirectSets.NO, DirectSets.answer(DirectSets.KEY, bits, b.key()), b.getRegisteredName());
-            assertEquals(member ? DirectSets.ASK : DirectSets.NO, DirectSets.answer(DirectSets.IDENTITY, bits, b.key()), b.getRegisteredName());
+            assertEquals(member ? DirectSets.ASK : DirectSets.NO, DirectSets.answer(bits, b.key()), HolderNames.name(b));
         }
         // a holder that is not a reference: the set answers
         assertSame(DirectSets.VANILLA, DirectSets.bits(List.of(blocks.get(3), Holder.direct(blocks.get(4).value()))));

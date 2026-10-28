@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -33,9 +32,8 @@ public abstract class RegionFileSyncMixin implements RegionSync.Batched {
     @Unique
     private volatile boolean ga2$closed;
 
-    @Inject(method = "<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Ljava/nio/file/Path;"
-        + "Lnet/minecraft/world/level/chunk/storage/RegionFileVersion;Z)V", at = @At("TAIL"))
-    private void ga2$claimed(RegionStorageInfo info, Path path, Path dir, RegionFileVersion version, boolean sync, CallbackInfo ci) {
+    @Inject(method = "<init>(Ljava/nio/file/Path;Ljava/nio/file/Path;Lnet/minecraft/world/level/chunk/storage/RegionFileVersion;Z)V", at = @At("TAIL"))
+    private void ga2$claimed(Path path, Path dir, RegionFileVersion version, boolean sync, CallbackInfo ci) {
         this.ga2$batched = !sync && RegionSync.consumeClaim();
     }
 

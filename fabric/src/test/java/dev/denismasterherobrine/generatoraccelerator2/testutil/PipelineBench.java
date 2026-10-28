@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -89,13 +89,13 @@ public class PipelineBench {
         for (int i = 0; i < chunks.length; i++) {
             ProtoChunk chunk = world.emptyChunk(origin + i % SIDE, 3000 + i / SIDE);
             world.noiseChunk(chunk);
-            world.generator.createBiomes(world.randomState, Blender.empty(), null, chunk).join();
-            chunk.setPersistedStatus(ChunkStatus.BIOMES);
+            world.generator.createBiomes(Runnable::run, world.randomState, Blender.empty(), null, chunk).join();
+            chunk.setStatus(ChunkStatus.BIOMES);
             chunks[i] = chunk;
         }
         long t1 = System.nanoTime();
         for (ProtoChunk chunk : chunks) {
-            world.generator.fillFromNoise(Blender.empty(), world.randomState, null, chunk).join();
+            world.generator.fillFromNoise(Runnable::run, Blender.empty(), world.randomState, null, chunk).join();
         }
         long t2 = System.nanoTime();
         return new long[] { t1 - t0, t2 - t1 };

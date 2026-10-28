@@ -9,13 +9,13 @@ import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 /**
  * Chunks asked of the server level by other threads. Vanilla's {@code ServerChunkCache.getChunk} hands such a call to the server
  * thread and waits for it, even when the chunk has long had the status. Mods' worldgen code does this from the worker threads:
- * Lithostitched's {@code in_structure} block predicate asks every chunk its search box touches for its structure references.
- * In a 575-mod pack the workers waited 30 s for such answers in one 33 s square.
+ * a block predicate that asks every chunk its search box touches for its structure references. In a 575-mod pack the workers
+ * waited 30 s for such answers in one 33 s square.
  *
  * <p>When the chunk's holder in the visible map has the status, and the holder's level still allows it, the chunk is answered at
  * once. That is the chunk the server thread would answer: its future for the status is complete, and complete futures stay so.
@@ -40,7 +40,7 @@ public final class PresentChunks {
             return null;
         }
         ChunkHolder holder = ((ChunkMapUpdatingInvoker) cache.chunkMap).ga2$visibleChunk(ChunkPos.asLong(x, z));
-        ChunkAccess chunk = holder == null ? null : holder.getChunkIfPresent(status);
+        ChunkAccess chunk = holder == null ? null : holder.getFutureIfPresent(status).getNow(ChunkHolder.UNLOADED_CHUNK).left().orElse(null);
         if (chunk != null) {
             Consumer<ServerChunkCache> before = beforeAnswer;
             if (before != null) {

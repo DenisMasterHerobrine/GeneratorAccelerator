@@ -16,6 +16,7 @@ import dev.worldgen.lithostitched.impl.worldgen.surface.condition.AllOfCondition
 import dev.worldgen.lithostitched.impl.worldgen.surface.condition.AnyOfCondition;
 import dev.worldgen.lithostitched.impl.worldgen.surface.condition.BiomeCondition;
 import dev.worldgen.lithostitched.impl.worldgen.surface.condition.SlopeCondition;
+import dev.worldgen.lithostitched.worldgen.surface.LithostitchedSurfaceRules;
 import net.minecraft.util.InclusiveRange;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -174,6 +175,28 @@ class SurfaceExactnessTest {
         SurfaceConfig.compileOverride = false;
         checkRule(w, lowered, at.subList(0, 4));
         checkRule(w, mixed, at.subList(0, 2));
+    }
+
+    /**
+     * Lithostitched 1.20.1's merged rule (test copy in {@code dev.worldgen.lithostitched.worldgen.surface}). One rule alone is
+     * that rule. More rules are followed by the original once more. The mod's own sequence ends with the original, another one
+     * does not.
+     */
+    @Test
+    void lithostitchedMergedRulesMatch() {
+        TerrainHarness.World w = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, SEEDS[0]);
+        SurfaceRules.RuleSource original = w.settings.surfaceRule();
+        SurfaceRules.RuleSource sand = SurfaceRules.ifTrue(SurfaceRules.abovePreliminarySurface(),
+            SurfaceRules.ifTrue(SurfaceRules.ON_FLOOR, SurfaceRules.state(Blocks.SAND.defaultBlockState())));
+        SurfaceRules.RuleSource gold = SurfaceRules.ifTrue(SurfaceRules.ON_CEILING, SurfaceRules.state(Blocks.GOLD_BLOCK.defaultBlockState()));
+        List<int[]> at = sites(TerrainHarness.Preset.OVERWORLD, SEEDS[0]).subList(0, 6);
+        for (SurfaceRules.RuleSource merged : List.of(
+            new LithostitchedSurfaceRules.TransientMergedRuleSource(List.of(sand, original), original),
+            new LithostitchedSurfaceRules.TransientMergedRuleSource(List.of(sand), original),
+            new LithostitchedSurfaceRules.TransientMergedRuleSource(List.of(sand, gold), original))) {
+            assertFalse(SurfaceBuilder.program(merged).hasOpaque, "the merged rule was not lowered");
+            checkRule(w, merged, at);
+        }
     }
 
     /** A condition from a mod GA2 does not know (it only wraps a vanilla one). */

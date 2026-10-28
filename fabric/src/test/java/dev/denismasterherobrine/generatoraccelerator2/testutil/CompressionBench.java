@@ -1,11 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,12 +15,11 @@ import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /**
- * Time and size of a saved chunk's compression, per deflate level and with vanilla's LZ4, on the full chunks of a world's region
+ * Time and size of a saved chunk's compression, per deflate level, on the full chunks of a world's region
  * files ({@code -Dga2.bench.regions=<region dir>}, {@code -Dga2.bench.chunks=N}). Compression and decompression are timed apart.
  * {@code gradlew test --tests "*CompressionBench*" -Dga2.bench=compression -Dga2.bench.regions=<dir>}
  */
@@ -95,23 +91,6 @@ public class CompressionBench {
                 inflater.end();
                 report(round, rounds, "deflate " + level, packed, raw, t0, t1, t2);
             }
-            List<byte[]> packed = new ArrayList<>(raw.size());
-            long t0 = System.nanoTime();
-            for (byte[] b : raw) {
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream(b.length / 2);
-                try (OutputStream o = RegionFileVersion.VERSION_LZ4.wrap(bytes)) {
-                    o.write(b);
-                }
-                packed.add(bytes.toByteArray());
-            }
-            long t1 = System.nanoTime();
-            for (byte[] p : packed) {
-                try (InputStream in = RegionFileVersion.VERSION_LZ4.wrap(new ByteArrayInputStream(p))) {
-                    in.readAllBytes();
-                }
-            }
-            long t2 = System.nanoTime();
-            report(round, rounds, "lz4 (vanilla)", packed, raw, t0, t1, t2);
         }
     }
 

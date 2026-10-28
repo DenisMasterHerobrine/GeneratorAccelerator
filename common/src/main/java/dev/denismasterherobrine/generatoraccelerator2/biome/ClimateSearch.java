@@ -57,7 +57,7 @@ public final class ClimateSearch {
         // ends on it whatever the last result
         Climate.RTree.Leaf<T> handed = BiomeHand.nearest(tree, q0, q1, q2, q3, q4, q5);
         if (handed != null) {
-            if (handed != last) {
+            if (handed != last && !quiet()) {
                 tree.lastResult.set(handed);
             }
             return handed.value;
@@ -79,10 +79,37 @@ public final class ClimateSearch {
             SearchTies.unsure(SearchTies.TIE);
         }
         Climate.RTree.Leaf<T> leaf = (Climate.RTree.Leaf<T>) flat.leaf(id);
-        if (leaf != last) {
+        if (leaf != last && !quiet()) {
             // The same leaf as before is common (the quarts of one column). A thread-local write costs more than the read above.
             tree.lastResult.set(leaf);
         }
         return leaf.value;
+    }
+
+    /** Threads inside {@link #quietly}, and this thread's flag. While none, searches skip the thread-local read. */
+    private static final AtomicInteger QUIETING = new AtomicInteger();
+    private static final ThreadLocal<boolean[]> QUIET = ThreadLocal.withInitial(() -> new boolean[1]);
+
+    /**
+     * Runs {@code body} with this thread's searches leaving every tree's last result as it was. A lookup GA2 makes ahead of vanilla
+     * then does not change what vanilla's own lookups start from afterwards. Its answers hold only where they had a single nearest
+     * leaf ({@link SearchTies}).
+     */
+    public static <T> T quietly(Supplier<T> body) {
+        QUIETING.incrementAndGet();
+        boolean[] q = QUIET.get();
+        boolean previous = q[0];
+        q[0] = true;
+        try {
+            return body.get();
+        } finally {
+            q[0] = previous;
+            QUIETING.decrementAndGet();
+        }
+    }
+
+    /** Whether this thread's searches leave the last results as they are ({@link #quietly}). */
+    public static boolean quiet() {
+        return QUIETING.get() != 0 && QUIET.get()[0];
     }
 }

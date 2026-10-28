@@ -7,10 +7,6 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import net.minecraft.Util;
 import net.minecraft.server.level.ChunkHolder;
-import net.minecraft.server.level.GenerationChunkHolder;
-import net.minecraft.util.StaticCache2D;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.ChunkAccess;
 
 /**
  * Orders the chunk steps that run on the worker pool by how urgently their chunk is needed.
@@ -80,16 +76,10 @@ public final class StepLane {
         }
     }
 
-    /** The queue level of the chunk a step works on ({@link #UNKNOWN} when its holder is not a {@code ChunkHolder}). */
-    public static int level(StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
-        ChunkPos pos = chunk.getPos();
-        GenerationChunkHolder holder;
-        try {
-            holder = cache.get(pos.x, pos.z);
-        } catch (RuntimeException e) {
-            return UNKNOWN;
-        }
-        return holder instanceof ChunkHolder h ? h.getQueueLevel() : UNKNOWN;
+    /** The queue level of the chunk a step works on ({@link #UNKNOWN} when the step does not run on vanilla's mailbox). */
+    public static int level(StepCall call) {
+        ChunkHolder holder = StepThreads.mailboxHolder();
+        return holder != null && holder.getPos().equals(call.chunk().getPos()) ? holder.getQueueLevel() : UNKNOWN;
     }
 
     /** Runs {@code body} with the noise and biome executors queueing at {@code level} on this thread. */

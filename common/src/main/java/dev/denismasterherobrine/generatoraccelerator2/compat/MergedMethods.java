@@ -7,7 +7,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.objectweb.asm.Handle;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -136,14 +139,14 @@ public final class MergedMethods {
         // GA2's callback
         Set<String> lambdas = new HashSet<>();
         for (MethodNode m : target.methods) {
-            if (listed(methods, m)) {
+            if (listed(methods, m) || wrappedCopy(methods, m)) {
                 lambdasOf(target, m, byKey, lambdas);
             }
         }
         for (MethodNode m : target.methods) {
             String key = m.name + m.desc;
             boolean lambda = lambdas.contains(key);
-            if (!listed(methods, m) && !lambda) {
+            if (!listed(methods, m) && !wrappedCopy(methods, m) && !lambda) {
                 continue;
             }
             String inspected = Names.mojangMethodKey(m.name, m.desc);
@@ -185,6 +188,19 @@ public final class MergedMethods {
         return out;
     }
 
+    /** MixinExtras' copy of a method's body that another mod's {@code @WrapMethod} wraps. */
+    private static final Pattern WRAPPED_COPY = Pattern.compile("^(.+)\\$mixinextras\\$wrapped\\$\\d+$");
+
+    /**
+     * Whether {@code m} is the body of a listed method that a {@code @WrapMethod} moved ({@code name$mixinextras$wrapped$N}). That copy
+     * is the method's code, so other mods' changes inside it count: Elysium's callback in {@code getNoiseBiome} sits there under Hybrid
+     * Aquatic's wrapper.
+     */
+    private static boolean wrappedCopy(List<String> methods, MethodNode m) {
+        Matcher w = WRAPPED_COPY.matcher(m.name);
+        return w.matches() && (methods.contains(Names.mojangMethodKey(w.group(1), m.desc)) || methods.contains(Names.mojangMethod(w.group(1))));
+    }
+
     /**
      * Whether {@code methods} names {@code m}, by name and descriptor or by bare name. The tables use Mojang names. The class has
      * the running game's names ({@link Names}).
@@ -200,10 +216,12 @@ public final class MergedMethods {
                 continue;
             }
             for (Object arg : indy.bsmArgs) {
-                if (arg instanceof Handle h && h.getOwner().equals(target.name) && h.getName().startsWith("lambda$")) {
+                if (arg instanceof Handle h && h.getOwner().equals(target.name)) {
+                    // a lambda body is synthetic under every name the game runs with (lambda$, intermediary, SRG). A method reference is not.
+                    // MixinExtras' bridges are synthetic too, and are read with the wrapper that calls them (bridgeCalls)
                     String key = h.getName() + h.getDesc();
                     MethodNode lambda = byKey.get(key);
-                    if (lambda != null && out.add(key)) {
+                    if (lambda != null && (lambda.access & Opcodes.ACC_SYNTHETIC) != 0 && !lambda.name.startsWith("mixinextras$") && out.add(key)) {
                         lambdasOf(target, lambda, byKey, out);
                     }
                 }

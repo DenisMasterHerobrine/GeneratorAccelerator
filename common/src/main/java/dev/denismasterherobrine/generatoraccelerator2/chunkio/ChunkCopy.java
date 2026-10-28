@@ -61,7 +61,7 @@ public final class ChunkCopy {
                 copy.setCarvingMask(step, new CarvingMask(mask.toArray(), chunk.getMinBuildHeight()));
             }
         }
-        copy.setPersistedStatus(chunk.getPersistedStatus());
+        copy.setStatus(chunk.getStatus());
         ((ChunkAccessAccessor) copy).ga2$setNoiseChunk(((ChunkAccessAccessor) chunk).ga2$noiseChunk());
         GpuTerrain terrain = GpuTerrain.of(chunk);
         if (terrain != null) {
@@ -126,7 +126,18 @@ public final class ChunkCopy {
             return rebuilt(from, size);
         }
         PalettedContainer<T> to = from.recreate();
-        PalettedContainer.Data<T> nd = ((PalettedContainerInvoker) (Object) to).ga2$createOrReuseData(null, bits);
+        // the storage's own bits, else the smaller request a growing palette was made from: Lithium's strategy gives a linear palette of
+        // 4 bits for 1 bit and its hash palette for 4
+        PalettedContainer.Data<T> nd = null;
+        for (int req = bits; req >= 0 && nd == null; req--) {
+            PalettedContainer.Data<T> c = ((PalettedContainerInvoker) (Object) to).ga2$createOrReuseData(null, req);
+            if (c.palette().getClass() == d.palette().getClass() && c.storage().getBits() == bits) {
+                nd = c;
+            }
+        }
+        if (nd == null) {
+            return rebuilt(from, size);
+        }
         for (int i = 0; i < d.palette().getSize(); i++) {
             nd.palette().idFor(d.palette().valueFor(i));
         }

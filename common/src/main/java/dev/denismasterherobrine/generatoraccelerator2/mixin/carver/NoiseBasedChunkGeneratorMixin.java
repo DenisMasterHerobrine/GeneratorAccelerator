@@ -4,8 +4,10 @@ import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.carver.AquiferDiag;
 import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.WorldGenRegion;
@@ -17,6 +19,7 @@ import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.blending.Blender;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -48,6 +51,14 @@ public abstract class NoiseBasedChunkGeneratorMixin {
                 // and answers differently in about 1% of chunks. Vanilla carving with a fresh NoiseChunk does not differ. Neither does GA2's
                 // carving with the fill's NoiseChunk.
                 ((ChunkAccessAccessor) copy).ga2$setNoiseChunk(null);
+                if (FrostedCaves.active() && noiseChunk != null) {
+                    // YUNG's Cave Biomes notes its biome lookup on the chunk's NoiseChunk at the biome step. The game carves with that
+                    // NoiseChunk, so the fresh one, made as vanilla's carving makes it, gets the same notes
+                    NoiseChunk fill = noiseChunk;
+                    NoiseChunk fresh = copy.getOrCreateNoiseChunk(c -> ((NoiseChunkFactoryInvoker) (Object) this).ga2$createNoiseChunk(c, structureManager,
+                        Blender.of(region), randomState));
+                    FrostedCaves.copyStep(fill, fresh);
+                }
                 noiseChunk = null;
             }
             Runnable restore = noiseChunk == null ? () -> {} : ChunkCopy.snapshot(noiseChunk.aquifer());

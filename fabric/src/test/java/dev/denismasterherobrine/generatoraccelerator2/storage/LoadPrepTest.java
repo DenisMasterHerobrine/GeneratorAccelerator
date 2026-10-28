@@ -65,8 +65,8 @@ public class LoadPrepTest {
                     for (int i = 0; i < sections.size(); i++) {
                         CompoundTag section = sections.getCompound(i);
                         String where = preset + " chunk " + c[0] + "," + c[1] + " section " + i + (checked ? " checked" : "");
-                        PalettedContainer<BlockState> vanillaStates = states.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow();
-                        PalettedContainerRO<Holder<Biome>> vanillaBiomes = biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow();
+                        PalettedContainer<BlockState> vanillaStates = states.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow(false, error -> {});
+                        PalettedContainerRO<Holder<Biome>> vanillaBiomes = biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow(false, error -> {});
                         Object preparedStates = LoadPrep.takeDecoded(bundle, section.getCompound("block_states"));
                         Object preparedBiomes = LoadPrep.takeDecoded(bundle, section.getCompound("biomes"));
                         assertNotNull(preparedStates, where + " states prepared");
@@ -178,8 +178,8 @@ public class LoadPrepTest {
         for (int i = 0; i < all.length; i++) {
             CompoundTag section = new CompoundTag();
             section.putByte("Y", (byte) chunk.getSectionYFromSectionIndex(i));
-            section.put("block_states", states.encodeStart(NbtOps.INSTANCE, all[i].getStates()).getOrThrow());
-            section.put("biomes", biomes.encodeStart(NbtOps.INSTANCE, all[i].getBiomes()).getOrThrow());
+            section.put("block_states", states.encodeStart(NbtOps.INSTANCE, all[i].getStates()).getOrThrow(false, error -> {}));
+            section.put("biomes", biomes.encodeStart(NbtOps.INSTANCE, all[i].getBiomes()).getOrThrow(false, error -> {}));
             sections.add(section);
         }
         tag.put("sections", sections);

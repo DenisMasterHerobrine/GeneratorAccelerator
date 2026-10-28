@@ -31,7 +31,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
-import net.minecraft.world.level.chunk.status.ChunkType;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.chunk.storage.ChunkSerializer;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.LevelChunkTicks;
@@ -129,7 +129,8 @@ public final class LoadPrep {
 
     /** On the worker pool, with the chunk's upgraded tag before the server thread reads it. */
     public static void prepare(ServerLevel level, ChunkPos pos, CompoundTag chunk) {
-        prepare(level, level.registryAccess().registryOrThrow(Registries.BIOME), pos, chunk, !UNCHANGED.allowed());
+        // a chunk another mod's known read edit would change is prepared the checked way (LoadTagEdits)
+        prepare(level, level.registryAccess().registryOrThrow(Registries.BIOME), pos, chunk, !UNCHANGED.allowed() || LoadTagEdits.any(chunk));
     }
 
     /**
@@ -216,7 +217,7 @@ public final class LoadPrep {
     }
 
     private static void prepareTicks(Bundle b, ChunkPos pos, CompoundTag chunk) {
-        boolean full = ChunkSerializer.getChunkTypeFromTag(chunk) == ChunkType.LEVELCHUNK;
+        boolean full = ChunkSerializer.getChunkTypeFromTag(chunk) == ChunkStatus.ChunkType.LEVELCHUNK;
         b.tickPos = pos;
         ListTag blocks = chunk.getList("block_ticks", Tag.TAG_COMPOUND);
         // For an empty or missing list, getList returns a new empty list. Nothing could match that list by identity.

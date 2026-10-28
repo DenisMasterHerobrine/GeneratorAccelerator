@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
-import com.google.common.collect.ImmutableList;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.VanillaTags;
@@ -8,7 +7,6 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.PalettedContainer;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +16,6 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -33,8 +30,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.chunk.status.ChunkDependencies;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -58,18 +54,8 @@ public final class HarnessWorld {
     public enum Kind { OVERWORLD, NETHER, END }
 
     public static final int RADIUS = 3;
-    /** FEATURES: STRUCTURE_STARTS at radius 8, CARVERS at radius 1 (the dependency list vanilla's region uses). */
-    public static final ChunkDependencies FEATURE_DEPENDENCIES;
-
-    static {
-        List<ChunkStatus> deps = new ArrayList<>();
-        deps.add(ChunkStatus.CARVERS);
-        deps.add(ChunkStatus.CARVERS);
-        for (int i = 2; i <= 8; i++) {
-            deps.add(ChunkStatus.STRUCTURE_STARTS);
-        }
-        FEATURE_DEPENDENCIES = new ChunkDependencies(ImmutableList.copyOf(deps));
-    }
+    /** The chunks around its own that a FEATURES region holds on each side (the step's range). */
+    public static final int FEATURE_RADIUS = ChunkStatus.FEATURES.getRange();
 
     public static final class Registries2 {
         public final HolderLookup.Provider lookup;
@@ -87,7 +73,7 @@ public final class HarnessWorld {
             VanillaTags.bind();
             this.lookup = VanillaRegistries.createLookup();
             MappedRegistry<Biome> reg = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
-            lookup.lookupOrThrow(Registries.BIOME).listElements().forEach(ref -> reg.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));
+            lookup.lookupOrThrow(Registries.BIOME).listElements().forEach(ref -> reg.register(ref.key(), ref.value(), Lifecycle.stable()));
             reg.freeze();
             this.biomes = reg;
             this.access = new RegistryAccess.ImmutableRegistryAccess(List.of(reg));
@@ -155,9 +141,9 @@ public final class HarnessWorld {
                 ProtoChunk chunk = new ProtoChunk(new ChunkPos(cx, cz), UpgradeData.EMPTY, heights, r.biomes, null);
                 fill(chunk, kind, noise, seed, biomeAt.apply(dx + dz * size));
                 Heightmap.primeHeightmaps(chunk, EnumSet.of(Heightmap.Types.OCEAN_FLOOR_WG, Heightmap.Types.WORLD_SURFACE_WG));
-                chunk.setPersistedStatus(ChunkStatus.CARVERS);
+                chunk.setStatus(ChunkStatus.CARVERS);
                 if (((cx + cz) & 1) == 0) {
-                    Heightmap.primeHeightmaps(chunk, ChunkStatus.FINAL_HEIGHTMAPS);
+                    Heightmap.primeHeightmaps(chunk, ChunkStatus.POST_FEATURES);
                 }
                 chunks[dx + dz * size] = chunk;
             }
@@ -260,7 +246,7 @@ public final class HarnessWorld {
             for (Map.Entry<Heightmap.Types, Heightmap> e : src.getHeightmaps()) {
                 copy.setHeightmap(e.getKey(), e.getValue().getRawData().clone());
             }
-            copy.setPersistedStatus(src.getPersistedStatus());
+            copy.setStatus(src.getStatus());
             out[i] = copy;
         }
         return out;
@@ -271,8 +257,8 @@ public final class HarnessWorld {
 
     /** {@code PalettedContainer.copy()} shares the resize handler with its source, so clone through the codec like the chunk serializer does. */
     public static PalettedContainer<BlockState> cloneStates(PalettedContainer<BlockState> states) {
-        Tag tag = STATES_CODEC.encodeStart(NbtOps.INSTANCE, states).getOrThrow();
-        return STATES_CODEC.parse(NbtOps.INSTANCE, tag).getOrThrow();
+        Tag tag = STATES_CODEC.encodeStart(NbtOps.INSTANCE, states).getOrThrow(false, error -> {});
+        return STATES_CODEC.parse(NbtOps.INSTANCE, tag).getOrThrow(false, error -> {});
     }
 
     public static LevelHeightAccessor heights(Registries2 r, Kind kind) {

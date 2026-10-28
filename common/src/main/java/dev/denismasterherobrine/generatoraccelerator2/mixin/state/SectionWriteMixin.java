@@ -1,7 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
-import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumSections;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFlags;
 import net.minecraft.world.level.block.state.BlockState;
@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.Unique;
 /**
  * {@code LevelChunkSection.setBlockState} that reads the counted properties of both states from their flags ({@link StateFlags}).
  * Vanilla asks each state, its block and its fluid state on every write. The counts change exactly as in vanilla, including
- * NeoForge's {@code isEmpty}. Every block write in worldgen and in game ends here. The body is put in place once the class is
+ * the air test. Every block write in worldgen and in game ends here. The body is put in place once the class is
  * complete, only when no other mod changed the method ({@code compat.LateOverwrites}). Otherwise vanilla's method runs with the
  * other mods' changes, and {@code state.sectionWrite} reads as changed.
  */
@@ -39,6 +39,8 @@ public abstract class SectionWriteMixin {
     @Unique
     private BlockState ga2$setBlockState(int x, int y, int z, BlockState state, boolean useLocks) {
         BlockState old = useLocks ? this.states.getAndSet(x, y, z, state) : this.states.getAndSetUnchecked(x, y, z, state);
+        // Lithium's counter update runs right after the swap in vanilla's method, so it runs here too
+        LithiumSections.afterSwap((LevelChunkSection) (Object) this, x, y, z, state, useLocks, old);
         if ((StateFast.ENABLED && GA2$HOOK.allowed())) {
             int fo = StateFlags.of(old);
             int fn = StateFlags.of(state);
@@ -64,7 +66,7 @@ public abstract class SectionWriteMixin {
         }
         FluidState fluidOld = old.getFluidState();
         FluidState fluidNew = state.getFluidState();
-        if (!PlatformHooks.isEmpty(old)) {
+        if (!old.isAir()) {
             this.nonEmptyBlockCount--;
             if (old.isRandomlyTicking()) {
                 this.tickingBlockCount--;
@@ -73,7 +75,7 @@ public abstract class SectionWriteMixin {
         if (!fluidOld.isEmpty()) {
             this.tickingFluidCount--;
         }
-        if (!PlatformHooks.isEmpty(state)) {
+        if (!state.isAir()) {
             this.nonEmptyBlockCount++;
             if (state.isRandomlyTicking()) {
                 this.tickingBlockCount++;

@@ -46,7 +46,7 @@ public class JsonRouterTest {
                 assertNotNull(in, "missing " + path);
                 json = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8));
             }
-            NoiseGeneratorSettings settings = NoiseGeneratorSettings.DIRECT_CODEC.parse(ops, json).getOrThrow(msg -> new IllegalStateException(file + ": " + msg));
+            NoiseGeneratorSettings settings = NoiseGeneratorSettings.DIRECT_CODEC.parse(ops, json).getOrThrow(false, error -> {});
             assertTrue(hasHolderWrappedConstant(settings.noiseRouter().finalDensity()) || !file.equals("overworld"),
                 "expected the JSON-decoded overworld router to contain holder-wrapped constants");
             RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 31337L);

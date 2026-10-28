@@ -42,7 +42,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.lighting.LayerLightSectionStorage;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -281,7 +281,7 @@ public class LightExactnessTest {
 
         // INITIALIZE_LIGHT: light sources of the column, section status (pre task), then light enabled = false, retain = false (post task)
         for (ProtoChunk c : chunks) {
-            c.setPersistedStatus(ChunkStatus.INITIALIZE_LIGHT);
+            c.setStatus(ChunkStatus.INITIALIZE_LIGHT);
             c.setLightEngine(engine);
             c.initializeLightSources();
             LevelChunkSection[] sections = c.getSections();
@@ -314,7 +314,7 @@ public class LightExactnessTest {
         out.lightNanos = System.nanoTime() - t0;
         long t1 = System.nanoTime();
         for (ProtoChunk c : chunks) {
-            c.setPersistedStatus(ChunkStatus.LIGHT);
+            c.setStatus(ChunkStatus.LIGHT);
         }
 
         // block changes after lighting: sources added and removed, holes, roofs, a whole section emptied and one filled

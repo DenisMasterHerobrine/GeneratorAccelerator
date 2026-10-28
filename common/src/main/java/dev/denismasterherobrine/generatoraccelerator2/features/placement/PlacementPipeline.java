@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.placement;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
@@ -613,7 +614,7 @@ public final class PlacementPipeline {
                 }
                 if (VERIFY_BIOME_SET.sample()) {
                     Holder<Biome> real = ctx.getLevel().getBiome(pos);
-                    VERIFY_BIOME_SET.result(ctx.generator().getBiomeGenerationSettings(real).hasFeature(top), pos.immutable(), "true for " + real.getRegisteredName(), false);
+                    VERIFY_BIOME_SET.result(ctx.generator().getBiomeGenerationSettings(real).hasFeature(top), pos.immutable(), "true for " + HolderNames.name(real), false);
                 }
                 return true;
             }

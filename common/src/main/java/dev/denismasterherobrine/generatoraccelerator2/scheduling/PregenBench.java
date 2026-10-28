@@ -398,17 +398,17 @@ public final class PregenBench {
                 bean.setThreadCpuTimeEnabled(true);
             }
             for (Thread t : live()) {
-                long cpu = bean.getThreadCpuTime(t.threadId());
+                long cpu = bean.getThreadCpuTime(t.getId());
                 if (cpu >= 0) {
-                    last.put(t.threadId(), cpu);
-                    group.put(t.threadId(), groupOf(t.getName()));
+                    last.put(t.getId(), cpu);
+                    group.put(t.getId(), groupOf(t.getName()));
                 }
             }
         }
 
         void sample() {
             for (Thread t : live()) {
-                long id = t.threadId();
+                long id = t.getId();
                 long cpu = bean.getThreadCpuTime(id);
                 if (cpu < 0) {
                     continue;

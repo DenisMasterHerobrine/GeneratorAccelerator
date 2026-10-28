@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SamplerWrappers;
@@ -23,13 +22,6 @@ public abstract class ClimateSamplerMixin {
             return;
         }
         if (!DfcHooks.enabled()) {
-            return;
-        }
-        // Lithostitched's injector source samples this point just before its base source samples it again
-        Climate.TargetPoint reused = LithostitchedGpuBiomes.reused((Climate.Sampler) (Object) this,
-            quartX, quartY, quartZ);
-        if (reused != null) {
-            cir.setReturnValue(reused);
             return;
         }
         BoundSampler bound = SamplerWrappers.resolve((Climate.Sampler) (Object) this);

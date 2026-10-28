@@ -26,6 +26,9 @@ public interface SurfaceSystemAccessor {
     @Accessor("noiseRandom")
     PositionalRandomFactory ga2$noiseRandom();
 
+    @Accessor("seaLevel")
+    int ga2$seaLevel();
+
     @Accessor("clayBands")
     BlockState[] ga2$clayBands();
 

@@ -1,12 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumSections;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
-import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import java.util.Arrays;
 import java.util.concurrent.atomic.LongAdder;
+import javax.annotation.Nullable;
 import net.minecraft.util.BitStorage;
-import net.minecraft.util.Mth;
 import net.minecraft.util.SimpleBitStorage;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -39,6 +39,35 @@ public final class SectionWriter {
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
     /** The most entries (air included) a linear palette holds before vanilla resizes it. */
     private static final int LINEAR_ENTRIES = 16;
+
+    /**
+     * Palette data for {@code size} entries, of the kind a section written block by block grows into from {@code from} (null: a
+     * section of one value). A palette that still has room keeps its kind and entries (a copy). A full one resizes: from one value the
+     * container's strategy is asked for 1 bit, after that for one bit more than the full palette has. Asking for {@code ceillog2(size)}
+     * bits at once gives the same with vanilla's strategy (a linear palette of 4 bits up to 16 entries). Lithium's strategy gives 3 and
+     * 4 bits its own hash palette, so the chain is followed instead.
+     */
+    @SuppressWarnings("unchecked")
+    public static PalettedContainer.Data<BlockState> grownData(PalettedContainer<BlockState> container, @Nullable PalettedContainer.Data<BlockState> from, int size) {
+        int fromBits = from == null ? 0 : storageBits(from);
+        if (from != null && size <= 1 << fromBits) {
+            return from.copy();
+        }
+        PalettedContainerInvoker invoker = (PalettedContainerInvoker) (Object) container;
+        int bits = fromBits > 0 ? fromBits + 1 : size <= 1 ? 0 : 1;
+        PalettedContainer.Data<BlockState> data = invoker.ga2$createOrReuseData(null, bits);
+        // a palette over a storage of b bits holds 1 << b entries
+        while (bits > 0 && size > 1 << storageBits(data)) {
+            bits = storageBits(data) + 1;
+            data = invoker.ga2$createOrReuseData(null, bits);
+        }
+        return data;
+    }
+
+    /** The bits of the data's storage, 0 for a single value. */
+    private static int storageBits(PalettedContainer.Data<BlockState> data) {
+        return data.storage() instanceof SimpleBitStorage storage ? storage.getBits() : 0;
+    }
     public static final LongAdder CHUNKS = new LongAdder();
     public static final LongAdder SECTIONS = new LongAdder();
     /** Sections of more than 16 states, replayed block by block. */
@@ -198,15 +227,14 @@ public final class SectionWriter {
         if (distinct == 0) {
             return; // Only air was written. The section stays all air.
         }
-        if (distinct + 1 > LINEAR_ENTRIES) {
+        if (distinct + 1 > LINEAR_ENTRIES || !direct(distinct)) {
             replay(section, a, log, written);
             return;
         }
         PalettedContainer<BlockState> container = section.getStates();
         // Vanilla's palette after the first write: air, then each state as first written.
         // Built at once, so no resize copies air.
-        @SuppressWarnings("unchecked")
-        PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, Mth.ceillog2(distinct + 1));
+        PalettedContainer.Data<BlockState> data = grownData(container, null, distinct + 1);
         Palette<BlockState> palette = data.palette();
         map[0] = palette.idFor(AIR);
         for (int i = 0; i < distinct; i++) {
@@ -235,7 +263,7 @@ public final class SectionWriter {
         for (int i = 0; i < distinct; i++) {
             int c = hist[order[i]];
             BlockState state = states[order[i]];
-            if (!PlatformHooks.isEmpty(state)) {
+            if (!state.isAir()) {
                 nonEmpty += c;
                 if (state.isRandomlyTicking()) {
                     ticking += c;
@@ -248,9 +276,23 @@ public final class SectionWriter {
         section.nonEmptyBlockCount = (short) (section.nonEmptyBlockCount + nonEmpty);
         section.tickingBlockCount = (short) (section.tickingBlockCount + ticking);
         section.tickingFluidCount = (short) (section.tickingFluidCount + fluids);
+        LithiumSections.forgetCounts(section);
         if (VERIFY.sample()) {
             verify(section, a);
         }
+    }
+
+    /** Whether the section's first {@code distinct} states may be written without {@code setBlockState} ({@link SectionWrites}). */
+    private boolean direct(int distinct) {
+        if (!SectionWrites.filtered()) {
+            return true;
+        }
+        for (int i = 0; i < distinct; i++) {
+            if (!SectionWrites.direct(states[order[i]])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Replays the section's writes through {@code setBlockState}, in the order the fill made them. */
@@ -273,7 +315,7 @@ public final class SectionWriter {
                 return;
             }
             // The counts setBlockState reaches when writing over air.
-            if (!PlatformHooks.isEmpty(got)) {
+            if (!got.isAir()) {
                 nonEmpty++;
                 if (got.isRandomlyTicking()) {
                     ticking++;

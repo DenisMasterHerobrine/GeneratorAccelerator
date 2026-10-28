@@ -163,7 +163,7 @@ public final class BiomesWeveGoneRules {
     private static Ir.Rule weighted(SurfaceRules.RuleSource source, SimpleWeightedRandomList<?> list, SurfaceExtern.Context ctx) {
         List<SurfaceRules.RuleSource> rules = new ArrayList<>();
         for (WeightedEntry.Wrapper<?> entry : list.unwrap()) {
-            if (!(entry.data() instanceof SurfaceRules.RuleSource r)) {
+            if (!(entry.getData() instanceof SurfaceRules.RuleSource r)) {
                 return null;
             }
             if (!rules.contains(r)) {

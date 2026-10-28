@@ -1,9 +1,18 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.biome.BiomeAnswers;
-import dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesChunks;
+import dev.denismasterherobrine.generatoraccelerator2.compat.atmospheric.AtmosphericFeatures;
+import dev.denismasterherobrine.generatoraccelerator2.compat.atmospheric.AtmosphericMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.alexscaves.AlexsCavesRules;
+import dev.denismasterherobrine.generatoraccelerator2.compat.blockswap.BlockSwapLoads;
+import dev.denismasterherobrine.generatoraccelerator2.compat.blockswap.BlockSwapMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.blockswap.BlockSwapSections;
+import dev.denismasterherobrine.generatoraccelerator2.compat.create.CreateMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.environmental.EnvironmentalMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.environmental.EnvironmentalSurface;
+import dev.denismasterherobrine.generatoraccelerator2.compat.formations.FormationsMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.hybridaquatic.HybridAquaticMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.betterchunkloading.BetterChunkLoadingMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithParameters;
@@ -15,30 +24,20 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.biomeswevegone.Biom
 import dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintClimate;
 import dev.denismasterherobrine.generatoraccelerator2.compat.c2me.C2MEMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests;
-import dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.citadel.CitadelRules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon.CobblemonFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon.CobblemonMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.ConfluenceFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.ConfluenceMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsSurface;
-import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightFeatures;
-import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedFunctions;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.saturn.SaturnMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritSurface;
 import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoOres;
-import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes;
-import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredCarvers;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
@@ -46,18 +45,21 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.repurposedstructure
 import dev.denismasterherobrine.generatoraccelerator2.compat.repurposedstructures.RepurposedStructuresMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spawn.SpawnBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spawn.SpawnMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumGeodes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.tectonic.TectonicSnow;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
-import dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestCoremods;
-import dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestSurface;
+import dev.denismasterherobrine.generatoraccelerator2.compat.vanillabackport.VanillaBackportLoads;
 import dev.denismasterherobrine.generatoraccelerator2.compat.vanillabackport.VanillaBackportRules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesNoise;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 
 /**
@@ -73,7 +75,7 @@ public final class CompatModules {
         if (Compat.isLoaded(ChunkyRequests.MOD_ID)) {
             ChunkyRequests.register();
         }
-        if (Compat.isLoaded(FabricApiMixins.MOD_ID)) {
+        if (Compat.isLoaded(FabricApiMixins.MOD_ID) || Compat.isLoaded(FabricApiMixins.FORGE_MOD_ID)) {
             FabricApiMixins.register();
         }
         if (Compat.isLoaded(NaturesSpiritMixins.MOD_ID)) {
@@ -89,6 +91,7 @@ public final class CompatModules {
         }
         if (Compat.isLoaded(VanillaBackportRules.MOD_ID)) {
             VanillaBackportRules.register();
+            VanillaBackportLoads.register();
         }
         if (Compat.isLoaded(BiolithMixins.MOD_ID)) {
             BiolithSurface.register();
@@ -105,36 +108,20 @@ public final class CompatModules {
         if (Compat.isLoaded(RepurposedStructuresMixins.MOD_ID)) {
             RepurposedStructuresFeatures.register();
         }
-        if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
-            LithostitchedDensity.register();
-            LithostitchedFunctions.register();
-            // nothing to set up: the fossil probe's early answer leaves Lithostitched's wrapped call to vanilla's method
-            CompatAdapters.register(HookTargets.STRUCTURE_FOSSIL_PROBE, LithostitchedMixins.NETHER_FOSSIL, () -> true);
-            // nothing to set up: GPU biomes are for a plain multi-noise source only, which the wrapping passes through
-            CompatAdapters.register(HookTargets.GPU_BIOMES, LithostitchedMixins.TERRABLENDER_RESOLVER, () -> true);
-            // the injector source answers from the position: its base source's answer, then injectors of noise and regions
-            BiomeAnswers.knownSource(source ->
-                LithostitchedGpuBiomes.isInjector(source)
-                    && LithostitchedGpuBiomes.base(source) != null);
-        }
         if (Compat.isLoaded(BlueprintClimate.MOD_ID)) {
             BlueprintClimate.register();
         }
-        if (Compat.isLoaded(QuarkMixins.MOD_ID)) {
-            // nothing to set up: the region chunk cache runs the original lookup, with Quark's change, for anything the cache has not seen
-            CompatAdapters.register(FeatureTargets.compatKey(FeatureTargets.REGION), QuarkMixins.WORLD_GEN_REGION, () -> true);
-        }
         if (Compat.isLoaded(ConfluenceMixins.MOD_ID)) {
             ConfluenceFeatures.register();
-        }
-        if (Compat.isLoaded(EternalStarlightMixins.MOD_ID)) {
-            EternalStarlightFeatures.register();
         }
         if (Compat.isLoaded(ModernFixMixins.MOD_ID)) {
             // nothing to set up: ModernFix's stronghold cache keeps vanilla's ring positions. The ring bound needs nothing more
             CompatAdapters.register(HookTargets.STRUCTURE_RING_BOUND, ModernFixMixins.STRONGHOLD_CACHE, () -> true);
             // nothing to set up: without ModernFix's cache, a temperature is still getHeightAdjustedTemperature's. The GPU computes that
             CompatAdapters.register(HookTargets.GPU_SURFACE, ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+        }
+        if (Compat.isLoaded(SaturnMixins.MOD_ID)) {
+            SaturnMixins.register();
         }
         if (Compat.isLoaded(OwoMixins.MOD_ID)) {
             OwoOres.register();
@@ -144,36 +131,57 @@ public final class CompatModules {
         if (Compat.isLoaded(CobblemonMixins.MOD_ID)) {
             CobblemonFeatures.register();
         }
+        if (Compat.isLoaded(AtmosphericMixins.MOD_ID)) {
+            AtmosphericFeatures.register();
+        }
+        if (Compat.isLoaded(EnvironmentalMixins.MOD_ID)) {
+            EnvironmentalSurface.register();
+        }
+        if (Compat.isLoaded(BlockSwapMixins.MOD_ID)) {
+            BlockSwapSections.register();
+            BlockSwapLoads.register();
+        }
+        if (Compat.isLoaded(FormationsMixins.MOD_ID)) {
+            // nothing to set up: a placement with one of Formations' processors is never clipped (structure.TemplatePlacement)
+            CompatAdapters.register(HookTargets.STRUCTURE_TEMPLATE_CLIP, FormationsMixins.TEMPLATE, () -> true);
+        }
+        // nothing to set up: these fluid tests only say no, and a still-water tick GA2 leaves out never gets an answer from them
+        if (Compat.isLoaded(CreateMixins.MOD_ID)) {
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, CreateMixins.WATER_WHEEL, () -> true);
+        }
+        if (Compat.isLoaded(AlexsCavesMixins.MOD_ID)) {
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, AlexsCavesMixins.FLOWING_FLUID, () -> true);
+            AlexsCavesRules.register();
+        }
+        if (Compat.isLoaded(HybridAquaticMixins.MOD_ID)) {
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, HybridAquaticMixins.FLOWING_FLUID, () -> true);
+            // nothing to set up: the placement is set while the server starts, before biome answers are kept (BiomeAnswers.ready)
+            CompatAdapters.register(HookTargets.BIOME_ANSWERS, HybridAquaticMixins.BIOME_SOURCE, () -> true);
+        }
         if (Compat.isLoaded(WinterlyMixins.MOD_ID)) {
             WinterlyFeatures.register();
         }
-        if (Compat.isLoaded(RedirectedMixins.MOD_ID)) {
+        if (Compat.isLoaded(YungsCaveBiomesMixins.MOD_ID)) {
+            YungsCaveBiomesNoise.register();
+            // the Frosted Caves water, where GA2 took the mod's aquifer handler over (Takeover)
+            FrostedCaves.register();
+        }
+        if (Compat.isLoaded(RedirectedMixins.MOD_ID) || Compat.isLoaded(RedirectedMixins.REDIRECTOR_ID)) {
             RedirectedMixins.register();
         }
         if (Compat.isLoaded(SpawnMixins.MOD_ID)) {
             SpawnBiomes.register();
         }
-        if (Compat.isLoaded(CitadelMixins.MOD_ID)) {
-            CitadelRules.register();
-        }
-        if (Compat.isLoaded(AlexsCavesMixins.MOD_ID)) {
-            AlexsCavesChunks.register();
-            AlexsCavesRules.register();
-            AlexsCavesRules.registerBiomeAnswers();
-        }
         if (Compat.isLoaded(BetterChunkLoadingMixins.MOD_ID)) {
             BetterChunkLoadingMixins.register();
         }
-        if (Compat.isLoaded(PastelMixins.MOD_ID)) {
-            PastelGeodes.register();
-        }
         if (Compat.isLoaded(SpectrumMixins.MOD_ID)) {
-            SpectrumMixins.register();
+            SpectrumGeodes.register();
         }
         if (Compat.isLoaded(VariantsAndVenturesMixins.MOD_ID)) {
             VariantsAndVenturesFeatures.register();
         }
-        if (Compat.isLoaded(LithiumMixins.MOD_ID)) {
+        if (Compat.isLoaded(LithiumMixins.MOD_ID) || LithiumMixins.PORTS.stream().anyMatch(Compat::isLoaded)) {
             LithiumMixins.register();
         }
         if (Compat.isLoaded(C2MEMixins.MOD_ID)) {
@@ -189,9 +197,6 @@ public final class CompatModules {
             }
             // nothing to set up: TerraBlender's lookup answers from the position and the regions of the world's seed
             CompatAdapters.register(HookTargets.BIOME_ANSWERS, TerraBlenderMixins.BIOME_SOURCE, () -> true);
-        }
-        if (Compat.isLoaded(TwilightForestCoremods.MOD_ID)) {
-            TwilightForestSurface.register();
         }
     }
 }

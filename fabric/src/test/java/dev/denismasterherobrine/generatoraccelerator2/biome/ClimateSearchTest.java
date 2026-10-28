@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.mojang.datafixers.util.Pair;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.Fuzz;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -24,12 +25,12 @@ import org.junit.jupiter.api.Test;
 public class ClimateSearchTest {
     @Test
     void overworldMatchesVanilla() {
-        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, HarnessWorld.registries().biomes.asLookup()).parameters(), 600_000);
+        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, HarnessWorld.registries().biomes.asLookup()).parameters(), Fuzz.size(600_000, 60_000));
     }
 
     @Test
     void netherMatchesVanilla() {
-        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER, HarnessWorld.registries().biomes.asLookup()).parameters(), 200_000);
+        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER, HarnessWorld.registries().biomes.asLookup()).parameters(), Fuzz.size(200_000, 20_000));
     }
 
     @Test
@@ -40,7 +41,7 @@ public class ClimateSearchTest {
             for (int i = 0; i < size; i++) {
                 entries.add(Pair.of(randomPoint(r), i));
             }
-            compare(new Climate.ParameterList<>(entries), 20_000);
+            compare(new Climate.ParameterList<>(entries), Fuzz.size(20_000, 5_000));
         }
     }
 
@@ -55,7 +56,7 @@ public class ClimateSearchTest {
         collect(tree.root, leaves);
         Random r = new Random(77);
         int ties = 0;
-        for (int it = 0; it < 40_000; it++) {
+        for (int it = 0, n = Fuzz.size(40_000, 8_000); it < n; it++) {
             long[] q = new long[7];
             for (int d = 0; d < 6; d++) {
                 q[d] = it % 2 == 0 ? Climate.quantizeCoord((float) (r.nextGaussian() * 0.6)) : (r.nextInt(9) - 4) * 2500L;
@@ -120,7 +121,7 @@ public class ClimateSearchTest {
         int[] ids = new int[2];
         long[] distance = new long[2];
         int ties = 0;
-        for (int it = 0; it < 40_000; it++) {
+        for (int it = 0, n = Fuzz.size(40_000, 8_000); it < n; it++) {
             long[] q = new long[6];
             for (int d = 0; d < 6; d++) {
                 q[d] = it % 2 == 0 ? Climate.quantizeCoord((float) (r.nextGaussian() * 0.6)) : (r.nextInt(9) - 4) * 2500L;

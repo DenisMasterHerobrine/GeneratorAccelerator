@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.state.FluidInvoker;
-import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,7 +77,7 @@ public class StateShortcutsTest {
                 BlockState old = section.setBlockState(i & 15, i >> 8, (i >> 4) & 15, state, (w & 1) == 0);
                 assertTrue(old == expected[i], "write " + w + " returned " + old + ", expected " + expected[i]);
                 // the game's per-write counting (LevelChunkSection.setBlockState), asked of the states themselves
-                if (!PlatformHooks.isEmpty(old)) {
+                if (!old.isAir()) {
                     nonEmpty--;
                     if (old.isRandomlyTicking()) {
                         ticking--;
@@ -87,7 +86,7 @@ public class StateShortcutsTest {
                 if (!fluidEmpty(old)) {
                     fluids--;
                 }
-                if (!PlatformHooks.isEmpty(state)) {
+                if (!state.isAir()) {
                     nonEmpty++;
                     if (state.isRandomlyTicking()) {
                         ticking++;

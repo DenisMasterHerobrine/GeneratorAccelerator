@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.StructureManager;
@@ -29,9 +30,9 @@ public abstract class GpuGeneratorMixin {
     @Shadow @Final private Supplier<Aquifer.FluidPicker> globalFluidPicker;
 
     @Inject(method = "fillFromNoise", at = @At("HEAD"), cancellable = true)
-    private void ga2$gpuNoise(Blender blender, RandomState randomState, StructureManager structures, ChunkAccess chunk,
+    private void ga2$gpuNoise(Executor executor, Blender blender, RandomState randomState, StructureManager structures, ChunkAccess chunk,
                               CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir) {
-        CompletableFuture<ChunkAccess> f = GpuSteps.fillFromNoise((NoiseBasedChunkGenerator) (Object) this, this.settings, this.globalFluidPicker, blender, randomState,
+        CompletableFuture<ChunkAccess> f = GpuSteps.fillFromNoise((NoiseBasedChunkGenerator) (Object) this, this.settings, this.globalFluidPicker, executor, blender, randomState,
             structures, chunk);
         if (f != null) {
             cir.setReturnValue(f);
@@ -39,9 +40,9 @@ public abstract class GpuGeneratorMixin {
     }
 
     @Inject(method = "createBiomes", at = @At("HEAD"), cancellable = true)
-    private void ga2$gpuBiomes(RandomState randomState, Blender blender, StructureManager structures, ChunkAccess chunk,
+    private void ga2$gpuBiomes(Executor executor, RandomState randomState, Blender blender, StructureManager structures, ChunkAccess chunk,
                                CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir) {
-        CompletableFuture<ChunkAccess> f = GpuSteps.createBiomes((NoiseBasedChunkGenerator) (Object) this, this.settings, this.globalFluidPicker, randomState, blender,
+        CompletableFuture<ChunkAccess> f = GpuSteps.createBiomes((NoiseBasedChunkGenerator) (Object) this, this.settings, this.globalFluidPicker, executor, randomState, blender,
             structures, chunk);
         if (f != null) {
             cir.setReturnValue(f);

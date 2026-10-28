@@ -258,7 +258,6 @@ public final class LightSnapshot extends Long2ObjectOpenHashMap<DataLayer> {
             if (this.filled) {
                 return;
             }
-            super.ensureCapacity(this.count);
             for (Long2ObjectMap.Entry<DataLayer[]> e : Long2ObjectMaps.fastIterable(this.areas)) {
                 int x0 = (int) (e.getLongKey() >> 32) << AREA_SHIFT;
                 int z0 = (int) e.getLongKey() << AREA_SHIFT;
@@ -320,12 +319,6 @@ public final class LightSnapshot extends Long2ObjectOpenHashMap<DataLayer> {
     }
 
     // Every other use fills the table first.
-
-    @Override
-    public void ensureCapacity(int capacity) {
-        this.fill();
-        super.ensureCapacity(capacity);
-    }
 
     @Override
     public void putAll(Map<? extends Long, ? extends DataLayer> m) {

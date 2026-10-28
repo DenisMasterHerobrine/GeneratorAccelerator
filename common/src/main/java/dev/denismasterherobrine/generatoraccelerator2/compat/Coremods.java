@@ -40,14 +40,14 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.slf4j.Logger;
 
 /**
- * Changes other mods make to vanilla methods without Mixin. A coremod (a NeoForge {@code ITransformer}) rewrites a class
+ * Changes other mods make to vanilla methods without Mixin. A coremod (a Forge {@code ITransformer} or JS coremod) rewrites a class
  * before Mixin applies anything and leaves no merged method behind, so the mixin inspection cannot see the change. For
  * example, Twilight Forest adds the density of its structures at the end of {@code Beardifier.compute}. It also adds its
  * canopy and glacier blankets right after the generator call of the SURFACE step. GA2's hooks take over both places.
  *
  * <p>The mixin plugins hand each class that a GA2 mixin targets to {@link #inspect}, before any mixin is applied to the
  * class. The class is as the transformers left it. Every method is compared with the game jar's own bytes, ignoring
- * labels, line numbers and frames. NeoForge's own coremods are applied to the jar's copy first, so the platform's changes
+ * labels, line numbers and frames. Forge's own coremods are applied to the jar's copy first, so the platform's changes
  * are not counted. Those coremods replace field reads with getters and redirect {@code finalizeSpawn}. Calls to a class's
  * own methods compare equal through either invoke opcode, because access transformers that open a private method switch
  * the opcode. Any other difference counts as a change by a foreign "mixin", for every hook that inspects the method. The
@@ -70,17 +70,17 @@ public final class Coremods {
     /** Internal class name to method (name + descriptor) to the method's change. Classes looked at without changes map to an empty map. */
     private static final Map<String, Map<String, Change>> CHANGES = new ConcurrentHashMap<>();
 
-    /** NeoForge's own coremods are only in NeoForge's game (unit tests read the vanilla jar). */
-    private static final boolean NEOFORGE = Platform.isNeoForge();
+    /** Forge's own coremods are only in Forge's game (unit tests read the vanilla jar). */
+    private static final boolean FORGE = Platform.isForge();
 
-    /** NeoForge's {@code ReplaceFieldWithGetterAccess}: class to field to getter. */
-    private static final Map<String, Map<String, String>> NEOFORGE_GETTERS = Map.of(
+    /** Forge's {@code field_to_method} coremod, for the worldgen classes: class to field to getter, by Mojang names. */
+    private static final Map<String, Map<String, String>> FORGE_GETTERS = Map.of(
         "net/minecraft/world/level/biome/Biome", Map.of("climateSettings", "getModifiedClimateSettings", "specialEffects", "getModifiedSpecialEffects"),
         "net/minecraft/world/level/levelgen/structure/Structure", Map.of("settings", "getModifiedStructureSettings"),
         "net/minecraft/world/level/block/FlowerPotBlock", Map.of("potted", "getPotted"));
 
-    /** NeoForge's {@code MethodRedirector}: the classes whose {@code finalizeSpawn} calls go to {@code EventHooks.finalizeMobSpawn}. */
-    private static final Set<String> NEOFORGE_FINALIZE_SPAWN = Set.of(
+    /** Forge's {@code method_redirector} coremod: the classes whose {@code finalizeSpawn} calls go to {@code ForgeEventFactory.onFinalizeSpawn}. */
+    private static final Set<String> FORGE_FINALIZE_SPAWN = Set.of(
         "net/minecraft/server/commands/RaidCommand", "net/minecraft/server/commands/SummonCommand", "net/minecraft/world/entity/EntityType",
         "net/minecraft/world/entity/ai/village/VillageSiege", "net/minecraft/world/entity/animal/frog/Tadpole",
         "net/minecraft/world/entity/animal/horse/SkeletonTrapGoal", "net/minecraft/world/entity/monster/Evoker$EvokerSummonSpellGoal",
@@ -94,11 +94,13 @@ public final class Coremods {
         "net/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece",
         "net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate");
     private static final String FINALIZE_SPAWN_DESC = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
-        + "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
+        + "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/world/entity/SpawnGroupData;";
+    /** {@code Mob.finalizeSpawn} as the running game names it. */
+    private static final String FINALIZE_SPAWN = Names.runtimeMethod("net/minecraft/world/entity/Mob", "finalizeSpawn", FINALIZE_SPAWN_DESC);
 
     /** Packages whose calls are the game's or the platform's own (never another mod's coremod). */
     private static final String[] OWN_OWNERS = { "net/minecraft/", "com/mojang/", "java/", "javax/", "jdk/", "sun/", "it/unimi/dsi/",
-        "com/google/", "org/apache/", "net/neoforged/", "net/fabricmc/", "org/slf4j/", "org/joml/" };
+        "com/google/", "org/apache/", "net/minecraftforge/", "cpw/mods/", "net/fabricmc/", "org/slf4j/", "org/joml/" };
 
     /**
      * Compares {@code current} (the class as the transformers left it, before any mixin) with the jar's bytes, once per
@@ -216,20 +218,21 @@ public final class Coremods {
         }
         ClassNode node = new ClassNode();
         new ClassReader(bytes).accept(node, ClassReader.SKIP_FRAMES);
-        if (NEOFORGE) {
-            applyNeoForge(node);
+        if (FORGE) {
+            applyForge(node);
         }
         return node;
     }
 
-    /** NeoForge's own coremods, applied to the jar's copy the way NeoForge applies them to the loaded class. */
-    static void applyNeoForge(ClassNode node) {
-        Map<String, String> getters = NEOFORGE_GETTERS.get(node.name);
+    /** Forge's own coremods, applied to the jar's copy the way Forge applies them to the loaded class. */
+    static void applyForge(ClassNode node) {
+        Map<String, String> getters = FORGE_GETTERS.get(node.name);
         if (getters != null) {
             for (Map.Entry<String, String> g : getters.entrySet()) {
+                String field = Names.runtimeField(node.name, g.getKey());
                 String fieldDesc = null;
                 for (FieldNode f : node.fields) {
-                    if (f.name.equals(g.getKey())) {
+                    if (f.name.equals(field)) {
                         fieldDesc = f.desc;
                     }
                 }
@@ -237,13 +240,14 @@ public final class Coremods {
                     continue;
                 }
                 String getterDesc = "()" + fieldDesc;
+                String getter = Names.runtimeMethod(node.name, g.getValue(), Names.mojangDesc(getterDesc));
                 for (MethodNode m : node.methods) {
-                    if (m.name.equals(g.getValue()) && m.desc.equals(getterDesc) || m.desc.equals(getterDesc)) {
-                        continue; // NeoForge skips the getter and every method with its descriptor
+                    if (m.name.equals(getter) && m.desc.equals(getterDesc) || m.desc.equals(getterDesc)) {
+                        continue; // Forge skips the getter and every method with its descriptor
                     }
                     for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
-                        if (insn.getOpcode() == Opcodes.GETFIELD && ((FieldInsnNode) insn).name.equals(g.getKey())) {
-                            MethodInsnNode call = new MethodInsnNode(Opcodes.INVOKEVIRTUAL, node.name, g.getValue(), getterDesc, false);
+                        if (insn.getOpcode() == Opcodes.GETFIELD && ((FieldInsnNode) insn).name.equals(field)) {
+                            MethodInsnNode call = new MethodInsnNode(Opcodes.INVOKEVIRTUAL, node.name, getter, getterDesc, false);
                             m.instructions.set(insn, call);
                             insn = call;
                         }
@@ -251,13 +255,14 @@ public final class Coremods {
                 }
             }
         }
-        if (NEOFORGE_FINALIZE_SPAWN.contains(node.name)) {
+        if (FORGE_FINALIZE_SPAWN.contains(node.name)) {
+            String desc = Names.runtimeDesc(FINALIZE_SPAWN_DESC);
             for (MethodNode m : node.methods) {
                 for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
-                    if (insn.getOpcode() == Opcodes.INVOKEVIRTUAL && insn instanceof MethodInsnNode call && call.name.equals("finalizeSpawn")
-                        && call.desc.equals(FINALIZE_SPAWN_DESC)) {
-                        MethodInsnNode redirect = new MethodInsnNode(Opcodes.INVOKESTATIC, "net/neoforged/neoforge/event/EventHooks", "finalizeMobSpawn",
-                            "(Lnet/minecraft/world/entity/Mob;" + FINALIZE_SPAWN_DESC.substring(1), false);
+                    if (insn.getOpcode() == Opcodes.INVOKEVIRTUAL && insn instanceof MethodInsnNode call && call.name.equals(FINALIZE_SPAWN)
+                        && call.desc.equals(desc)) {
+                        MethodInsnNode redirect = new MethodInsnNode(Opcodes.INVOKESTATIC, "net/minecraftforge/event/ForgeEventFactory", "onFinalizeSpawn",
+                            "(Lnet/minecraft/world/entity/Mob;" + desc.substring(1), false);
                         m.instructions.set(insn, redirect);
                         insn = redirect;
                     }

@@ -34,7 +34,7 @@ public final class Platform {
         /** True in a development environment (the loader's dev runs). */
         boolean isDevelopment();
 
-        /** {@code "neoforge"} or {@code "fabric"}. */
+        /** {@code "forge"} or {@code "fabric"}. */
         String name();
 
         /** The Minecraft name table ({@link Names#RESOURCE}), or null when the game runs under Mojang names. */
@@ -81,10 +81,10 @@ public final class Platform {
         return SERVICE.openNameTable();
     }
 
-    /** True on NeoForge. False on Fabric and without a platform, where unit tests run against the vanilla game. */
-    public static boolean isNeoForge() {
+    /** True on Forge. False on Fabric and without a platform, where unit tests run against the vanilla game. */
+    public static boolean isForge() {
         try {
-            return "neoforge".equals(name());
+            return "forge".equals(name());
         } catch (Throwable e) {
             return false;
         }

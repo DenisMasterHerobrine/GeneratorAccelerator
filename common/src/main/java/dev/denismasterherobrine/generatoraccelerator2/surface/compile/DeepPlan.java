@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.surface.compile;
 
-import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import java.util.List;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -95,7 +94,7 @@ public final class DeepPlan {
                 return false;
             }
             BlockState s = state[i];
-            if (s != null && (PlatformHooks.isEmpty(s) != PlatformHooks.isEmpty(defaultBlock) || s.isRandomlyTicking() != defaultBlock.isRandomlyTicking()
+            if (s != null && (s.isAir() != defaultBlock.isAir() || s.isRandomlyTicking() != defaultBlock.isRandomlyTicking()
                 || !s.getFluidState().isEmpty() || !defaultBlock.getFluidState().isEmpty())) {
                 return false;
             }
@@ -116,38 +115,33 @@ public final class DeepPlan {
     private record FoldedCond(byte value, boolean impure) {}
 
     private static Folded fold(Ir.Rule rule, int y, int[] gradLo, int[] gradHi, int[] anchorY) {
-        switch (rule) {
-            case Ir.State s -> {
-                return new Folded(true, s.state(), false);
+        if (rule instanceof Ir.State s) {
+            return new Folded(true, s.state(), false);
+        } else if (rule instanceof Ir.Bands b) {
+            return new Folded(false, null, false);
+        } else if (rule instanceof Ir.ExternRule e) {
+            // compat code is residual. Positional code may stay below the surface like the bands
+            return new Folded(false, null, !e.positional());
+        } else if (rule instanceof Ir.OpaqueRule o) {
+            return new Folded(false, null, true);
+        } else if (rule instanceof Ir.Test t) {
+            FoldedCond c = fold(t.cond(), y, gradLo, gradHi, anchorY);
+            if (c.value() == FALSE) {
+                return Folded.NULL;
             }
-            case Ir.Bands b -> {
-                return new Folded(false, null, false);
+            Folded then = fold(t.then(), y, gradLo, gradHi, anchorY);
+            if (c.value() == TRUE) {
+                return then;
             }
-            case Ir.ExternRule e -> {
-                // compat code is residual. Positional code may stay below the surface like the bands
-                return new Folded(false, null, !e.positional());
+            if (then.constant() && then.state() == null && skippable(t.cond())) {
+                // the condition only chooses between nothing and nothing
+                return Folded.NULL;
             }
-            case Ir.OpaqueRule o -> {
-                return new Folded(false, null, true);
-            }
-            case Ir.Test t -> {
-                FoldedCond c = fold(t.cond(), y, gradLo, gradHi, anchorY);
-                if (c.value() == FALSE) {
-                    return Folded.NULL;
-                }
-                Folded then = fold(t.then(), y, gradLo, gradHi, anchorY);
-                if (c.value() == TRUE) {
-                    return then;
-                }
-                if (then.constant() && then.state() == null && skippable(t.cond())) {
-                    // the condition only chooses between nothing and nothing
-                    return Folded.NULL;
-                }
-                return new Folded(false, null, c.impure() || then.impure());
-            }
-            case Ir.Seq seq -> {
-                return foldSeq(seq.rules(), 0, y, gradLo, gradHi, anchorY);
-            }
+            return new Folded(false, null, c.impure() || then.impure());
+        } else if (rule instanceof Ir.Seq seq) {
+            return foldSeq(seq.rules(), 0, y, gradLo, gradHi, anchorY);
+        } else {
+            throw new IllegalStateException(String.valueOf(rule));
         }
     }
 
@@ -190,14 +184,19 @@ public final class DeepPlan {
      * never reads it. Another mod's condition object is always asked, as vanilla asks it.
      */
     private static boolean skippable(Ir.Cond cond) {
-        return switch (cond) {
-            case Ir.OpaqueCond o -> false;
-            case Ir.ExternCond e -> e.positional();
-            case Ir.Not n -> skippable(n.target());
-            case Ir.All a -> a.conds().stream().allMatch(DeepPlan::skippable);
-            case Ir.Any a -> a.conds().stream().allMatch(DeepPlan::skippable);
-            default -> true;
-        };
+        if (cond instanceof Ir.OpaqueCond o) {
+            return false;
+        } else if (cond instanceof Ir.ExternCond e) {
+            return e.positional();
+        } else if (cond instanceof Ir.Not n) {
+            return skippable(n.target());
+        } else if (cond instanceof Ir.All a) {
+            return a.conds().stream().allMatch(DeepPlan::skippable);
+        } else if (cond instanceof Ir.Any a) {
+            return a.conds().stream().allMatch(DeepPlan::skippable);
+        } else {
+            return true;
+        }
     }
 
     /**
@@ -222,29 +221,45 @@ public final class DeepPlan {
     }
 
     private static FoldedCond fold(Ir.Cond cond, int y, int[] gradLo, int[] gradHi, int[] anchorY) {
-        return switch (cond) {
-            case Ir.AboveSurface a -> new FoldedCond(FALSE, false);
-            case Ir.Gradient g -> new FoldedCond(y <= gradLo[g.slot()] ? TRUE : y >= gradHi[g.slot()] ? FALSE : UNKNOWN, false);
-            case Ir.YCheck c -> c.addStone() ? new FoldedCond(UNKNOWN, true)
-                : c.mult() == 0 ? new FoldedCond(y >= anchorY[c.anchor()] ? TRUE : FALSE, false)
-                : new FoldedCond(UNKNOWN, false);
-            case Ir.Water w -> new FoldedCond(UNKNOWN, true);
-            case Ir.StoneDepth d -> new FoldedCond(UNKNOWN, true);
-            case Ir.Steep s -> new FoldedCond(UNKNOWN, true);
-            case Ir.Slope s -> new FoldedCond(UNKNOWN, true);
-            case Ir.OpaqueCond o -> new FoldedCond(UNKNOWN, true);
-            case Ir.ExternCond e -> new FoldedCond(UNKNOWN, !e.positional());
-            case Ir.Hole h -> new FoldedCond(UNKNOWN, false);
-            case Ir.Noise n -> new FoldedCond(UNKNOWN, false);
-            case Ir.Biome b -> new FoldedCond(UNKNOWN, false);
-            case Ir.Temperature t -> new FoldedCond(UNKNOWN, false);
-            case Ir.Const c -> new FoldedCond(c.value() ? TRUE : FALSE, false);
-            case Ir.Not n -> {
-                FoldedCond inner = fold(n.target(), y, gradLo, gradHi, anchorY);
-                yield new FoldedCond(inner.value() == UNKNOWN ? UNKNOWN : inner.value() == TRUE ? FALSE : TRUE, inner.impure());
-            }
-            case Ir.All a -> foldParts(a.conds(), FALSE, y, gradLo, gradHi, anchorY);
-            case Ir.Any a -> foldParts(a.conds(), TRUE, y, gradLo, gradHi, anchorY);
-        };
+        if (cond instanceof Ir.AboveSurface a) {
+            return new FoldedCond(FALSE, false);
+        } else if (cond instanceof Ir.Gradient g) {
+            return new FoldedCond(y <= gradLo[g.slot()] ? TRUE : y >= gradHi[g.slot()] ? FALSE : UNKNOWN, false);
+        } else if (cond instanceof Ir.YCheck c) {
+            return c.addStone() ? new FoldedCond(UNKNOWN, true)
+            : c.mult() == 0 ? new FoldedCond(y >= anchorY[c.anchor()] ? TRUE : FALSE, false)
+            : new FoldedCond(UNKNOWN, false);
+        } else if (cond instanceof Ir.Water w) {
+            return new FoldedCond(UNKNOWN, true);
+        } else if (cond instanceof Ir.StoneDepth d) {
+            return new FoldedCond(UNKNOWN, true);
+        } else if (cond instanceof Ir.Steep s) {
+            return new FoldedCond(UNKNOWN, true);
+        } else if (cond instanceof Ir.Slope s) {
+            return new FoldedCond(UNKNOWN, true);
+        } else if (cond instanceof Ir.OpaqueCond o) {
+            return new FoldedCond(UNKNOWN, true);
+        } else if (cond instanceof Ir.ExternCond e) {
+            return new FoldedCond(UNKNOWN, !e.positional());
+        } else if (cond instanceof Ir.Hole h) {
+            return new FoldedCond(UNKNOWN, false);
+        } else if (cond instanceof Ir.Noise n) {
+            return new FoldedCond(UNKNOWN, false);
+        } else if (cond instanceof Ir.Biome b) {
+            return new FoldedCond(UNKNOWN, false);
+        } else if (cond instanceof Ir.Temperature t) {
+            return new FoldedCond(UNKNOWN, false);
+        } else if (cond instanceof Ir.Const c) {
+            return new FoldedCond(c.value() ? TRUE : FALSE, false);
+        } else if (cond instanceof Ir.Not n) {
+            FoldedCond inner = fold(n.target(), y, gradLo, gradHi, anchorY);
+            return new FoldedCond(inner.value() == UNKNOWN ? UNKNOWN : inner.value() == TRUE ? FALSE : TRUE, inner.impure());
+        } else if (cond instanceof Ir.All a) {
+            return foldParts(a.conds(), FALSE, y, gradLo, gradHi, anchorY);
+        } else if (cond instanceof Ir.Any a) {
+            return foldParts(a.conds(), TRUE, y, gradLo, gradHi, anchorY);
+        } else {
+            throw new IllegalStateException(String.valueOf(cond));
+        }
     }
 }

@@ -73,7 +73,7 @@ final class PredicateCodegen {
                 return type1.equals(type2) ? type1 : "java/lang/Object";
             }
         };
-        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, "java/lang/Object", new String[] { COMPILED });
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, "java/lang/Object", new String[] { COMPILED });
         Gen gen = new Gen(cw, name, slots);
         MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "test", TEST_DESC, null, null);
         gen.mv = mv;

@@ -135,7 +135,7 @@ public final class RegionReads {
         if (v == UNKNOWN) {
             ChunkAccess c = chunks[s];
             Heightmap.Types type = Heightmap.Types.OCEAN_FLOOR_WG;
-            if (kinds[s] == 1 && c.hasPrimedHeightmap(type) && !c.getPersistedStatus().heightmapsAfter().contains(type)) {
+            if (kinds[s] == 1 && c.hasPrimedHeightmap(type) && !c.getStatus().heightmapsAfter().contains(type)) {
                 int max = Integer.MIN_VALUE;
                 for (int z = 0; z < 16; z++) {
                     for (int x = 0; x < 16; x++) {

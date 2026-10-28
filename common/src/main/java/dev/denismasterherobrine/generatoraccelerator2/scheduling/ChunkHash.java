@@ -47,7 +47,7 @@ public final class ChunkHash {
         List<String> names = new ArrayList<>();
         for (String id : blocks.split("[, ]+")) {
             if (!id.isBlank()) {
-                kinds.add(BuiltInRegistries.BLOCK.get(ResourceLocation.parse(id)));
+                kinds.add(BuiltInRegistries.BLOCK.get(new ResourceLocation(id)));
                 names.add(id);
             }
         }

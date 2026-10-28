@@ -36,7 +36,7 @@ public final class BiomesWeveGoneSurface {
 
     private static ResourceKey<Biome> biome(String path) {
         return ResourceKey.create(Registries.BIOME,
-            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+            new ResourceLocation(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     private static List<ColumnHooks.Hook> hooks() throws ReflectiveOperationException {

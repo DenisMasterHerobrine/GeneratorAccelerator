@@ -104,7 +104,6 @@ public class CellProgramTest {
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX + 2, 60, minZ + 2, minX + 9, 70, minZ + 9), TerrainAdjustment.BEARD_THIN, 1));
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX - 30, 40, minZ + 20, minX - 20, 48, minZ + 28), TerrainAdjustment.BEARD_BOX, 0));
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX + 10, 100, minZ - 14, minX + 14, 110, minZ - 6), TerrainAdjustment.BURY, -3));
-        pieces.add(new Beardifier.Rigid(new BoundingBox(minX + 12, 20, minZ + 12, minX + 15, 30, minZ + 15), TerrainAdjustment.ENCAPSULATE, 2));
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX, -40, minZ, minX + 15, -30, minZ + 15), TerrainAdjustment.NONE, 0));
         ObjectArrayList<JigsawJunction> junctions = new ObjectArrayList<>();
         junctions.add(new JigsawJunction(minX + 6, 64, minZ + 6, 0, StructureTemplatePool.Projection.RIGID));

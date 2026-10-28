@@ -60,10 +60,10 @@ public class SaveBench {
             for (Tag t : chunk.getList("sections", Tag.TAG_COMPOUND)) {
                 CompoundTag section = (CompoundTag) t;
                 if (section.contains("block_states", Tag.TAG_COMPOUND)) {
-                    states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow());
+                    states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow(false, error -> {}));
                 }
                 if (section.contains("biomes", Tag.TAG_COMPOUND)) {
-                    biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow());
+                    biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow(false, error -> {}));
                 }
             }
         }
@@ -75,11 +75,11 @@ public class SaveBench {
                 long t0 = System.nanoTime();
                 int sink = 0;
                 for (PalettedContainer<BlockState> c : states) {
-                    sink += STATES.encodeStart(NbtOps.INSTANCE, c).getOrThrow().getId();
+                    sink += STATES.encodeStart(NbtOps.INSTANCE, c).getOrThrow(false, error -> {}).getId();
                 }
                 long t1 = System.nanoTime();
                 for (PalettedContainerRO<Holder<Biome>> c : biomeList) {
-                    sink += biomes.encodeStart(NbtOps.INSTANCE, c).getOrThrow().getId();
+                    sink += biomes.encodeStart(NbtOps.INSTANCE, c).getOrThrow(false, error -> {}).getId();
                 }
                 long t2 = System.nanoTime();
                 if (round >= rounds / 2) {
@@ -140,7 +140,7 @@ public class SaveBench {
                 }
                 byte[] data = new byte[length - 1];
                 raf.readFully(data);
-                CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.unlimitedHeap());
+                CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.UNLIMITED);
                 if ("minecraft:full".equals(tag.getString("Status"))) {
                     out.add(tag);
                 }

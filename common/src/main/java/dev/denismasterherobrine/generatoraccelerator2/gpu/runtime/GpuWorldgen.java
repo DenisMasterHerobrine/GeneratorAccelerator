@@ -4,7 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
+import dev.denismasterherobrine.generatoraccelerator2.compat.blueprint.BlueprintBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
@@ -115,8 +115,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * ({@link #deferred}), {@code fallbacks} holds the quart's leaf from region 0's tree. A tie in either search marks the quart. Null
      * without regions.
      *
-     * <p>Under Lithostitched's injectors, {@code targets} holds every quart's climate point ({@link #target}). Null otherwise.
-     *
      * <p>When the GPU hands its answers to the CPU's own lookups ({@link #handsBiomes}), {@code targets} holds the climate points and
      * {@code hand} four ints per quart for {@link BiomeHand}: the nearest leaf of the quart's tree and its nearest leaf of another biome,
      * then the same for region 0's tree after a placeholder. Null otherwise.
@@ -192,28 +190,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      */
     private Climate.RTree<Holder<Biome>>[] biomeTrees;
     /**
-     * Lithostitched's injector source around {@link #biomeSource}, or null. The GPU then also writes every quart's climate point
-     * ({@link BiomeResult#targets}), and the CPU runs the injectors on the GPU's answers ({@link Apply#biomes}).
-     */
-    private BiomeSource biomeInjector;
-    /**
      * Why the GPU does not hand its climate points and searches to the CPU's own biome lookups, or null when it does ({@link BiomeHand}).
      * Asked only when the GPU does not decide the biomes itself.
      */
     public String handOff = "the GPU decides the biomes";
     private boolean handsBiomes;
-    /** Whether {@code k_biome} writes the climate points: for Lithostitched's injectors, or for the handed lookups. */
+    /** Whether {@code k_biome} writes the climate points, for the handed lookups. */
     private boolean targetsOn;
     /** Per node, the number of its leaf's biome (equal biome ids, equal numbers), for the handed second answers. */
     private int[] treeKey;
     /** Which climate parameters are per quart column in {@link BiomeResult#targets} (the others are per quart), and how many are per quart. */
     private boolean[] targetColumns;
     private int targetQuartParams;
-
-    /** The injector source the CPU runs on the GPU's answers, or null. */
-    public BiomeSource biomeInjector() {
-        return biomeInjector;
-    }
 
     /** Tests only: the GPU hands its answers to the CPU's lookups instead of deciding the biomes. Read when a dimension is prepared. */
     public static volatile boolean testHand;
@@ -470,7 +458,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             handOff = BiomeHand.ENABLED ? biomeSetup(source, true) : "off (-Dgeneratoraccelerator2.gpu.handBiomes=false)";
             handsBiomes = handOff == null;
         }
-        targetsOn = biomesOff == null && biomeInjector != null || handsBiomes;
+        targetsOn = handsBiomes;
         String noiseOff = GpuSteps.noiseHooksOff();
         if (noiseOff != null && biomesOff != null && !handsBiomes) {
             // the GPU would never be asked for noise or biomes. The surface reads the GPU's terrain, so it would not be asked either.
@@ -646,7 +634,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 heapPerRegion += (long) side * side * 16 * (height / 4) * Integer.BYTES;
             }
             if (targetsOn) {
-                // and the climate points for Lithostitched's injectors or the handed lookups
+                // and the climate points for the handed lookups
                 heapPerRegion += (long) targetInts() * Integer.BYTES;
             }
             if (handsBiomes) {
@@ -869,22 +857,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         if (!hand && testHand) {
             return "the test hands the GPU's answers to the CPU's lookups";
         }
-        BiomeSource outer = source;
-        BiomeSource injector = null;
-        if (LithostitchedGpuBiomes.isInjector(source)) {
-            // Lithostitched's injectors run on the CPU after the GPU's search, with the GPU's climate points
-            MultiNoiseBiomeSource base = LithostitchedGpuBiomes.base(source);
-            if (base == null) {
-                return "Lithostitched's biome injectors over a biome source other than vanilla's multi-noise source";
-            }
-            if (!hand) {
-                Holder<Biome> any = base.possibleBiomes().iterator().next();
-                if (!LithostitchedGpuBiomes.takesHandedLookups(source, randomState.sampler(), any)) {
-                    return "Lithostitched's biome injectors: GA2's hooks into this Lithostitched version did not apply";
-                }
-                injector = source;
-            }
-            source = base;
+        BiomeSource wrapped = hand && source != null ? BlueprintBiomes.wrapped(source) : null;
+        if (wrapped != null) {
+            // Blueprint's slices: the lookups of the source it wraps take the GPU's answers, the slices' own run as they are
+            source = wrapped;
         }
         if (source == null || source.getClass() != MultiNoiseBiomeSource.class) {
             return "biome source " + (source == null ? "unknown" : source.getClass().getName());
@@ -979,14 +955,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 treeLeaf[id] = b;
             }
         }
-        if (injector != null) {
-            // the injectors' biomes are the chunks' biomes too. The surface on the GPU needs an index for each
-            for (Holder<Biome> h : injector.possibleBiomes()) {
-                if (index.putIfAbsent(h, biomeList.size()) == null) {
-                    biomeList.add(h);
-                }
-            }
-        }
         if (hand) {
             // the handed second answers compare biomes as Biolith does, by id
             treeKey = new int[n];
@@ -999,7 +967,6 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
         }
         this.biomeSource = multi;
-        this.biomeInjector = injector;
         this.biomeTrees = trees;
         this.tbRegions = tb;
         this.treeRoots = roots;
@@ -1467,7 +1434,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int[] quarts;
         /** With TerraBlender's regions: per quart, region 0's leaf where the region's tree gave the placeholder ({@link BiomeResult#fallbacks}). */
         int[] fallbacks;
-        /** With Lithostitched's injectors or handed lookups: the climate points ({@link #targetInts}, region layout). */
+        /** With handed lookups: the climate points ({@link #targetInts}, region layout). */
         int[] targets;
         /** With handed lookups: four answers per quart, region layout ({@link BiomeResult#hand}). */
         int[] hand;
@@ -1543,7 +1510,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         long bytes;
         /** With TerraBlender's regions: the region of every quart column, and region 0's answers. 0 otherwise. */
         long regionMap, fallbacks;
-        /** With Lithostitched's injectors or handed lookups: every quart's climate point ({@link #targetInts}). 0 otherwise. */
+        /** With handed lookups: every quart's climate point ({@link #targetInts}). 0 otherwise. */
         long targets;
         /** With handed lookups: four answers per quart ({@link BiomeResult#hand}). 0 otherwise. */
         long hand;
@@ -2357,7 +2324,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         /** With TerraBlender's regions: the region map written to the device, and region 0's answers read back. */
         ByteBuffer regionMap, fallbacks;
         long fallbacksMem;
-        /** With Lithostitched's injectors or handed lookups: the climate points read back. */
+        /** With handed lookups: the climate points read back. */
         ByteBuffer targets;
         long targetsMem;
         /** With handed lookups: their answers read back. */

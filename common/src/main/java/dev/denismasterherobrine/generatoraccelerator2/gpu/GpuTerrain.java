@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.AquiferStatusInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
@@ -318,6 +319,28 @@ public final class GpuTerrain {
             }
         }
         return null;
+    }
+
+    /** A chunk's aquifer cells in the GPU's answer {@code data}, for a step checked against them ({@link FrostedCaves#holdsWithout}). */
+    public static FrostedCaves.Cells cells(int[] data, int cellsPerChunk, int minGridY, int cx, int cz, boolean defaultLava) {
+        return new FrostedCaves.Cells() {
+            @Override
+            public int count() {
+                return cellsPerChunk;
+            }
+
+            @Override
+            public long centre(int cell) {
+                int ii = cell % 3, t = cell / 3, kk = t % 3, jj = t / 3;
+                int bits = data[2 * cell + 1];
+                return BlockPos.asLong((cx - 1 + ii) * 16 + (bits >> 8 & 15), (minGridY + jj) * 12 + (bits >> 12 & 15), (cz - 1 + kk) * 16 + (bits >> 16 & 15));
+            }
+
+            @Override
+            public boolean water(int cell) {
+                return (data[2 * cell + 1] & 1) == 0 && !defaultLava;
+            }
+        };
     }
 
     /** The same data with a separate aquifer, for a chunk copy. */

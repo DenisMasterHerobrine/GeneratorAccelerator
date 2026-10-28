@@ -23,7 +23,7 @@ import org.spongepowered.asm.mixin.Mixin;
 public abstract class ChunkAccessHeightsMixin {
     @Dynamic("GeneratorHeightGetter.getHeight, merged by Oh The Biomes We've Gone's ChunkAccessMixin")
     // The mod's method is not in the game's mappings, so its descriptor is written in both namespaces. These are Mojang's
-    // (NeoForge, development) and intermediary (Fabric). A bare name would also match vanilla's getHeight() on NeoForge.
+    // (Forge, development) and intermediary (Fabric). A bare name would also match vanilla's getHeight() in development.
     @WrapMethod(method = {
         "getHeight(Lnet/minecraft/world/level/chunk/ChunkGenerator;Lnet/minecraft/world/level/levelgen/Heightmap$Types;IILnet/minecraft/world/level/levelgen/RandomState;Z)I",
         "getHeight(Lnet/minecraft/class_2794;Lnet/minecraft/class_2902$class_2903;IILnet/minecraft/class_7138;Z)I" },

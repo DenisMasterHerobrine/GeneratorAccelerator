@@ -61,35 +61,63 @@ public final class CoordDeps {
     }
 
     private Dep compute(Node n) {
-        return switch (n) {
-            case Node.Const c -> Dep.CONST;
-            case Node.Ap2 a -> of(a.a()).join(of(a.b()));
-            case Node.MulOrAdd m -> of(m.input());
-            case Node.Mapped m -> of(m.input());
-            case Node.Clamp c -> of(c.input());
-            case Node.RangeChoice r -> of(r.input()).join(of(r.inRange())).join(of(r.outRange()));
-            case Node.YGradient y -> Dep.Y;
-            case Node.Noise no -> no.yScale() == 0.0 ? Dep.XZ : Dep.XYZ;
-            case Node.ShiftedNoise s -> (s.yScale() == 0.0 ? Dep.XZ : Dep.XYZ).join(of(s.shiftX())).join(of(s.shiftY())).join(of(s.shiftZ()));
-            case Node.ShiftA s -> Dep.XZ;
-            case Node.ShiftB s -> Dep.XZ;
-            case Node.Shift s -> Dep.XYZ;
-            case Node.Weird w -> Dep.XYZ;
-            case Node.Spline s -> spline(s.spline());
-            case Node.Blended b -> Dep.XYZ;
-            case Node.BlendDensity b -> Dep.XYZ;
-            case Node.BlendAlpha a -> Dep.XZ;
-            case Node.BlendOffset o -> Dep.XZ;
-            case Node.Beardifier b -> Dep.XYZ;
-            case Node.EndIslands e -> Dep.XZ;   // compute() reads blockX / 8 and blockZ / 8 only
-            case Node.Marker m -> marker(m);
-            case Node.Unsupported u -> Dep.XYZ;
-            case Node.Select s -> cond(s.cond()).join(of(s.whenJump())).join(of(s.whenFall()));
-            case Node.StaticCall c -> args(c.args());
-            case Node.NoiseAt na -> of(na.x()).join(of(na.y())).join(of(na.z()));
-            case Node.IntToDouble i -> ofInt(i.value());
-            case Node.RoundFloat r -> of(r.value());
-        };
+        if (n instanceof Node.Const c) {
+            return Dep.CONST;
+        } else if (n instanceof Node.Ap2 a) {
+            return of(a.a()).join(of(a.b()));
+        } else if (n instanceof Node.MulOrAdd m) {
+            return of(m.input());
+        } else if (n instanceof Node.Mapped m) {
+            return of(m.input());
+        } else if (n instanceof Node.Clamp c) {
+            return of(c.input());
+        } else if (n instanceof Node.RangeChoice r) {
+            return of(r.input()).join(of(r.inRange())).join(of(r.outRange()));
+        } else if (n instanceof Node.YGradient y) {
+            return Dep.Y;
+        } else if (n instanceof Node.Noise no) {
+            return no.yScale() == 0.0 ? Dep.XZ : Dep.XYZ;
+        } else if (n instanceof Node.ShiftedNoise s) {
+            return (s.yScale() == 0.0 ? Dep.XZ : Dep.XYZ).join(of(s.shiftX())).join(of(s.shiftY())).join(of(s.shiftZ()));
+        } else if (n instanceof Node.ShiftA s) {
+            return Dep.XZ;
+        } else if (n instanceof Node.ShiftB s) {
+            return Dep.XZ;
+        } else if (n instanceof Node.Shift s) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.Weird w) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.Spline s) {
+            return spline(s.spline());
+        } else if (n instanceof Node.Blended b) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.BlendDensity b) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.BlendAlpha a) {
+            return Dep.XZ;
+        } else if (n instanceof Node.BlendOffset o) {
+            return Dep.XZ;
+        } else if (n instanceof Node.Beardifier b) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.EndIslands e) {
+            return Dep.XZ; // compute() reads blockX / 8 and blockZ / 8 only
+        } else if (n instanceof Node.Marker m) {
+            return marker(m);
+        } else if (n instanceof Node.Unsupported u) {
+            return Dep.XYZ;
+        } else if (n instanceof Node.Select s) {
+            return cond(s.cond()).join(of(s.whenJump())).join(of(s.whenFall()));
+        } else if (n instanceof Node.StaticCall c) {
+            return args(c.args());
+        } else if (n instanceof Node.NoiseAt na) {
+            return of(na.x()).join(of(na.y())).join(of(na.z()));
+        } else if (n instanceof Node.IntToDouble i) {
+            return ofInt(i.value());
+        } else if (n instanceof Node.RoundFloat r) {
+            return of(r.value());
+        } else {
+            throw new IllegalStateException(String.valueOf(n));
+        }
     }
 
     private Dep cond(Node.Cond c) {
@@ -105,15 +133,23 @@ public final class CoordDeps {
     }
 
     public Dep ofInt(INode n) {
-        return switch (n) {
-            case INode.IntConst c -> Dep.CONST;
-            case INode.IntCoord c -> c.axis() == 1 ? Dep.Y : Dep.XZ;
-            case INode.IntBin b -> ofInt(b.a()).join(ofInt(b.b()));
-            case INode.IntNeg g -> ofInt(g.a());
-            case INode.DoubleToInt d -> of(d.value());
-            case INode.IntStaticCall c -> args(c.args());
-            case INode.SelectInt s -> cond(s.cond()).join(ofInt(s.whenJump())).join(ofInt(s.whenFall()));
-        };
+        if (n instanceof INode.IntConst c) {
+            return Dep.CONST;
+        } else if (n instanceof INode.IntCoord c) {
+            return c.axis() == 1 ? Dep.Y : Dep.XZ;
+        } else if (n instanceof INode.IntBin b) {
+            return ofInt(b.a()).join(ofInt(b.b()));
+        } else if (n instanceof INode.IntNeg g) {
+            return ofInt(g.a());
+        } else if (n instanceof INode.DoubleToInt d) {
+            return of(d.value());
+        } else if (n instanceof INode.IntStaticCall c) {
+            return args(c.args());
+        } else if (n instanceof INode.SelectInt s) {
+            return cond(s.cond()).join(ofInt(s.whenJump())).join(ofInt(s.whenFall()));
+        } else {
+            throw new IllegalStateException(String.valueOf(n));
+        }
     }
 
     private Dep marker(Node.Marker m) {
@@ -149,20 +185,31 @@ public final class CoordDeps {
         if (of(n).isXzOrConst() || seen.put(n, Boolean.TRUE) != null) {
             return null;
         }
-        String own = switch (n) {
-            case Node.Noise no -> no.yScale() != 0.0 ? "noise with y_scale " + no.yScale() : null;
-            case Node.ShiftedNoise s -> s.yScale() != 0.0 ? "shifted_noise with y_scale " + s.yScale() : null;
-            case Node.YGradient y -> "y_clamped_gradient";
-            case Node.Shift s -> "shift (3D)";
-            case Node.Weird w -> "weird_scaled_sampler (3D)";
-            case Node.Blended b -> "old_blended_noise";
-            case Node.BlendDensity b -> "blend_density";
-            case Node.Beardifier b -> "beardifier";
-            case Node.Unsupported u -> "an uncompiled " + u.vanilla().getClass().getName();
-            case Node.Marker m when chunkMode && m.type() != Node.MarkerType.CACHE_ONCE && m.type() != Node.MarkerType.FLAT_CACHE
-                && m.type() != Node.MarkerType.CACHE_2D -> m.type().name().toLowerCase(Locale.ROOT) + " inside";
-            default -> null;
-        };
+        String own;
+        if (n instanceof Node.Noise no) {
+            own = no.yScale() != 0.0 ? "noise with y_scale " + no.yScale() : null;
+        } else if (n instanceof Node.ShiftedNoise s) {
+            own = s.yScale() != 0.0 ? "shifted_noise with y_scale " + s.yScale() : null;
+        } else if (n instanceof Node.YGradient y) {
+            own = "y_clamped_gradient";
+        } else if (n instanceof Node.Shift s) {
+            own = "shift (3D)";
+        } else if (n instanceof Node.Weird w) {
+            own = "weird_scaled_sampler (3D)";
+        } else if (n instanceof Node.Blended b) {
+            own = "old_blended_noise";
+        } else if (n instanceof Node.BlendDensity b) {
+            own = "blend_density";
+        } else if (n instanceof Node.Beardifier b) {
+            own = "beardifier";
+        } else if (n instanceof Node.Unsupported u) {
+            own = "an uncompiled " + u.vanilla().getClass().getName();
+        } else if (n instanceof Node.Marker m && chunkMode && m.type() != Node.MarkerType.CACHE_ONCE && m.type() != Node.MarkerType.FLAT_CACHE
+                && m.type() != Node.MarkerType.CACHE_2D) {
+            own = m.type().name().toLowerCase(Locale.ROOT) + " inside";
+        } else {
+            own = null;
+        }
         if (own != null) {
             return own;
         }

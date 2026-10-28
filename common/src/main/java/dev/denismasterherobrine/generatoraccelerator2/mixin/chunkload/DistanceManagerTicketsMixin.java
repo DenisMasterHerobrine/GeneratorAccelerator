@@ -2,11 +2,11 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mojang.datafixers.util.Either;
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig;
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.server.level.ChunkHolder;
-import net.minecraft.server.level.ChunkResult;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,8 +28,8 @@ public abstract class DistanceManagerTicketsMixin {
 
     @WrapOperation(method = "runAllUpdates", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/server/level/ChunkHolder;getEntityTickingChunkFuture()Ljava/util/concurrent/CompletableFuture;"))
-    private CompletableFuture<ChunkResult<LevelChunk>> ga2$timeTicket(ChunkHolder holder, Operation<CompletableFuture<ChunkResult<LevelChunk>>> original) {
-        CompletableFuture<ChunkResult<LevelChunk>> ready = original.call(holder);
+    private CompletableFuture<Either<LevelChunk, ChunkHolder.ChunkLoadingFailure>> ga2$timeTicket(ChunkHolder holder, Operation<CompletableFuture<Either<LevelChunk, ChunkHolder.ChunkLoadingFailure>>> original) {
+        CompletableFuture<Either<LevelChunk, ChunkHolder.ChunkLoadingFailure>> ready = original.call(holder);
         long start = System.nanoTime();
         ready.thenRun(() -> ChunkLoadStats.TICKET_READY.record(System.nanoTime() - start));
         return ready;

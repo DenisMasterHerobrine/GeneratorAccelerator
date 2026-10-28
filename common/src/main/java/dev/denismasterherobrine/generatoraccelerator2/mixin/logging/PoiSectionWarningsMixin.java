@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.logging;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -25,7 +26,7 @@ public abstract class PoiSectionWarningsMixin {
         target = "Lnet/minecraft/Util;logAndPauseIfInIde(Ljava/lang/String;)V"), require = 0)
     private void ga2$mismatchOnce(String message, Operation<Void> original, @Local(argsOnly = true) PoiRecord added) {
         PoiRecord registered = this.records.get(SectionPos.sectionRelativePos(added.getPos()));
-        String source = (registered != null ? registered.getPoiType().getRegisteredName() : "?") + " -> " + added.getPoiType().getRegisteredName();
+        String source = (registered != null ? HolderNames.name(registered.getPoiType()) : "?") + " -> " + HolderNames.name(added.getPoiType());
         switch (RepeatedWarnings.decide(RepeatedWarnings.Kind.POI_MISMATCH, source)) {
             case LOG -> original.call(message);
             case DEBUG -> RepeatedWarnings.debug("{}", message);

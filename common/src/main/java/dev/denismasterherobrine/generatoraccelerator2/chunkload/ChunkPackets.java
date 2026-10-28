@@ -22,8 +22,8 @@ import org.slf4j.Logger;
  * Encodes the block and biome data of a batch of chunk packets in parallel.
  *
  * <p>The server thread builds each chunk packet it sends. Most of a packet is the chunk's sections, each written into one
- * byte array ({@code ClientboundLevelChunkPacketData.extractChunkData}). In singleplayer, vanilla sends all chunks waiting
- * for the player in one batch. Here, once the batch is chosen, its sections are written ahead by GA2's packet threads and
+ * byte array ({@code ClientboundLevelChunkPacketData.extractChunkData}). A player who enters a level is sent every ticking
+ * chunk in view in one go. Here, once that batch is known, its sections are written ahead by GA2's packet threads and
  * the server thread together. The server thread waits until all are written. The packets then take the written bytes in
  * place of writing them again. Heightmaps, block entities and light are still built by the server thread, in vanilla's
  * order.

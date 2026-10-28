@@ -353,7 +353,7 @@ public final class BiolithSearch {
         int nodes = flat.nodes();
         int[] keys = new int[nodes + 1];
         Map<ResourceLocation, Integer> numbers = new HashMap<>();
-        numbers.put(ResourceLocation.fromNamespaceAndPath("biolith", "null"), 0);
+        numbers.put(new ResourceLocation("biolith", "null"), 0);
         keys[nodes] = 0;
         for (int id = 0; id < nodes; id++) {
             Climate.RTree.Leaf<?> leaf = flat.leaf(id);

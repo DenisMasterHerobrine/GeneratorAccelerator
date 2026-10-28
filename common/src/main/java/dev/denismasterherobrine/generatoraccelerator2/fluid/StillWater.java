@@ -120,7 +120,7 @@ public final class StillWater {
 
     /**
      * True when all six neighbours of {@code pos} are water blocks. A water block hides the adjacent water face on both platforms.
-     * Vanilla compares the fluids. NeoForge asks {@code shouldHideAdjacentFluidFace}, whose default LiquidBlock keeps.
+     * Vanilla and Forge compare the fluids.
      */
     public static boolean surrounded(BlockGetter level, BlockPos pos) {
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();

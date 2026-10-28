@@ -1,6 +1,9 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.surface;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy;
+import dev.denismasterherobrine.generatoraccelerator2.surface.LoopRules;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
 import net.minecraft.core.Registry;
@@ -18,7 +21,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Hands chunk surfaces to {@link SurfaceBuilder}. When the builder declines, vanilla builds them. */
+/**
+ * Hands chunk surfaces to {@link SurfaceBuilder}. When the builder declines, vanilla builds them, with the compiled rules where
+ * vanilla applies its rule ({@link LoopRules}).
+ */
 @Mixin(value = SurfaceSystem.class, priority = 5000)
 public abstract class SurfaceSystemMixin {
     @Inject(method = "buildSurface", at = @At("HEAD"), cancellable = true)
@@ -39,5 +45,13 @@ public abstract class SurfaceSystemMixin {
             }
             ci.cancel();
         }
+    }
+
+    // another mod's replacement of the build may have no such call
+    @WrapOperation(method = "buildSurface", require = 0,
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;apply(Ljava/lang/Object;)Ljava/lang/Object;"))
+    private Object ga2$loopRules(SurfaceRules.RuleSource source, Object context, Operation<Object> original) {
+        SurfaceRules.SurfaceRule compiled = LoopRules.rule(source, (SurfaceRules.Context) context);
+        return compiled != null ? compiled : original.call(source, context);
     }
 }

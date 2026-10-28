@@ -181,7 +181,7 @@ public final class SmallFeatures {
                     continue;
                 }
                 if (biome.shouldFreeze(level, below, false)) {
-                    FeatureWraps.setIce(feature, level, region, below);
+                    FeatureWraps.setIce(region, below);
                 }
                 if (FeatureWraps.shouldSnow(feature, biome, level, top)) {
                     RegionWriter.setBlock(region, top, Blocks.SNOW.defaultBlockState());

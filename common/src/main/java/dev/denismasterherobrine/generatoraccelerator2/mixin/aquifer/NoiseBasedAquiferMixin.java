@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
@@ -143,6 +144,11 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Unique private static final int GA2_AIR_MARGIN = 5;
 
     @Unique private int ga2$mode;
+    /** Each cell's Frosted Caves answer looked up ahead and the cell centres they were looked up at, or null to look up live (FrostedCaves). */
+    @Unique private byte[] ga2$frosted;
+    @Unique private long[] ga2$frostedAt;
+    /** Whether the Frosted Caves answers were decided (before the first status, FrostedCaves). */
+    @Unique private boolean ga2$frostedDecided;
     @Unique private int ga2$gridSizeY;
     /** Index offsets of the 12 candidate cells from the neighbourhood key, in vanilla's loop order. */
     @Unique private int[] ga2$offsets;
@@ -244,6 +250,51 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         this.ga2$mode = mode;
     }
 
+    /**
+     * Looks up every cell's Frosted Caves answer before the aquifer's first status (FrostedCaves). The aquifer is made with its
+     * NoiseChunk at the biome step, and the mod notes the biome registry on that NoiseChunk only at the step's end, so this waits for the
+     * fill. When an answer depends on the order of the lookups, the aquifer searches in vanilla's order instead.
+     */
+    @Unique
+    private void ga2$frostedDecide() {
+        this.ga2$frostedDecided = true;
+        if (!FrostedCaves.active() || this.ga2$mode == AquiferFastPath.OFF || this.ga2$mode == AquiferFastPath.SEARCH) {
+            return;
+        }
+        long[] at = new long[this.aquiferLocationCache.length];
+        byte[] bits = FrostedCaves.cells(this.noiseChunk, this.positionalRandomFactory, this.minGridX, this.minGridY, this.minGridZ, this.gridSizeX,
+            this.ga2$gridSizeY, this.gridSizeZ, at);
+        if (bits == null) {
+            this.ga2$mode = AquiferFastPath.SEARCH;
+        } else if (bits != FrostedCaves.NO_STEP) {
+            this.ga2$frosted = bits;
+            this.ga2$frostedAt = at;
+        }
+    }
+
+    /** YUNG's Cave Biomes' Frosted Caves water, where GA2 took its handler over: from the answer looked up ahead, or live. */
+    @Inject(method = "computeFluid", at = @At("RETURN"), cancellable = true)
+    private void ga2$frostedCaves(int x, int y, int z, CallbackInfoReturnable<Aquifer.FluidStatus> cir) {
+        if (!FrostedCaves.active()) {
+            return;
+        }
+        int known = -1;
+        byte[] bits = this.ga2$frosted;
+        if (bits != null) {
+            // vanilla's gridX, gridY, gridZ and getIndex
+            int gx = Math.floorDiv(x, 16) - this.minGridX, gy = Math.floorDiv(y, 12) - this.minGridY, gz = Math.floorDiv(z, 16) - this.minGridZ;
+            int i = (gy * this.gridSizeZ + gz) * this.gridSizeX + gx;
+            if (gx >= 0 && gx < this.gridSizeX && gz >= 0 && gz < this.gridSizeZ && i >= 0 && i < bits.length && this.ga2$frostedAt[i] == BlockPos.asLong(x, y, z)) {
+                known = bits[i];
+            }
+        }
+        Aquifer.FluidStatus status = cir.getReturnValue();
+        Aquifer.FluidStatus out = FrostedCaves.apply(this.noiseChunk, x, y, z, status, known);
+        if (out != status) {
+            cir.setReturnValue(out);
+        }
+    }
+
     @Inject(method = "computeSubstance", at = @At("HEAD"), cancellable = true)
     private void ga2$computeSubstance(DensityFunction.FunctionContext context, double density, CallbackInfoReturnable<BlockState> cir) {
         if (this.ga2$mode != AquiferFastPath.OFF) {
@@ -306,6 +357,9 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     /** The fast path at {@code x, y, z}. {@code context} is that position's, or null if the caller has none (made if needed). */
     @Unique
     private Object ga2$compute(DensityFunction.FunctionContext context, double density, int x, int y, int z) {
+        if (!this.ga2$frostedDecided) {
+            this.ga2$frostedDecide();
+        }
         if (density > 0.0) {
             if (AquiferFastPath.STATS) {
                 AquiferFastPath.SOLID.increment();
@@ -409,6 +463,9 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
 
     @Override
     public boolean ga2$cellAir(int x0, int y0, int z0, int w, int h) {
+        if (!this.ga2$frostedDecided) {
+            this.ga2$frostedDecide();
+        }
         if (this.ga2$mode == AquiferFastPath.OFF || !CellAir.noLava(this.globalFluidPicker, x0, y0, z0, w, h)) {
             return false;
         }

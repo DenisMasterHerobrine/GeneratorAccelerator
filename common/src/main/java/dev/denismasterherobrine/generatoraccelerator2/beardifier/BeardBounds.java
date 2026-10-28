@@ -15,7 +15,6 @@ import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
  * <li>BEARD_THIN / BEARD_BOX and junctions: the beard kernel is 0 outside {@code [-12, 11]} on every
  *     axis. The vertical offset is {@code y - k1} (thin), the distance to {@code [k1, maxY]} (box) or
  *     {@code y - groundY} (junction).</li>
- * <li>ENCAPSULATE: the bury falloff on halved distances to the box, so every distance is at most 11.</li>
  * </ul>
  * The ranges below add one block of slack on each side. Skipping a {@code +0.0} term is exact
  * because the running sum starts at {@code +0.0} and every non-zero term is finite, so it never
@@ -26,7 +25,6 @@ public final class BeardBounds {
     public static final int BURY = 1;
     public static final int BEARD_THIN = 2;
     public static final int BEARD_BOX = 3;
-    public static final int ENCAPSULATE = 4;
     /** An adjustment this code does not know. The caller must not cull it. */
     public static final int UNKNOWN = -1;
 
@@ -44,8 +42,6 @@ public final class BeardBounds {
             return BEARD_THIN;
         } else if (adjustment == TerrainAdjustment.BEARD_BOX) {
             return BEARD_BOX;
-        } else if (adjustment == TerrainAdjustment.ENCAPSULATE) {
-            return ENCAPSULATE;
         }
         return UNKNOWN;
     }
@@ -70,10 +66,6 @@ public final class BeardBounds {
             }
             case BEARD_BOX -> {
                 y0 = k1 - 12;
-                y1 = (long) box.maxY() + 12;
-            }
-            case ENCAPSULATE -> {
-                y0 = (long) box.minY() - 12;
                 y1 = (long) box.maxY() + 12;
             }
             default -> throw new IllegalArgumentException("adjustment code " + code);

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.features;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,10 +41,10 @@ public class TagBitsTest {
             for (Holder.Reference<Block> b : blocks) {
                 boolean truth = b.tags().anyMatch(tag::equals);
                 if (b.is(tag) != truth) {
-                    wrong.add(b.getRegisteredName() + " " + tag.location() + ": " + !truth + " (set " + truth + ")");
+                    wrong.add(HolderNames.name(b) + " " + tag.location() + ": " + !truth + " (set " + truth + ")");
                 }
                 if (b.is(copy) != truth) {
-                    wrong.add(b.getRegisteredName() + " " + tag.location() + " (copy): " + !truth + " (set " + truth + ")");
+                    wrong.add(HolderNames.name(b) + " " + tag.location() + " (copy): " + !truth + " (set " + truth + ")");
                 }
                 checked += 2;
                 if (truth) {
@@ -59,7 +60,7 @@ public class TagBitsTest {
     @Test
     void absentKeyFindsItsIndexLater() {
         HarnessWorld.registries();
-        TagKey<Block> key = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("ga2test", "late_tag"));
+        TagKey<Block> key = TagKey.create(Registries.BLOCK, new ResourceLocation("ga2test", "late_tag"));
         assertEquals(-1, TagBits.index(key));
         assertEquals(-1, TagBits.index(key));
         TagBits.bits(Set.of(key));

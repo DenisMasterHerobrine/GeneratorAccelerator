@@ -11,18 +11,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
-import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.status.ChunkStatusTasks;
-import net.minecraft.world.level.chunk.status.ChunkStep;
-import net.minecraft.world.level.chunk.status.WorldGenContext;
+import net.minecraft.world.level.chunk.ChunkStatus;
 
 /**
  * Other mods' code that vanilla's SURFACE step runs before its generator call (their mixins on
- * {@code ChunkStatusTasks.generateSurface}). When GA2 takes the step over ({@link ParallelSteps#surfaceStep}), GA2 runs
+ * {@code ChunkStatus}'s SURFACE task). When GA2 takes the step over ({@link ParallelSteps#surfaceStep}), GA2 runs
  * this code on the worker right before that call. Vanilla runs the step on its single worldgen thread, so such code runs
  * one chunk at a time there. GA2's scheduler thread would do the same. A mod that builds terrain there holds every chunk
  * behind it. OTBWG's crag gardens, for example, looked up 256 biomes per chunk. The code for each mixin lives in
@@ -35,8 +31,11 @@ public final class StepHandlers {
     private StepHandlers() {}
 
     /** What vanilla's step holds at the generator call: its arguments and the locals it made. */
-    public record Frame(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, ServerLevel level,
-                        WorldGenRegion region) {}
+    public record Frame(StepCall call, ServerLevel level, WorldGenRegion region) {
+        public ChunkAccess chunk() {
+            return this.call.chunk();
+        }
+    }
 
     /** One handler method of another mod's mixin. */
     public interface Handler {
@@ -62,7 +61,7 @@ public final class StepHandlers {
     private static final Handler[] NONE = new Handler[0];
     private static volatile Handler[] surface;
 
-    /** Registers the code for one handled mixin of {@code generateSurface} ({@code compat/<modid>}). */
+    /** Registers the code for one handled mixin of the SURFACE task ({@code compat/<modid>}). */
     public static void register(String mixin, Factory factory) {
         FACTORIES.put(mixin, factory);
         CompatAdapters.register(HookTargets.SURFACE_STEP_BODY, mixin, () -> create(mixin) != null);
@@ -160,13 +159,13 @@ public final class StepHandlers {
     }
 
     /**
-     * The static handler method another mod's mixin merged into {@code ChunkStatusTasks}. Its merged name ends with
+     * The static handler method another mod's mixin merged into {@code ChunkStatus}. Its merged name ends with
      * {@code "$" + name}, and it takes exactly {@code params}. That excludes MixinExtras' bridge for sugar, which takes references.
      */
     public static MethodHandle staticHandler(String name, Class<?>... params) throws ReflectiveOperationException {
-        MethodHandle h = Reflect.mergedMethod(ChunkStatusTasks.class, "$" + name, true, void.class, params);
+        MethodHandle h = Reflect.mergedMethod(ChunkStatus.class, "$" + name, true, void.class, params);
         if (h == null) {
-            throw new NoSuchMethodException("ChunkStatusTasks.*$" + name + Arrays.toString(params));
+            throw new NoSuchMethodException("ChunkStatus.*$" + name + Arrays.toString(params));
         }
         return h;
     }

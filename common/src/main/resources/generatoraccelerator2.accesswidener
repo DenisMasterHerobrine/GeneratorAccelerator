@@ -137,13 +137,11 @@ accessible field net/minecraft/world/level/levelgen/feature/MonsterRoomFeature M
 accessible class net/minecraft/world/level/biome/Biome$ClimateSettings
 # join.JoinWait looks up the spawn area's chunk holders
 accessible method net/minecraft/server/level/ChunkMap getVisibleChunkIfPresent (J)Lnet/minecraft/server/level/ChunkHolder;
-# view.mixin.SectionOcclusionGraphMixin keeps the sections at the view's edge when a rebuilt graph replaces the one shown
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphState
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphStorage
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphEvents
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$SectionToNodeMap
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$Node
-accessible field net/minecraft/client/renderer/SectionOcclusionGraph$Node section Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection;
+# view.mixin.LevelRendererEvictMixin reads the sections in view
+accessible class net/minecraft/client/renderer/LevelRenderer$RenderChunkInfo
+accessible field net/minecraft/client/renderer/LevelRenderer$RenderChunkInfo chunk Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk;
 accessible field net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate offset Lnet/minecraft/core/Vec3i;
 accessible field net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate direction Lnet/minecraft/core/Direction;
 accessible field net/minecraft/world/level/levelgen/feature/configurations/MultifaceGrowthConfiguration validDirections Lit/unimi/dsi/fastutil/objects/ObjectArrayList;
+# The step tasks GA2 hands to the worker pool (scheduling.StepCall).
+accessible class net/minecraft/world/level/chunk/ChunkStatus$GenerationTask

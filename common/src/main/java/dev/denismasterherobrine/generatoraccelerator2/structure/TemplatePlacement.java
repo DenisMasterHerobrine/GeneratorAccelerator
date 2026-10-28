@@ -69,7 +69,7 @@ public final class TemplatePlacement {
 
     /**
      * {@code processBlockInfos(level, offset, pivot, settings, blocks)} over the blocks that can land inside the settings' bounding
-     * box, or null when the call has to run as vanilla's. {@code template} is NeoForge's extra argument (null on Fabric).
+     * box, or null when the call has to run as vanilla's. {@code template} is Forge's extra argument (null on Fabric).
      */
     @Nullable
     public static List<StructureTemplate.StructureBlockInfo> clipped(ServerLevelAccessor level, BlockPos offset, BlockPos pivot, StructurePlaceSettings settings,

@@ -89,15 +89,14 @@ public final class HookTargets {
     }
 
     public static final String SURFACE_ENTRY = "scheduling.surfaceEntry";
-    /** {@code ChunkStatusTasks.generateSurface}: other mods' code after the generator call keeps the call inline. */
+    /** The SURFACE task ({@code ChunkStatus} lambda): other mods' code after the generator call keeps the call inline. */
     public static final String SURFACE_STEP = "scheduling.surfaceStep";
     /**
-     * {@code ChunkStatusTasks.generateSurface}, run by GA2 itself. Other mods' code before the generator call therefore moves to
-     * the worker together with the call ({@code scheduling.StepHandlers}). Every change another mod makes to the method must be
-     * handled.
+     * The SURFACE task, run by GA2 itself. Other mods' code before the generator call therefore moves to the worker together
+     * with the call ({@code scheduling.StepHandlers}). Every change another mod makes to the task must be handled.
      */
     public static final String SURFACE_STEP_BODY = "scheduling.surfaceStepBody";
-    /** {@code ChunkStatusTasks.generateCarvers}, likewise. */
+    /** The CARVERS task, likewise. */
     public static final String CARVER_STEP = "scheduling.carverStep";
     public static final String CARVER_ENTRY = "carvers.applyCarvers";
     /** The vanilla carver classes whose work the carver runner replays. Any change to these classes keeps those carvers on vanilla's code. */
@@ -139,6 +138,11 @@ public final class HookTargets {
     public static final String SURFACE_BUILD = "surface.buildSurface";
     public static final String SURFACE_TOP_MATERIAL = "surface.topMaterial";
     public static final String SURFACE_BIOME_ZOOM = "surface.biomeZoom";
+    /**
+     * {@code SurfaceSystem.buildSurface}'s call of {@code RuleSource.apply}. Where vanilla builds a chunk's surface, the call gives the
+     * compiled rules ({@code surface.LoopRules}). Another mod's redirect, wrapper or modifier of the call keeps vanilla's rule.
+     */
+    public static final String SURFACE_LOOP_RULES = "surface.loopRules";
     public static final String BIOME_CLIMATE_SEARCH = "biomes.climateSearch";
     /** {@code MultiNoiseBiomeSource.parameters()}: once the parameter list is known, it is returned without the method's own work (compat). */
     public static final String BIOME_PARAMETERS = "biomes.parameters";
@@ -212,6 +216,12 @@ public final class HookTargets {
     public static final String FULL_BLOCK_SHAPE = "state.fullBlockShape";
     /** The per-block state FastFill computes in place ({@code getInterpolatedState} and what that runs). When changed, FastFill asks the real method. */
     public static final String NOISE_FILL_STATE = "noise.fillState";
+    /**
+     * The {@code NoiseChunk} constructor's final-density cell cache, built from the router's final density. The compiled final density
+     * is bound to that cache ({@code dfc.runtime.ChunkBinding}). When another mod changes how the cache is built (a redirect of the
+     * router's final density, a wrapper of its functions), the cache fills itself the vanilla way.
+     */
+    public static final String NOISE_FINAL_DENSITY = "noise.finalDensity";
     /** {@code MaterialRuleList.calculate} walked by index. */
     public static final String NOISE_MATERIAL_RULES = "noise.materialRules";
     /** Vanilla's ore vein rule ({@code OreVeinifier}). When changed, FastFill runs the rule for every solid block instead of skipping whole cells. */

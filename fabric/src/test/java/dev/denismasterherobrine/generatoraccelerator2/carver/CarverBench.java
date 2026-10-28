@@ -9,7 +9,7 @@ import java.util.Map;
 import net.minecraft.core.QuartPos;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -39,7 +39,7 @@ public class CarverBench {
                     for (TerrainHarness.Site site : sites) {
                         ProtoChunk c = site.center();
                         TerrainHarness.vanillaSurface(site, c);
-                        c.setPersistedStatus(ChunkStatus.SURFACE);
+                        c.setStatus(ChunkStatus.SURFACE);
                         copies.add(c);
                     }
                     CarverPaths.clear();

@@ -35,7 +35,7 @@ public abstract class BeardifierMixin {
     @Shadow @Final protected ObjectListIterator<JigsawJunction> junctionIterator;
 
     @Shadow
-    protected static double getBuryContribution(double x, double y, double z) {
+    protected static double getBuryContribution(int x, int y, int z) {
         throw new AssertionError();
     }
 
@@ -138,15 +138,11 @@ public abstract class BeardifierMixin {
             int j1 = Math.max(0, Math.max(minZ - z, z - maxZ));
             int l1 = y - k1;
             switch (p[b + 7]) {
-                case BeardBounds.BURY -> sum += getBuryContribution((double) i1, (double) l1 / 2.0, (double) j1);
+                case BeardBounds.BURY -> sum += getBuryContribution(i1, l1, j1);
                 case BeardBounds.BEARD_THIN -> sum += getBeardContribution(i1, l1, j1, l1) * 0.8;
                 case BeardBounds.BEARD_BOX -> {
                     int i2 = Math.max(0, Math.max(k1 - y, y - maxY));
                     sum += getBeardContribution(i1, i2, j1, l1) * 0.8;
-                }
-                case BeardBounds.ENCAPSULATE -> {
-                    int i2 = Math.max(0, Math.max(minY - y, y - maxY));
-                    sum += getBuryContribution((double) i1 / 2.0, (double) i2 / 2.0, (double) j1 / 2.0) * 0.8;
                 }
                 default -> throw new IllegalStateException("adjustment code " + p[b + 7]);
             }

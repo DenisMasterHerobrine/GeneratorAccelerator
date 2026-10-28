@@ -23,12 +23,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.profiling.ProfilerFiller;
-import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.flag.FeatureFlags;
-import net.minecraft.world.item.alchemy.PotionBrewing;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
@@ -53,7 +51,6 @@ import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.WritableLevelData;
 import net.minecraft.world.phys.Vec3;
@@ -92,7 +89,7 @@ class StillWaterTest {
         p.add(Blocks.BUBBLE_COLUMN.defaultBlockState());
         p.add(Blocks.MAGMA_BLOCK.defaultBlockState());
         p.add(Blocks.SOUL_SAND.defaultBlockState());
-        p.add(Blocks.SHORT_GRASS.defaultBlockState());
+        p.add(Blocks.GRASS.defaultBlockState());
         p.add(Blocks.LAVA.defaultBlockState());
         p.add(Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 3));
         p.add(Blocks.ICE.defaultBlockState());
@@ -250,22 +247,20 @@ class StillWaterTest {
         @Override public void scheduleTick(BlockPos pos, Block block, int delay, TickPriority priority) { changes.add("tick " + pos + " " + block); }
         @Override public void updateNeighborsAt(BlockPos pos, Block block) { changes.add("neighbours " + pos); }
         @Override public void levelEvent(@Nullable Player player, int type, BlockPos pos, int data) { changes.add("event " + type + " " + pos); }
-        @Override public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) { changes.add("game event " + pos); }
+        @Override public void gameEvent(GameEvent event, Vec3 pos, GameEvent.Context context) { changes.add("game event " + pos); }
 
         @Override public void sendBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags) { changes.add("sent " + pos); }
         @Override public void playSeededSound(@Nullable Player player, double x, double y, double z, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) { changes.add("sound"); }
         @Override public void playSeededSound(@Nullable Player player, Entity entity, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) { changes.add("sound"); }
         @Override public String gatherChunkSourceStats() { return ""; }
         @Nullable @Override public Entity getEntity(int id) { return null; }
-        @Override public TickRateManager tickRateManager() { throw new UnsupportedOperationException("tickRateManager"); }
-        @Nullable @Override public MapItemSavedData getMapData(MapId id) { return null; }
-        @Override public void setMapData(MapId id, MapItemSavedData data) {}
-        @Override public MapId getFreeMapId() { throw new UnsupportedOperationException("getFreeMapId"); }
+        @Nullable @Override public MapItemSavedData getMapData(String id) { return null; }
+        @Override public void setMapData(String id, MapItemSavedData data) {}
+        @Override public int getFreeMapId() { throw new UnsupportedOperationException("getFreeMapId"); }
         @Override public void destroyBlockProgress(int breakerId, BlockPos pos, int progress) {}
         @Override public Scoreboard getScoreboard() { throw new UnsupportedOperationException("getScoreboard"); }
         @Override public RecipeManager getRecipeManager() { throw new UnsupportedOperationException("getRecipeManager"); }
         @Override protected LevelEntityGetter<Entity> getEntities() { throw new UnsupportedOperationException("getEntities"); }
-        @Override public PotionBrewing potionBrewing() { throw new UnsupportedOperationException("potionBrewing"); }
         @Override public LevelTickAccess<Block> getBlockTicks() { throw new UnsupportedOperationException("getBlockTicks"); }
         @Override public LevelTickAccess<Fluid> getFluidTicks() { throw new UnsupportedOperationException("getFluidTicks"); }
         @Override public ChunkSource getChunkSource() { throw new UnsupportedOperationException("getChunkSource"); }

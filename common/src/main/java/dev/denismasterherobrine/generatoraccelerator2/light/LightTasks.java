@@ -40,9 +40,9 @@ public final class LightTasks {
 
     /** The engine methods that queue tasks. */
     public static final int CHECK_BLOCK = 0, SECTION_STATUS = 1, LIGHT_SOURCES = 2, LIGHT_ENABLED = 3, SECTION_DATA = 4, RETAIN_DATA = 5,
-        CHUNK_STATUS = 6, INITIALIZE_LIGHT = 7, LIGHT_CHUNK = 8, PENDING = 9, OTHER = 10;
+        CHUNK_STATUS = 6, INITIALIZE_LIGHT = 7, LIGHT_CHUNK = 8, OTHER = 9;
     private static final String[] KINDS = { "block changes", "section status", "light sources", "light enabled", "section data", "retain data",
-        "chunk status", "initialize light", "light chunk", "pending tasks", "other" };
+        "chunk status", "initialize light", "light chunk", "other" };
 
     /** The engine method the thread is in, set when the method starts. Its tasks are queued within it. */
     private static final ThreadLocal<int[]> KIND = ThreadLocal.withInitial(() -> new int[] { OTHER });

@@ -87,18 +87,28 @@ public final class StateDependence {
                 found.put(m, m.vanilla());
                 continue;
             }
-            boolean samePoint = switch (n) {
-                case Node.Ap2 a -> true;
-                case Node.MulOrAdd m -> true;
-                case Node.Mapped m -> true;
-                case Node.Clamp c -> true;
-                case Node.RangeChoice r -> true;
-                case Node.ShiftedNoise s -> true;
-                case Node.Weird w -> true;
-                case Node.Spline s -> true;
-                case Node.Marker m -> m.type() != Node.MarkerType.CACHE_2D || deps.of(m.child()).isXzOrConst();
-                default -> RefCount.children(n).isEmpty();
-            };
+            boolean samePoint;
+            if (n instanceof Node.Ap2 a) {
+                samePoint = true;
+            } else if (n instanceof Node.MulOrAdd m) {
+                samePoint = true;
+            } else if (n instanceof Node.Mapped m) {
+                samePoint = true;
+            } else if (n instanceof Node.Clamp c) {
+                samePoint = true;
+            } else if (n instanceof Node.RangeChoice r) {
+                samePoint = true;
+            } else if (n instanceof Node.ShiftedNoise s) {
+                samePoint = true;
+            } else if (n instanceof Node.Weird w) {
+                samePoint = true;
+            } else if (n instanceof Node.Spline s) {
+                samePoint = true;
+            } else if (n instanceof Node.Marker m) {
+                samePoint = m.type() != Node.MarkerType.CACHE_2D || deps.of(m.child()).isXzOrConst();
+            } else {
+                samePoint = RefCount.children(n).isEmpty();
+            }
             if (!samePoint) {
                 // A node that may evaluate its children elsewhere (lifted or modded code). Fine only with no such marker below.
                 if (!orderIndependentBelow(n, deps)) {

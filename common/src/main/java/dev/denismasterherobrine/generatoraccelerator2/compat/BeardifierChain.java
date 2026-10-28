@@ -68,7 +68,7 @@ public final class BeardifierChain {
         "twilightforest/asmhooks/WorldgenHooks.getCustomDensity(DLnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;"
             + "Lit/unimi/dsi/fastutil/objects/ObjectListIterator;)D");
     /** Owners of calls made by the method's own code and by Mixin's callback plumbing. These calls are not another mod's step. */
-    private static final String[] OWN_OWNERS = { "net/minecraft/", "java/", "it/unimi/dsi/", "com/mojang/", "org/spongepowered/", "net/neoforged/",
+    private static final String[] OWN_OWNERS = { "net/minecraft/", "java/", "it/unimi/dsi/", "com/mojang/", "org/spongepowered/", "net/minecraftforge/", "cpw/mods/",
         "com/google/", "org/apache/", "com/llamalad7/mixinextras/", "net/fabricmc/" };
 
     private static volatile Recorded recorded;

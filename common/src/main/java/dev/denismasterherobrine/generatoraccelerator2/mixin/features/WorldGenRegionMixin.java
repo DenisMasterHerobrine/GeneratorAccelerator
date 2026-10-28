@@ -26,8 +26,7 @@ import net.minecraft.world.level.chunk.GlobalPalette;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.Palette;
 import net.minecraft.world.level.chunk.PalettedContainer;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.chunk.status.ChunkStep;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
 import org.slf4j.Logger;
@@ -53,7 +52,8 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
 
     @Shadow @Final private ChunkAccess center;
     @Shadow @Final private ServerLevel level;
-    @Shadow @Final private ChunkStep generatingStep;
+    @Shadow @Final private int size;
+    @Shadow @Final private int writeRadiusCutoff;
     @Shadow @Final private DimensionType dimensionType;
     @Shadow @Final private BiomeManager biomeManager;
 
@@ -82,7 +82,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     private void ga2$init(CallbackInfo ci) {
         this.ga2$centerX = this.center.getPos().x;
         this.ga2$centerZ = this.center.getPos().z;
-        this.ga2$writeRadius = this.generatingStep.blockStateWriteRadius();
+        this.ga2$writeRadius = this.writeRadiusCutoff;
         this.ga2$minY = this.dimensionType.minY();
         this.ga2$maxY = this.dimensionType.minY() + this.dimensionType.height();
         this.ga2$upgrading = this.center.isUpgrading();
@@ -92,7 +92,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
             this.ga2$upgradeMaxY = h.getMaxBuildHeight();
         }
         if (FeatureHooks.enabled() && FeaturesCompat.regionCacheAllowed()) {
-            this.ga2$chunks = new RegionChunks(this.center.getPos(), this.generatingStep.directDependencies());
+            this.ga2$chunks = new RegionChunks(this.center.getPos(), this.size / 2);
             this.ga2$verify = FeaturesConfig.verifyCache();
             FeatureStats.REGIONS.increment();
             this.ga2$readsAllowed = this.ga2$plain() && FeaturesCompat.regionReadsAllowed();

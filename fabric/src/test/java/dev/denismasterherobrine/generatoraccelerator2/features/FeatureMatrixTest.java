@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.denismasterherobrine.generatoraccelerator2.testutil.Fuzz;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
  * level). Those features are reported and excluded from the equality assertion.
  */
 public class FeatureMatrixTest {
-    private static final long[] SEEDS = { 20261002L, 777L };
+    private static final long[] SEEDS = Fuzz.seeds(20261002L, 777L);
 
     @Test
     void optimizedPathMatchesVanilla() {

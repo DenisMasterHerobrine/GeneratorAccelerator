@@ -161,50 +161,54 @@ public final class SkyBounds {
                 }
                 return new Leaf(i);
             }
-            return switch (n) {
-                case Node.Ap2 a -> {
-                    Op x = build(a.a());
-                    Op y = x == null ? null : build(a.b());
-                    yield y == null ? null : new Bin(a.type(), x, y);
-                }
-                case Node.MulOrAdd m -> {
-                    Op x = build(m.input());
-                    yield x == null ? null : new Affine(m.mul(), x, m.argument());
-                }
-                case Node.Mapped m -> {
-                    Op x = build(m.input());
-                    yield x == null ? null : new MapOp(m.type(), x);
-                }
-                case Node.Clamp c -> {
-                    Op x = build(c.input());
-                    yield x == null ? null : new Clamp(x, c.lo(), c.hi());
-                }
-                case Node.RangeChoice r -> {
-                    Op x = build(r.input());
-                    Op in = x == null ? null : build(r.inRange());
-                    Op out = in == null ? null : build(r.outRange());
-                    yield out == null ? null : new Range(x, r.minInclusive(), r.maxExclusive(), in, out);
-                }
-                case Node.YGradient y -> new YGrad(y.fromY(), y.toY(), y.fromValue(), y.toValue());
+            if (n instanceof Node.Ap2 a) {
+                Op x = build(a.a());
+                Op y = x == null ? null : build(a.b());
+                return y == null ? null : new Bin(a.type(), x, y);
+            } else if (n instanceof Node.MulOrAdd m) {
+                Op x = build(m.input());
+                return x == null ? null : new Affine(m.mul(), x, m.argument());
+            } else if (n instanceof Node.Mapped m) {
+                Op x = build(m.input());
+                return x == null ? null : new MapOp(m.type(), x);
+            } else if (n instanceof Node.Clamp c) {
+                Op x = build(c.input());
+                return x == null ? null : new Clamp(x, c.lo(), c.hi());
+            } else if (n instanceof Node.RangeChoice r) {
+                Op x = build(r.input());
+                Op in = x == null ? null : build(r.inRange());
+                Op out = in == null ? null : build(r.outRange());
+                return out == null ? null : new Range(x, r.minInclusive(), r.maxExclusive(), in, out);
+            } else if (n instanceof Node.YGradient y) {
+                return new YGrad(y.fromY(), y.toY(), y.fromValue(), y.toValue());
+            } else if (n instanceof Node.Noise x) {
                 // vanilla's own bounds of the y-dependent leaves, which its MIN/MAX short cuts rely on too
-                case Node.Noise x -> bounded(x.min(), x.max());
-                case Node.ShiftedNoise x -> bounded(x.min(), x.max());
-                case Node.Shift x -> bounded(x.min(), x.max());
-                case Node.Weird x -> bounded(x.min(), x.max());
+                return bounded(x.min(), x.max());
+            } else if (n instanceof Node.ShiftedNoise x) {
+                return bounded(x.min(), x.max());
+            } else if (n instanceof Node.Shift x) {
+                return bounded(x.min(), x.max());
+            } else if (n instanceof Node.Weird x) {
+                return bounded(x.min(), x.max());
+            } else if (n instanceof Node.Blended x) {
                 // vanilla's bound of the old blended noise is far too wide to decide anything
-                case Node.Blended x -> bounded(-blended.get(x.spec()).bound(), blended.get(x.spec()).bound());
+                return bounded(-blended.get(x.spec()).bound(), blended.get(x.spec()).bound());
+            } else if (n instanceof Node.Spline x) {
                 // computed in the reals from the control points, and the float evaluation can land a float ulp outside
-                case Node.Spline x -> bounded(Math.nextDown(Math.nextDown((float) x.min())), Math.nextUp(Math.nextUp((float) x.max())));
+                return bounded(Math.nextDown(Math.nextDown((float) x.min())), Math.nextUp(Math.nextUp((float) x.max())));
+            } else if (n instanceof Node.BlendDensity x) {
                 // the noise fill only plans sky corners without old-chunk blending, where blend_density returns its input
-                case Node.BlendDensity x -> build(x.input());
-                case Node.Marker m -> switch (m.type()) {
-                    case CACHE_ONCE -> build(m.child());
-                    // a y-dependent 2D cache holds its child's value at some earlier height of the column
-                    case CACHE_2D -> bounded(m.child().min(), m.child().max());
-                    default -> missing("a " + m.type().name().toLowerCase(Locale.ROOT) + " inside");
-                };
-                default -> missing(n.getClass().getSimpleName());
+                return build(x.input());
+            } else if (n instanceof Node.Marker m) {
+                return switch (m.type()) {
+                case CACHE_ONCE -> build(m.child());
+                // a y-dependent 2D cache holds its child's value at some earlier height of the column
+                case CACHE_2D -> bounded(m.child().min(), m.child().max());
+                default -> missing("a " + m.type().name().toLowerCase(Locale.ROOT) + " inside");
             };
+            } else {
+                return missing(n.getClass().getSimpleName());
+            }
         }
 
         @Nullable
@@ -299,59 +303,54 @@ public final class SkyBounds {
         }
 
         private void eval(Op op) {
-            switch (op) {
-                case Leaf l -> set(leafValues[l.index()], leafValues[l.index()]);
-                case Fixed f -> set(f.lo(), f.hi());
-                case YGrad g -> {
-                    double a = Interpreter.clampedMap((double) y0, (double) g.fromY(), (double) g.toY(), g.fromValue(), g.toValue());
-                    double b = Interpreter.clampedMap((double) y1, (double) g.fromY(), (double) g.toY(), g.fromValue(), g.toValue());
-                    set(Math.min(a, b), Math.max(a, b));
+            if (op instanceof Leaf l) {
+                set(leafValues[l.index()], leafValues[l.index()]);
+            } else if (op instanceof Fixed f) {
+                set(f.lo(), f.hi());
+            } else if (op instanceof YGrad g) {
+                double a = Interpreter.clampedMap((double) y0, (double) g.fromY(), (double) g.toY(), g.fromValue(), g.toValue());
+                double b = Interpreter.clampedMap((double) y1, (double) g.fromY(), (double) g.toY(), g.fromValue(), g.toValue());
+                set(Math.min(a, b), Math.max(a, b));
+            } else if (op instanceof Bin b) {
+                eval(b.a());
+                double alo = lo;
+                double ahi = hi;
+                eval(b.b());
+                switch (b.type()) {
+                    case ADD -> set(alo + lo, ahi + hi);
+                    case MUL -> mul(alo, ahi, lo, hi);
+                    case MIN -> set(Math.min(alo, lo), Math.min(ahi, hi));
+                    case MAX -> set(Math.max(alo, lo), Math.max(ahi, hi));
                 }
-                case Bin b -> {
-                    eval(b.a());
-                    double alo = lo;
-                    double ahi = hi;
-                    eval(b.b());
-                    switch (b.type()) {
-                        case ADD -> set(alo + lo, ahi + hi);
-                        case MUL -> mul(alo, ahi, lo, hi);
-                        case MIN -> set(Math.min(alo, lo), Math.min(ahi, hi));
-                        case MAX -> set(Math.max(alo, lo), Math.max(ahi, hi));
-                    }
+            } else if (op instanceof Affine a) {
+                eval(a.input());
+                if (a.mul()) {
+                    mul(lo, hi, a.argument(), a.argument());
+                } else {
+                    set(lo + a.argument(), hi + a.argument());
                 }
-                case Affine a -> {
-                    eval(a.input());
-                    if (a.mul()) {
-                        mul(lo, hi, a.argument(), a.argument());
-                    } else {
-                        set(lo + a.argument(), hi + a.argument());
-                    }
-                }
-                case MapOp m -> {
-                    eval(m.input());
-                    mapped(m.type());
-                }
-                case Clamp c -> {
-                    eval(c.input());
-                    set(Interpreter.clamp(lo, c.lo(), c.hi()), Interpreter.clamp(hi, c.lo(), c.hi()));
-                }
-                case Range r -> {
-                    eval(r.input());
-                    double ilo = lo;
-                    double ihi = hi;
-                    boolean canIn = ihi >= r.minInclusive() && ilo < r.maxExclusive();
-                    boolean canOut = ilo < r.minInclusive() || ihi >= r.maxExclusive();
-                    if (canIn && !canOut) {
-                        eval(r.inRange());
-                    } else if (canOut && !canIn) {
-                        eval(r.outRange());
-                    } else {
-                        eval(r.inRange());
-                        double inLo = lo;
-                        double inHi = hi;
-                        eval(r.outRange());
-                        set(Math.min(inLo, lo), Math.max(inHi, hi));
-                    }
+            } else if (op instanceof MapOp m) {
+                eval(m.input());
+                mapped(m.type());
+            } else if (op instanceof Clamp c) {
+                eval(c.input());
+                set(Interpreter.clamp(lo, c.lo(), c.hi()), Interpreter.clamp(hi, c.lo(), c.hi()));
+            } else if (op instanceof Range r) {
+                eval(r.input());
+                double ilo = lo;
+                double ihi = hi;
+                boolean canIn = ihi >= r.minInclusive() && ilo < r.maxExclusive();
+                boolean canOut = ilo < r.minInclusive() || ihi >= r.maxExclusive();
+                if (canIn && !canOut) {
+                    eval(r.inRange());
+                } else if (canOut && !canIn) {
+                    eval(r.outRange());
+                } else {
+                    eval(r.inRange());
+                    double inLo = lo;
+                    double inHi = hi;
+                    eval(r.outRange());
+                    set(Math.min(inLo, lo), Math.max(inHi, hi));
                 }
             }
         }

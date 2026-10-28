@@ -16,6 +16,7 @@ import net.minecraft.server.packs.repository.ServerPacksSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
 import net.minecraft.tags.TagKey;
 import net.minecraft.tags.TagLoader;
+import net.minecraft.tags.TagManager;
 
 /**
  * Binds the vanilla data pack's block, fluid and item tags to the built-in registries. The unit-test
@@ -31,7 +32,7 @@ public final class VanillaTags {
         if (bound) {
             return;
         }
-        try (MultiPackResourceManager manager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(ServerPacksSource.createVanillaPackSource()))) {
+        try (MultiPackResourceManager manager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(new ServerPacksSource().getVanillaPack()))) {
             bind(manager, BuiltInRegistries.BLOCK, Registries.BLOCK);
             bind(manager, BuiltInRegistries.FLUID, Registries.FLUID);
             bind(manager, BuiltInRegistries.ITEM, Registries.ITEM);
@@ -42,7 +43,7 @@ public final class VanillaTags {
 
     private static <T> void bind(MultiPackResourceManager manager, Registry<T> registry, ResourceKey<? extends Registry<T>> key) {
         TagLoader<Holder<T>> loader = new TagLoader<>(id -> registry.getHolder(ResourceKey.create(key, id)).map(h -> (Holder<T>) h),
-            Registries.tagsDirPath(key));
+            TagManager.getTagDir(key));
         Map<ResourceLocation, Collection<Holder<T>>> loaded = loader.loadAndBuild(manager);
         Map<TagKey<T>, List<Holder<T>>> tags = new HashMap<>();
         for (Map.Entry<ResourceLocation, Collection<Holder<T>>> e : loaded.entrySet()) {

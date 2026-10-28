@@ -22,7 +22,7 @@ public final class FeaturesCompat {
      * Mods whose chunk systems GA2 keeps. GA2 takes over their worldgen mixins, not their schedulers. The
      * region cache's argument about chunk access does not cover these mods, so the region cache stands down.
      */
-    private static final Set<String> CHUNK_SYSTEM_MODS = Set.of("c2me", "moonrise");
+    private static final Set<String> CHUNK_SYSTEM_MODS = Set.of("c2me");
 
     private static volatile String chunkSystemMod;
     private static volatile boolean chunkSystemChecked;

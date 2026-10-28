@@ -85,47 +85,73 @@ public final class CoordSubstitution {
     }
 
     private Node rewrite(Node n) throws Declined {
-        return switch (n) {
-            case Node.Const c -> c;
-            case Node.Ap2 a -> ctx.intern(new Node.Ap2(a.type(), node(a.a()), node(a.b()), a.min(), a.max()));
-            case Node.MulOrAdd m -> ctx.intern(new Node.MulOrAdd(m.mul(), node(m.input()), m.argument(), m.min(), m.max()));
-            case Node.Mapped m -> ctx.intern(new Node.Mapped(m.type(), node(m.input()), m.min(), m.max()));
-            case Node.Clamp c -> ctx.intern(new Node.Clamp(node(c.input()), c.lo(), c.hi()));
-            case Node.RangeChoice r -> ctx.intern(new Node.RangeChoice(node(r.input()), r.minInclusive(), r.maxExclusive(), node(r.inRange()), node(r.outRange()),
-                r.min(), r.max()));
-            case Node.YGradient g -> {
-                if (g.fromY() == g.toY()) {
-                    throw new Declined("y_clamped_gradient with from_y == to_y");
-                }
-                // YClampedGradient.compute: Mth.clampedMap((double) y, (double) fromY, (double) toY, fromValue, toValue)
-                yield ctx.intern(new Node.StaticCall(Names.runtimeClass(MTH), Names.runtimeMethod(MTH, "clampedMap", CLAMPED_MAP), Names.runtimeDesc(CLAMPED_MAP),
-                    List.of(yd, constant(g.fromY()), constant(g.toY()), constant(g.fromValue()), constant(g.toValue()))));
+        if (n instanceof Node.Const c) {
+            return c;
+        } else if (n instanceof Node.Ap2 a) {
+            return ctx.intern(new Node.Ap2(a.type(), node(a.a()), node(a.b()), a.min(), a.max()));
+        } else if (n instanceof Node.MulOrAdd m) {
+            return ctx.intern(new Node.MulOrAdd(m.mul(), node(m.input()), m.argument(), m.min(), m.max()));
+        } else if (n instanceof Node.Mapped m) {
+            return ctx.intern(new Node.Mapped(m.type(), node(m.input()), m.min(), m.max()));
+        } else if (n instanceof Node.Clamp c) {
+            return ctx.intern(new Node.Clamp(node(c.input()), c.lo(), c.hi()));
+        } else if (n instanceof Node.RangeChoice r) {
+            return ctx.intern(new Node.RangeChoice(node(r.input()), r.minInclusive(), r.maxExclusive(), node(r.inRange()), node(r.outRange()),
+            r.min(), r.max()));
+        } else if (n instanceof Node.YGradient g) {
+            if (g.fromY() == g.toY()) {
+                throw new Declined("y_clamped_gradient with from_y == to_y");
             }
+            // YClampedGradient.compute: Mth.clampedMap((double) y, (double) fromY, (double) toY, fromValue, toValue)
+            return ctx.intern(new Node.StaticCall(Names.runtimeClass(MTH), Names.runtimeMethod(MTH, "clampedMap", CLAMPED_MAP), Names.runtimeDesc(CLAMPED_MAP),
+                List.of(yd, constant(g.fromY()), constant(g.toY()), constant(g.fromValue()), constant(g.toValue()))));
+        } else if (n instanceof Node.Noise no) {
             // Noise.compute: getValue(x * xzScale, y * yScale, z * xzScale)
-            case Node.Noise no -> ctx.intern(new Node.NoiseAt(no.spec(), scaled(xd, no.xzScale()), flatY(no.yScale()), scaled(zd, no.xzScale()), no.max()));
+            return ctx.intern(new Node.NoiseAt(no.spec(), scaled(xd, no.xzScale()), flatY(no.yScale()), scaled(zd, no.xzScale()), no.max()));
+        } else if (n instanceof Node.ShiftedNoise s) {
             // ShiftedNoise.compute: getValue(x * xzScale + shiftX, y * yScale + shiftY, z * xzScale + shiftZ)
-            case Node.ShiftedNoise s -> ctx.intern(new Node.NoiseAt(s.spec(), shifted(xd, s.xzScale(), node(s.shiftX())), shifted(yd, s.yScale(), node(s.shiftY())),
-                shifted(zd, s.xzScale(), node(s.shiftZ())), s.max()));
+            return ctx.intern(new Node.NoiseAt(s.spec(), shifted(xd, s.xzScale(), node(s.shiftX())), shifted(yd, s.yScale(), node(s.shiftY())),
+            shifted(zd, s.xzScale(), node(s.shiftZ())), s.max()));
+        } else if (n instanceof Node.ShiftA s) {
             // ShiftNoise.compute(x, y, z): getValue(x * 0.25, y * 0.25, z * 0.25) * 4.0. ShiftA passes (x, 0, z), ShiftB (z, x, 0)
-            case Node.ShiftA s -> offset(s.spec(), s.max(), xd, null, zd);
-            case Node.ShiftB s -> offset(s.spec(), s.max(), zd, xd, null);
-            case Node.Shift s -> offset(s.spec(), s.max(), xd, yd, zd);
-            case Node.Spline s -> ctx.intern(new Node.Spline(spline(s.spline()), s.min(), s.max()));
-            case Node.Marker m -> marker(m);
-            case Node.Select s -> ctx.intern(new Node.Select(cond(s.cond()), node(s.whenJump()), node(s.whenFall())));
-            case Node.StaticCall c -> ctx.intern(new Node.StaticCall(c.owner(), c.name(), c.desc(), args(c.args())));
-            case Node.NoiseAt na -> ctx.intern(new Node.NoiseAt(na.spec(), node(na.x()), node(na.y()), node(na.z()), na.max()));
-            case Node.IntToDouble i -> ctx.intern(new Node.IntToDouble(integer(i.value())));
-            case Node.RoundFloat r -> ctx.intern(new Node.RoundFloat(node(r.value())));
-            case Node.Weird w -> throw new Declined("weird_scaled_sampler");
-            case Node.Blended b -> throw new Declined("old_blended_noise");
-            case Node.BlendDensity b -> throw new Declined("blend_density (reads the chunk's blending)");
-            case Node.BlendAlpha a -> throw new Declined("blend_alpha (reads the chunk's blending)");
-            case Node.BlendOffset o -> throw new Declined("blend_offset (reads the chunk's blending)");
-            case Node.Beardifier b -> throw new Declined("beardifier (reads the chunk's structures)");
-            case Node.EndIslands e -> throw new Declined("end_islands");
-            case Node.Unsupported u -> throw new Declined("an uncompiled " + u.vanilla().getClass().getName());
-        };
+            return offset(s.spec(), s.max(), xd, null, zd);
+        } else if (n instanceof Node.ShiftB s) {
+            return offset(s.spec(), s.max(), zd, xd, null);
+        } else if (n instanceof Node.Shift s) {
+            return offset(s.spec(), s.max(), xd, yd, zd);
+        } else if (n instanceof Node.Spline s) {
+            return ctx.intern(new Node.Spline(spline(s.spline()), s.min(), s.max()));
+        } else if (n instanceof Node.Marker m) {
+            return marker(m);
+        } else if (n instanceof Node.Select s) {
+            return ctx.intern(new Node.Select(cond(s.cond()), node(s.whenJump()), node(s.whenFall())));
+        } else if (n instanceof Node.StaticCall c) {
+            return ctx.intern(new Node.StaticCall(c.owner(), c.name(), c.desc(), args(c.args())));
+        } else if (n instanceof Node.NoiseAt na) {
+            return ctx.intern(new Node.NoiseAt(na.spec(), node(na.x()), node(na.y()), node(na.z()), na.max()));
+        } else if (n instanceof Node.IntToDouble i) {
+            return ctx.intern(new Node.IntToDouble(integer(i.value())));
+        } else if (n instanceof Node.RoundFloat r) {
+            return ctx.intern(new Node.RoundFloat(node(r.value())));
+        } else if (n instanceof Node.Weird w) {
+            throw new Declined("weird_scaled_sampler");
+        } else if (n instanceof Node.Blended b) {
+            throw new Declined("old_blended_noise");
+        } else if (n instanceof Node.BlendDensity b) {
+            throw new Declined("blend_density (reads the chunk's blending)");
+        } else if (n instanceof Node.BlendAlpha a) {
+            throw new Declined("blend_alpha (reads the chunk's blending)");
+        } else if (n instanceof Node.BlendOffset o) {
+            throw new Declined("blend_offset (reads the chunk's blending)");
+        } else if (n instanceof Node.Beardifier b) {
+            throw new Declined("beardifier (reads the chunk's structures)");
+        } else if (n instanceof Node.EndIslands e) {
+            throw new Declined("end_islands");
+        } else if (n instanceof Node.Unsupported u) {
+            throw new Declined("an uncompiled " + u.vanilla().getClass().getName());
+        } else {
+            throw new IllegalStateException(String.valueOf(n));
+        }
     }
 
     private Node marker(Node.Marker m) throws Declined {
@@ -168,15 +194,23 @@ public final class CoordSubstitution {
     }
 
     private INode integer(INode n) throws Declined {
-        return switch (n) {
-            case INode.IntConst c -> c;
-            case INode.IntCoord c -> c.axis() == 0 ? x : c.axis() == 1 ? y : z;
-            case INode.IntBin b -> new INode.IntBin(b.op(), integer(b.a()), integer(b.b()));
-            case INode.IntNeg g -> new INode.IntNeg(integer(g.a()));
-            case INode.DoubleToInt d -> new INode.DoubleToInt(node(d.value()));
-            case INode.IntStaticCall c -> new INode.IntStaticCall(c.owner(), c.name(), c.desc(), args(c.args()));
-            case INode.SelectInt s -> new INode.SelectInt(cond(s.cond()), integer(s.whenJump()), integer(s.whenFall()));
-        };
+        if (n instanceof INode.IntConst c) {
+            return c;
+        } else if (n instanceof INode.IntCoord c) {
+            return c.axis() == 0 ? x : c.axis() == 1 ? y : z;
+        } else if (n instanceof INode.IntBin b) {
+            return new INode.IntBin(b.op(), integer(b.a()), integer(b.b()));
+        } else if (n instanceof INode.IntNeg g) {
+            return new INode.IntNeg(integer(g.a()));
+        } else if (n instanceof INode.DoubleToInt d) {
+            return new INode.DoubleToInt(node(d.value()));
+        } else if (n instanceof INode.IntStaticCall c) {
+            return new INode.IntStaticCall(c.owner(), c.name(), c.desc(), args(c.args()));
+        } else if (n instanceof INode.SelectInt s) {
+            return new INode.SelectInt(cond(s.cond()), integer(s.whenJump()), integer(s.whenFall()));
+        } else {
+            throw new IllegalStateException(String.valueOf(n));
+        }
     }
 
     private Node constant(double v) {

@@ -15,8 +15,8 @@ public final class ViewMixinPlugin implements IMixinConfigPlugin {
     private static final String PACKAGE = "dev.denismasterherobrine.generatoraccelerator2.view.mixin.";
     /** Mods with a section renderer of their own. */
     private static final Set<String> RENDERERS = Set.of("sodium", "embeddium", "rubidium", "vulkanmod", "canvas");
-    private static final Set<String> RENDER_MIXINS = Set.of("SectionOcclusionGraphMixin", "LevelRendererMeshMixin");
-    private static final Set<String> BUFFER_MIXINS = Set.of("VertexBufferMixin", "RenderSectionBuffersMixin", "DebugVramMixin");
+    private static final Set<String> RENDER_MIXINS = Set.of("LevelRendererGraphMixin", "LevelRendererMeshMixin");
+    private static final Set<String> BUFFER_MIXINS = Set.of("VertexBufferMixin", "RenderSectionBuffersMixin", "LevelRendererBuffersMixin", "DebugVramMixin");
 
     @Override
     public void onLoad(String mixinPackage) {}

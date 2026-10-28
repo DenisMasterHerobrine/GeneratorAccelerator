@@ -14,7 +14,7 @@ public final class WinterlyMixins {
      * Redirects {@code biome.shouldSnow(level, pos)} in {@code SnowAndFreezeFeature.place}. Where snow could fall on grass or a flower,
      * Winterly places its frozen grass or frozen flower instead, written through the level. Then vanilla's test runs.
      */
-    public static final String FREEZE_TOP_LAYER = "neoforge.ru.pinkgoosik.winterly.mixin.common.FreezeTopLayerMixin";
+    public static final String FREEZE_TOP_LAYER = "winterly.mixin.common.FreezeTopLayerMixin";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, FeatureTargets.compatKey("snowAndFreeze"), FREEZE_TOP_LAYER, Set.of("canSetIce"),

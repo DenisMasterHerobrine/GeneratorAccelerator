@@ -112,7 +112,7 @@ public final class Precompress {
 
     /** Starts compressing a tag the IO worker was just given for this chunk. Deflate format only. */
     public void submit(ChunkPos pos, CompoundTag tag) {
-        if (this.stopped || RegionFileVersion.getSelected() != RegionFileVersion.VERSION_DEFLATE) {
+        if (this.stopped) {
             return;
         }
         if (IN_FLIGHT.incrementAndGet() > MAX_IN_FLIGHT) {

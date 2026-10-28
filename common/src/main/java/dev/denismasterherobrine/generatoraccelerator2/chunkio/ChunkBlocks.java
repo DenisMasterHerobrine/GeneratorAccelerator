@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumSections;
 import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.BitStorage;
@@ -9,7 +10,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
@@ -56,7 +57,7 @@ public final class ChunkBlocks {
         if (chunk.getClass() != ProtoChunk.class) {
             return new ChunkBlocks(chunk, null, false);
         }
-        ChunkStatus status = chunk.getPersistedStatus();
+        ChunkStatus status = chunk.getStatus();
         if (status.isOrAfter(ChunkStatus.INITIALIZE_LIGHT)) {
             return new ChunkBlocks(chunk, null, false);
         }
@@ -181,10 +182,11 @@ public final class ChunkBlocks {
 
     /**
      * {@link #set} for a state the caller knows is already at that position. The palette and the
-     * section counters cannot change. Only the all-air shortcut and the heightmap updates remain.
+     * section counters cannot change. Only the all-air shortcut and the heightmap updates remain. A state that
+     * another mod's change to section writes may act on is written through {@link #set} ({@link SectionWrites}).
      */
     public void setSame(int lx, int y, int lz, BlockState state) {
-        if (!fast) {
+        if (!fast || !SectionWrites.skips(state)) {
             set(lx, y, lz, state);
             return;
         }
@@ -208,7 +210,8 @@ public final class ChunkBlocks {
      * target must affect the section counters as {@code from} does and have no fluid. Every heightmap
      * update must be a no-op, i.e. the blocks lie at least two below each column's heightmap top. The
      * palette may end up ordered differently from per-block writes. The block states are the same, and
-     * saving re-derives the palette from them.
+     * saving re-derives the palette from them. The caller also checks that the writes may skip
+     * {@code setBlockState} ({@link SectionWrites#skips}).
      */
     public void rewriteSection(int sectionMinY, BlockState from, BlockState[] targets) {
         LevelChunkSection section = sections[(sectionMinY >> 4) - minSection];
@@ -244,6 +247,7 @@ public final class ChunkBlocks {
                 }
             }
         }
+        LithiumSections.forgetCounts(section);
     }
 
     /** {@code chunk.markPosForPostprocessing(pos)} at a world position. */

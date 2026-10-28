@@ -6,7 +6,8 @@ import javax.annotation.Nullable;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.ViewArea;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -20,12 +21,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererEvictMixin {
-    @Shadow @Final private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
+    @Shadow @Final private ObjectArrayList<LevelRenderer.RenderChunkInfo> renderChunksInFrustum;
     @Shadow @Nullable private ViewArea viewArea;
 
-    @Inject(method = "compileSections", at = @At("HEAD"))
+    @Inject(method = "compileChunks", at = @At("HEAD"))
     private void ga2$evictHidden(Camera camera, CallbackInfo ci) {
+        long now = System.nanoTime();
+        Vec3 position = camera.getPosition();
+        int x = Mth.floor(position.x), z = Mth.floor(position.z);
+        for (LevelRenderer.RenderChunkInfo info : this.renderChunksInFrustum) {
+            SectionBuffers.seen(info.chunk, now, x, z);
+        }
         ViewArea area = this.viewArea;
-        SectionBuffers.evictHidden(this.visibleSections, area != null ? area.sections : null, camera.getPosition());
+        SectionBuffers.evictHidden(area != null ? area.chunks : null, position, now);
     }
 }

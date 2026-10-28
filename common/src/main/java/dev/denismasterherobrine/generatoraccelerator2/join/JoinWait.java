@@ -17,7 +17,6 @@ import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.dimension.DimensionType;
 import org.slf4j.Logger;
@@ -26,13 +25,12 @@ import org.slf4j.Logger;
  * Lets players into a world once the chunks they appear in are ready, and starts loading those chunks as early as the
  * world allows.
  *
- * <p>Before anyone can join, vanilla's server makes every chunk within {@code spawnChunkRadius} of the world spawn tick.
- * That is 5x5 chunks with the default game rule. It requires the 7x7 around them complete, and the 11x11 around those
- * generated up to their carvers. A joining player needs only one of those chunks ready: the one the player appears in.
- * A new player appears within 10 blocks of the spawn. The server sends that chunk once it ticks. Here the server waits
- * until the chunks within {@code spawnAreaRadius} of the spawn chunk are complete and those within one less tick. For
- * the default of 1, only the spawn chunk itself ticks. The server then lets players in. The spawn ticket is
- * vanilla's, so the rest of the spawn chunks keep loading while the client connects, as with a smaller game rule. A
+ * <p>Before anyone can join, vanilla's server makes the 21x21 chunks around the world spawn tick. That requires the 23x23
+ * around them complete, and the 27x27 around those generated up to their carvers. A joining player needs only one of those
+ * chunks ready: the one the player appears in. A new player appears within 10 blocks of the spawn. The server sends that
+ * chunk once it ticks. Here the server waits until the chunks within {@code spawnAreaRadius} of the spawn chunk are
+ * complete and those within one less tick. For the default of 1, only the spawn chunk itself ticks. The server then lets
+ * players in. The spawn ticket is vanilla's, so the rest of the spawn chunks keep loading while the client connects. A
  * singleplayer client connects to the server that just became ready. That time therefore overlaps the rest of the
  * loading instead of following it.
  *
@@ -61,6 +59,14 @@ public final class JoinWait {
     @Nullable
     private static volatile String playerArea;
 
+    /**
+     * The spawn area vanilla ticks before players can join: 21 x 21 chunks around the spawn chunk, what later versions' spawn
+     * chunk radius game rule sets with 10. Vanilla waits for exactly that many ticking chunks.
+     */
+    public static final int SPAWN_CHUNK_RADIUS = 10;
+    /** The number of ticking chunks vanilla's wait for the spawn area ends at. */
+    public static final int SPAWN_AREA_CHUNKS = (2 * SPAWN_CHUNK_RADIUS + 1) * (2 * SPAWN_CHUNK_RADIUS + 1);
+
     /** What vanilla waits for, as the radius of complete chunks around the spawn chunk. Equals the spawn ticket's distance. */
     public static int vanillaRadius(int spawnChunkRadius) {
         return spawnChunkRadius > 0 ? spawnChunkRadius + 1 : 0;
@@ -68,7 +74,7 @@ public final class JoinWait {
 
     /** The radius of complete chunks around the spawn chunk that {@code server} waits for. Uses {@code spawnAreaRadius} where it applies and is smaller. */
     public static int radius(MinecraftServer server) {
-        return radius(server.isSingleplayer(), server.getGameRules().getInt(GameRules.RULE_SPAWN_CHUNK_RADIUS));
+        return radius(server.isSingleplayer(), SPAWN_CHUNK_RADIUS);
     }
 
     public static int radius(boolean singleplayer, int spawnChunkRadius) {
@@ -145,7 +151,7 @@ public final class JoinWait {
         }
         ChunkPos chunk = new ChunkPos(BlockPos.containing(pos.getDouble(0), pos.getDouble(1), pos.getDouble(2)));
         int distance = Math.max(1, radius(server));
-        int spawnTicket = vanillaRadius(server.getGameRules().getInt(GameRules.RULE_SPAWN_CHUNK_RADIUS));
+        int spawnTicket = vanillaRadius(SPAWN_CHUNK_RADIUS);
         if (level == server.overworld() && chunk.getChessboardDistance(new ChunkPos(level.getSharedSpawnPos())) + distance <= spawnTicket) {
             // Inside the spawn area, which loads anyway.
             return;
@@ -157,7 +163,7 @@ public final class JoinWait {
     /** The server stops waiting and lets players in. */
     public static void prepared(MinecraftServer server) {
         int radius = radius(server);
-        int vanilla = vanillaRadius(server.getGameRules().getInt(GameRules.RULE_SPAWN_CHUNK_RADIUS));
+        int vanilla = vanillaRadius(SPAWN_CHUNK_RADIUS);
         long search = searchNanos;
         searchNanos = -1;
         if (radius == vanilla && search < 0 && playerArea == null) {

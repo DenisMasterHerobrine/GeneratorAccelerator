@@ -144,19 +144,29 @@ public final class CellBounds {
         }
         if (!covered(n, lerpIndex, new IdentityHashMap<>())) {
             // descend to name the deepest uncovered node
-            List<Node> children = switch (n) {
-                case Node.Ap2 a -> List.of(a.a(), a.b());
-                case Node.MulOrAdd m -> List.of(m.input());
-                case Node.Mapped m -> List.of(m.input());
-                case Node.Clamp c -> List.of(c.input());
-                case Node.RangeChoice r -> List.of(r.input(), r.inRange(), r.outRange());
-                case Node.ShiftedNoise s -> List.of(s.shiftX(), s.shiftY(), s.shiftZ());
-                case Node.Weird w -> List.of(w.input());
-                case Node.BlendDensity b -> List.of(b.input());
-                case Node.Marker m -> m.type() == Node.MarkerType.INTERPOLATED || m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D
-                    ? List.of(m.child()) : List.of();
-                default -> List.of();
-            };
+            List<Node> children;
+            if (n instanceof Node.Ap2 a) {
+                children = List.of(a.a(), a.b());
+            } else if (n instanceof Node.MulOrAdd m) {
+                children = List.of(m.input());
+            } else if (n instanceof Node.Mapped m) {
+                children = List.of(m.input());
+            } else if (n instanceof Node.Clamp c) {
+                children = List.of(c.input());
+            } else if (n instanceof Node.RangeChoice r) {
+                children = List.of(r.input(), r.inRange(), r.outRange());
+            } else if (n instanceof Node.ShiftedNoise s) {
+                children = List.of(s.shiftX(), s.shiftY(), s.shiftZ());
+            } else if (n instanceof Node.Weird w) {
+                children = List.of(w.input());
+            } else if (n instanceof Node.BlendDensity b) {
+                children = List.of(b.input());
+            } else if (n instanceof Node.Marker m) {
+                children = m.type() == Node.MarkerType.INTERPOLATED || m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D
+                ? List.of(m.child()) : List.of();
+            } else {
+                children = List.of();
+            }
             for (Node c : children) {
                 String deeper = firstUncovered(c, lerpIndex, seen);
                 if (deeper != null) {
@@ -182,39 +192,60 @@ public final class CellBounds {
         if (seen.put(n, Boolean.TRUE) != null) {
             return true;
         }
-        return switch (n) {
-            case Node.Const c -> true;
-            case Node.Ap2 a -> covered(a.a(), lerpIndex, seen) && covered(a.b(), lerpIndex, seen);
-            case Node.MulOrAdd m -> covered(m.input(), lerpIndex, seen);
-            case Node.Mapped m -> covered(m.input(), lerpIndex, seen);
-            case Node.Clamp c -> covered(c.input(), lerpIndex, seen);
-            case Node.RangeChoice r -> covered(r.input(), lerpIndex, seen) && covered(r.inRange(), lerpIndex, seen) && covered(r.outRange(), lerpIndex, seen);
-            case Node.YGradient y -> true;
+        if (n instanceof Node.Const c) {
+            return true;
+        } else if (n instanceof Node.Ap2 a) {
+            return covered(a.a(), lerpIndex, seen) && covered(a.b(), lerpIndex, seen);
+        } else if (n instanceof Node.MulOrAdd m) {
+            return covered(m.input(), lerpIndex, seen);
+        } else if (n instanceof Node.Mapped m) {
+            return covered(m.input(), lerpIndex, seen);
+        } else if (n instanceof Node.Clamp c) {
+            return covered(c.input(), lerpIndex, seen);
+        } else if (n instanceof Node.RangeChoice r) {
+            return covered(r.input(), lerpIndex, seen) && covered(r.inRange(), lerpIndex, seen) && covered(r.outRange(), lerpIndex, seen);
+        } else if (n instanceof Node.YGradient y) {
+            return true;
+        } else if (n instanceof Node.Spline x) {
             // Splines and the End islands carry the bounds vanilla computes for them. Vanilla's MIN/MAX short-circuits
             // rely on those bounds too.
-            case Node.Spline x -> true;
-            case Node.EndIslands x -> true;
+            return true;
+        } else if (n instanceof Node.EndIslands x) {
+            return true;
+        } else if (n instanceof Node.Noise x) {
             // Noise leaves evaluated per block are bounded by vanilla's own maxValue. The MIN/MAX short-circuits rely on it too.
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise s -> covered(s.shiftX(), lerpIndex, seen) && covered(s.shiftY(), lerpIndex, seen) && covered(s.shiftZ(), lerpIndex, seen);
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.Shift x -> true;
-            case Node.Weird w -> covered(w.input(), lerpIndex, seen);
-            case Node.Blended x -> true;
-            case Node.BlendDensity b -> covered(b.input(), lerpIndex, seen);
-            case Node.BlendAlpha x -> true;
-            case Node.BlendOffset x -> true;
+            return true;
+        } else if (n instanceof Node.ShiftedNoise s) {
+            return covered(s.shiftX(), lerpIndex, seen) && covered(s.shiftY(), lerpIndex, seen) && covered(s.shiftZ(), lerpIndex, seen);
+        } else if (n instanceof Node.ShiftA x) {
+            return true;
+        } else if (n instanceof Node.ShiftB x) {
+            return true;
+        } else if (n instanceof Node.Shift x) {
+            return true;
+        } else if (n instanceof Node.Weird w) {
+            return covered(w.input(), lerpIndex, seen);
+        } else if (n instanceof Node.Blended x) {
+            return true;
+        } else if (n instanceof Node.BlendDensity b) {
+            return covered(b.input(), lerpIndex, seen);
+        } else if (n instanceof Node.BlendAlpha x) {
+            return true;
+        } else if (n instanceof Node.BlendOffset x) {
+            return true;
+        } else if (n instanceof Node.Beardifier x) {
             // only cells no structure piece reaches are classified, where the beardifier adds exactly 0.0
-            case Node.Beardifier x -> true;
-            case Node.Marker m -> switch (m.type()) {
-                // an interpolated marker without corners is filled the vanilla way. The cell program never sees that cell
-                case INTERPOLATED -> lerpIndex.containsKey(m);
-                case CACHE_ONCE, CACHE_2D -> covered(m.child(), lerpIndex, seen);
-                case FLAT_CACHE, CACHE_ALL_IN_CELL -> false;
-            };
-            default -> false;
+            return true;
+        } else if (n instanceof Node.Marker m) {
+            return switch (m.type()) {
+            // an interpolated marker without corners is filled the vanilla way. The cell program never sees that cell
+            case INTERPOLATED -> lerpIndex.containsKey(m);
+            case CACHE_ONCE, CACHE_2D -> covered(m.child(), lerpIndex, seen);
+            case FLAT_CACHE, CACHE_ALL_IN_CELL -> false;
         };
+        } else {
+            return false;
+        }
     }
 
     /** Whether the per-block part of {@code n} (above the interpolated markers) samples a noise the second pass can bound. */
@@ -222,22 +253,35 @@ public final class CellBounds {
         if (seen.put(n, Boolean.TRUE) != null) {
             return false;
         }
-        return switch (n) {
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise x -> true;
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.Shift x -> true;
-            case Node.Ap2 a -> hasNoise(a.a(), seen) || hasNoise(a.b(), seen);
-            case Node.MulOrAdd m -> hasNoise(m.input(), seen);
-            case Node.Mapped m -> hasNoise(m.input(), seen);
-            case Node.Clamp c -> hasNoise(c.input(), seen);
-            case Node.RangeChoice r -> hasNoise(r.input(), seen) || hasNoise(r.inRange(), seen) || hasNoise(r.outRange(), seen);
-            case Node.Weird w -> hasNoise(w.input(), seen);
-            case Node.BlendDensity b -> hasNoise(b.input(), seen);
-            case Node.Marker m -> (m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D) && hasNoise(m.child(), seen);
-            default -> false;
-        };
+        if (n instanceof Node.Noise x) {
+            return true;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            return true;
+        } else if (n instanceof Node.ShiftA x) {
+            return true;
+        } else if (n instanceof Node.ShiftB x) {
+            return true;
+        } else if (n instanceof Node.Shift x) {
+            return true;
+        } else if (n instanceof Node.Ap2 a) {
+            return hasNoise(a.a(), seen) || hasNoise(a.b(), seen);
+        } else if (n instanceof Node.MulOrAdd m) {
+            return hasNoise(m.input(), seen);
+        } else if (n instanceof Node.Mapped m) {
+            return hasNoise(m.input(), seen);
+        } else if (n instanceof Node.Clamp c) {
+            return hasNoise(c.input(), seen);
+        } else if (n instanceof Node.RangeChoice r) {
+            return hasNoise(r.input(), seen) || hasNoise(r.inRange(), seen) || hasNoise(r.outRange(), seen);
+        } else if (n instanceof Node.Weird w) {
+            return hasNoise(w.input(), seen);
+        } else if (n instanceof Node.BlendDensity b) {
+            return hasNoise(b.input(), seen);
+        } else if (n instanceof Node.Marker m) {
+            return (m.type() == Node.MarkerType.CACHE_ONCE || m.type() == Node.MarkerType.CACHE_2D) && hasNoise(m.child(), seen);
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -311,29 +355,27 @@ public final class CellBounds {
         if (seen.put(n, Boolean.TRUE) != null) {
             return;
         }
-        switch (n) {
-            case Node.Ap2 a -> {
-                collectRoots(a.a(), out, seen);
-                collectRoots(a.b(), out, seen);
-            }
-            case Node.MulOrAdd m -> collectRoots(m.input(), out, seen);
-            case Node.Mapped m -> collectRoots(m.input(), out, seen);
-            case Node.Clamp c -> collectRoots(c.input(), out, seen);
-            case Node.RangeChoice r -> {
-                collectRoots(r.input(), out, seen);
-                collectRoots(r.inRange(), out, seen);
-                collectRoots(r.outRange(), out, seen);
-            }
-            case Node.BlendDensity b -> collectRoots(b.input(), out, seen);
-            case Node.Marker m -> {
-                Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
-                if (r != null) {
-                    out.add(r);
-                } else if (!(m.type() == Node.MarkerType.CACHE_2D && m.child() instanceof Node.Const)) {
-                    collectRoots(m.child(), out, seen);
-                }
-            }
-            default -> {
+        if (n instanceof Node.Ap2 a) {
+            collectRoots(a.a(), out, seen);
+            collectRoots(a.b(), out, seen);
+        } else if (n instanceof Node.MulOrAdd m) {
+            collectRoots(m.input(), out, seen);
+        } else if (n instanceof Node.Mapped m) {
+            collectRoots(m.input(), out, seen);
+        } else if (n instanceof Node.Clamp c) {
+            collectRoots(c.input(), out, seen);
+        } else if (n instanceof Node.RangeChoice r) {
+            collectRoots(r.input(), out, seen);
+            collectRoots(r.inRange(), out, seen);
+            collectRoots(r.outRange(), out, seen);
+        } else if (n instanceof Node.BlendDensity b) {
+            collectRoots(b.input(), out, seen);
+        } else if (n instanceof Node.Marker m) {
+            Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
+            if (r != null) {
+                out.add(r);
+            } else if (!(m.type() == Node.MarkerType.CACHE_2D && m.child() instanceof Node.Const)) {
+                collectRoots(m.child(), out, seen);
             }
         }
     }
@@ -354,175 +396,164 @@ public final class CellBounds {
 
     /** Sets {@link #lo}/{@link #hi}. Returns false when the bounds cannot be given (a blend near old chunks). */
     private boolean eval(Node n) {
-        switch (n) {
-            case Node.Const c -> set(c.value(), c.value());
-            case Node.Ap2 a -> {
-                if (!eval(a.a())) {
-                    return false;
-                }
-                double alo = lo;
-                double ahi = hi;
-                if (!eval(a.b())) {
-                    return false;
-                }
-                switch (a.type()) {
-                    case ADD -> set(alo + lo, ahi + hi);
-                    case MUL -> mul(alo, ahi, lo, hi);
-                    case MIN -> set(Math.min(alo, lo), Math.min(ahi, hi));
-                    case MAX -> set(Math.max(alo, lo), Math.max(ahi, hi));
-                }
-            }
-            case Node.MulOrAdd m -> {
-                if (!eval(m.input())) {
-                    return false;
-                }
-                if (m.mul()) {
-                    mul(lo, hi, m.argument(), m.argument());
-                } else {
-                    set(lo + m.argument(), hi + m.argument());
-                }
-            }
-            case Node.Mapped m -> {
-                if (!eval(m.input())) {
-                    return false;
-                }
-                mapped(m.type());
-            }
-            case Node.Clamp c -> {
-                if (!eval(c.input())) {
-                    return false;
-                }
-                set(Interpreter.clamp(lo, c.lo(), c.hi()), Interpreter.clamp(hi, c.lo(), c.hi()));
-            }
-            case Node.RangeChoice r -> {
-                if (!eval(r.input())) {
-                    return false;
-                }
-                double ilo = lo;
-                double ihi = hi;
-                boolean canIn = ihi >= r.minInclusive() && ilo < r.maxExclusive();
-                boolean canOut = ilo < r.minInclusive() || ihi >= r.maxExclusive();
-                if (canIn && !canOut) {
-                    return eval(r.inRange());
-                }
-                if (canOut && !canIn) {
-                    return eval(r.outRange());
-                }
-                if (!eval(r.inRange())) {
-                    return false;
-                }
-                double inLo = lo;
-                double inHi = hi;
-                if (!eval(r.outRange())) {
-                    return false;
-                }
-                set(Math.min(inLo, lo), Math.max(inHi, hi));
-            }
-            case Node.YGradient y -> {
-                double a = Interpreter.clampedMap((double) y0, (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
-                double b = Interpreter.clampedMap((double) y1, (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
-                set(Math.min(a, b), Math.max(a, b));
-            }
-            case Node.Noise x -> {
-                // noise.getValue(blockX * xzScale, blockY * yScale, blockZ * xzScale)
-                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, x.xzScale()), ilo, ihi, scaled(y0, y1, x.yScale()), ilo, ihi,
-                    scaled(z0, z1, x.xzScale()), ilo, ihi, 1.0)) {
-                    set(-x.max(), x.max());
-                }
-            }
-            case Node.ShiftedNoise x -> {
-                if (!tight) {
-                    set(-x.max(), x.max());
-                } else {
-                    // noise.getValue(blockX * xzScale + shiftX, blockY * yScale + shiftY, blockZ * xzScale + shiftZ)
-                    if (!eval(x.shiftX())) {
-                        return false;
-                    }
-                    double sxl = lo, sxh = hi;
-                    if (!eval(x.shiftY())) {
-                        return false;
-                    }
-                    double syl = lo, syh = hi;
-                    if (!eval(x.shiftZ())) {
-                        return false;
-                    }
-                    double szl = lo, szh = hi;
-                    scaled(x0, x1, x.xzScale());
-                    double xl = ilo + sxl, xh = ihi + sxh;
-                    scaled(y0, y1, x.yScale());
-                    double yl = ilo + syl, yh = ihi + syh;
-                    scaled(z0, z1, x.xzScale());
-                    double zl = ilo + szl, zh = ihi + szh;
-                    if (!noiseOver(x.spec(), 0, xl, xh, 0, yl, yh, 0, zl, zh, 1.0)) {
-                        set(-x.max(), x.max());
-                    }
-                }
-            }
-            case Node.ShiftA x -> {
-                // noise.getValue(blockX * 0.25, 0.0, blockZ * 0.25) * 4.0
-                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
-                    set(-x.max(), x.max());
-                }
-            }
-            case Node.ShiftB x -> {
-                // noise.getValue(blockZ * 0.25, blockX * 0.25, 0.0) * 4.0
-                if (!tight || !noiseOver(x.spec(), scaled(z0, z1, 0.25), ilo, ihi, scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, 4.0)) {
-                    set(-x.max(), x.max());
-                }
-            }
-            case Node.Shift x -> {
-                // noise.getValue(blockX * 0.25, blockY * 0.25, blockZ * 0.25) * 4.0
-                if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, scaled(y0, y1, 0.25), ilo, ihi, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
-                    set(-x.max(), x.max());
-                }
-            }
-            case Node.Weird x -> set(x.min(), x.max());
-            case Node.Blended x -> set(-x.max(), x.max());
-            // Vanilla computes these in the reals from the control points. The float evaluation can land a float ulp outside.
-            case Node.Spline x -> set(Math.nextDown(Math.nextDown((float) x.min())), Math.nextUp(Math.nextUp((float) x.max())));
-            case Node.EndIslands x -> set(x.min(), x.max());
-            case Node.BlendDensity b -> {
-                if (!blenderEmpty) {
-                    return false;
-                }
-                return eval(b.input());
-            }
-            case Node.BlendAlpha x -> {
-                if (!blenderEmpty) {
-                    return false;
-                }
-                set(1.0, 1.0);
-            }
-            case Node.BlendOffset x -> {
-                if (!blenderEmpty) {
-                    return false;
-                }
-                set(0.0, 0.0);
-            }
-            case Node.Beardifier x -> set(0.0, 0.0);
-            case Node.Marker m -> {
-                Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
-                if (r != null && rootLo != null) {
-                    set(rootLo[r], rootHi[r]);
-                } else if (r != null) {
-                    int b = r * 8;
-                    double mn = corners[b];
-                    double mx = mn;
-                    for (int i = 1; i < 8; i++) {
-                        double v = corners[b + i];
-                        mn = Math.min(mn, v);
-                        mx = Math.max(mx, v);
-                    }
-                    set(mn, mx);
-                } else if (m.type() == Node.MarkerType.CACHE_2D && m.child() instanceof Node.Const c) {
-                    set(c.value(), c.value());
-                } else {
-                    return eval(m.child());
-                }
-            }
-            default -> {
+        if (n instanceof Node.Const c) {
+            set(c.value(), c.value());
+        } else if (n instanceof Node.Ap2 a) {
+            if (!eval(a.a())) {
                 return false;
             }
+            double alo = lo;
+            double ahi = hi;
+            if (!eval(a.b())) {
+                return false;
+            }
+            switch (a.type()) {
+                case ADD -> set(alo + lo, ahi + hi);
+                case MUL -> mul(alo, ahi, lo, hi);
+                case MIN -> set(Math.min(alo, lo), Math.min(ahi, hi));
+                case MAX -> set(Math.max(alo, lo), Math.max(ahi, hi));
+            }
+        } else if (n instanceof Node.MulOrAdd m) {
+            if (!eval(m.input())) {
+                return false;
+            }
+            if (m.mul()) {
+                mul(lo, hi, m.argument(), m.argument());
+            } else {
+                set(lo + m.argument(), hi + m.argument());
+            }
+        } else if (n instanceof Node.Mapped m) {
+            if (!eval(m.input())) {
+                return false;
+            }
+            mapped(m.type());
+        } else if (n instanceof Node.Clamp c) {
+            if (!eval(c.input())) {
+                return false;
+            }
+            set(Interpreter.clamp(lo, c.lo(), c.hi()), Interpreter.clamp(hi, c.lo(), c.hi()));
+        } else if (n instanceof Node.RangeChoice r) {
+            if (!eval(r.input())) {
+                return false;
+            }
+            double ilo = lo;
+            double ihi = hi;
+            boolean canIn = ihi >= r.minInclusive() && ilo < r.maxExclusive();
+            boolean canOut = ilo < r.minInclusive() || ihi >= r.maxExclusive();
+            if (canIn && !canOut) {
+                return eval(r.inRange());
+            }
+            if (canOut && !canIn) {
+                return eval(r.outRange());
+            }
+            if (!eval(r.inRange())) {
+                return false;
+            }
+            double inLo = lo;
+            double inHi = hi;
+            if (!eval(r.outRange())) {
+                return false;
+            }
+            set(Math.min(inLo, lo), Math.max(inHi, hi));
+        } else if (n instanceof Node.YGradient y) {
+            double a = Interpreter.clampedMap((double) y0, (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
+            double b = Interpreter.clampedMap((double) y1, (double) y.fromY(), (double) y.toY(), y.fromValue(), y.toValue());
+            set(Math.min(a, b), Math.max(a, b));
+        } else if (n instanceof Node.Noise x) {
+            // noise.getValue(blockX * xzScale, blockY * yScale, blockZ * xzScale)
+            if (!tight || !noiseOver(x.spec(), scaled(x0, x1, x.xzScale()), ilo, ihi, scaled(y0, y1, x.yScale()), ilo, ihi,
+                scaled(z0, z1, x.xzScale()), ilo, ihi, 1.0)) {
+                set(-x.max(), x.max());
+            }
+        } else if (n instanceof Node.ShiftedNoise x) {
+            if (!tight) {
+                set(-x.max(), x.max());
+            } else {
+                // noise.getValue(blockX * xzScale + shiftX, blockY * yScale + shiftY, blockZ * xzScale + shiftZ)
+                if (!eval(x.shiftX())) {
+                    return false;
+                }
+                double sxl = lo, sxh = hi;
+                if (!eval(x.shiftY())) {
+                    return false;
+                }
+                double syl = lo, syh = hi;
+                if (!eval(x.shiftZ())) {
+                    return false;
+                }
+                double szl = lo, szh = hi;
+                scaled(x0, x1, x.xzScale());
+                double xl = ilo + sxl, xh = ihi + sxh;
+                scaled(y0, y1, x.yScale());
+                double yl = ilo + syl, yh = ihi + syh;
+                scaled(z0, z1, x.xzScale());
+                double zl = ilo + szl, zh = ihi + szh;
+                if (!noiseOver(x.spec(), 0, xl, xh, 0, yl, yh, 0, zl, zh, 1.0)) {
+                    set(-x.max(), x.max());
+                }
+            }
+        } else if (n instanceof Node.ShiftA x) {
+            // noise.getValue(blockX * 0.25, 0.0, blockZ * 0.25) * 4.0
+            if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
+                set(-x.max(), x.max());
+            }
+        } else if (n instanceof Node.ShiftB x) {
+            // noise.getValue(blockZ * 0.25, blockX * 0.25, 0.0) * 4.0
+            if (!tight || !noiseOver(x.spec(), scaled(z0, z1, 0.25), ilo, ihi, scaled(x0, x1, 0.25), ilo, ihi, 0, 0.0, 0.0, 4.0)) {
+                set(-x.max(), x.max());
+            }
+        } else if (n instanceof Node.Shift x) {
+            // noise.getValue(blockX * 0.25, blockY * 0.25, blockZ * 0.25) * 4.0
+            if (!tight || !noiseOver(x.spec(), scaled(x0, x1, 0.25), ilo, ihi, scaled(y0, y1, 0.25), ilo, ihi, scaled(z0, z1, 0.25), ilo, ihi, 4.0)) {
+                set(-x.max(), x.max());
+            }
+        } else if (n instanceof Node.Weird x) {
+            set(x.min(), x.max());
+        } else if (n instanceof Node.Blended x) {
+            set(-x.max(), x.max());
+        } else if (n instanceof Node.Spline x) {
+            // Vanilla computes these in the reals from the control points. The float evaluation can land a float ulp outside.
+            set(Math.nextDown(Math.nextDown((float) x.min())), Math.nextUp(Math.nextUp((float) x.max())));
+        } else if (n instanceof Node.EndIslands x) {
+            set(x.min(), x.max());
+        } else if (n instanceof Node.BlendDensity b) {
+            if (!blenderEmpty) {
+                return false;
+            }
+            return eval(b.input());
+        } else if (n instanceof Node.BlendAlpha x) {
+            if (!blenderEmpty) {
+                return false;
+            }
+            set(1.0, 1.0);
+        } else if (n instanceof Node.BlendOffset x) {
+            if (!blenderEmpty) {
+                return false;
+            }
+            set(0.0, 0.0);
+        } else if (n instanceof Node.Beardifier x) {
+            set(0.0, 0.0);
+        } else if (n instanceof Node.Marker m) {
+            Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
+            if (r != null && rootLo != null) {
+                set(rootLo[r], rootHi[r]);
+            } else if (r != null) {
+                int b = r * 8;
+                double mn = corners[b];
+                double mx = mn;
+                for (int i = 1; i < 8; i++) {
+                    double v = corners[b + i];
+                    mn = Math.min(mn, v);
+                    mx = Math.max(mx, v);
+                }
+                set(mn, mx);
+            } else if (m.type() == Node.MarkerType.CACHE_2D && m.child() instanceof Node.Const c) {
+                set(c.value(), c.value());
+            } else {
+                return eval(m.child());
+            }
+        } else {
+            return false;
         }
         return true;
     }

@@ -46,7 +46,7 @@ import net.minecraft.world.level.ChunkPos;
  * Chunky's tickets. On shutdown vanilla removes all tickets first, so kept chunks are saved then.
  * Nothing is kept while the heap is nearly full ({@link MemoryPressure}), with {@code chunkyKeptChunks = 0} in
  * {@code scheduling.toml} or with {@code -Dgeneratoraccelerator2.chunkyHolds=false}. The mixin that drives this is not applied
- * while C2ME or Moonrise runs the chunk system.
+ * while C2ME runs the chunk system.
  */
 public final class ChunkyHolds {
     /** A dimension's chunk cache, which owns its holds. */

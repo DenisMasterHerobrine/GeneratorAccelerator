@@ -44,9 +44,8 @@ public abstract class DirectSetMixin<T> {
                     this.ga2$bits = bits = DirectSets.bits(this.contents);
                 }
                 if (bits != DirectSets.VANILLA) {
-                    int a = DirectSets.answer(DirectSets.MODE, bits, key);
-                    if (a != DirectSets.ASK) {
-                        return a == DirectSets.YES;
+                    if (DirectSets.answer(bits, key) == DirectSets.NO) {
+                        return false;
                     }
                 }
             }

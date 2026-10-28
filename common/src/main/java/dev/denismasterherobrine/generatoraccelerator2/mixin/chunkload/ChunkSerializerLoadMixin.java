@@ -8,7 +8,6 @@ import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.storage.ChunkSerializer;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,7 +21,7 @@ public abstract class ChunkSerializerLoadMixin {
     private static final ThreadLocal<long[]> GA2$START = ThreadLocal.withInitial(() -> new long[1]);
 
     @Inject(method = "read", at = @At("HEAD"))
-    private static void ga2$enterLoad(ServerLevel level, PoiManager poi, RegionStorageInfo info, ChunkPos pos, CompoundTag tag,
+    private static void ga2$enterLoad(ServerLevel level, PoiManager poi, ChunkPos pos, CompoundTag tag,
         CallbackInfoReturnable<ProtoChunk> cir) {
         PoiPrefetch.enter(poi, pos, tag);
         ChunkLoadStats.loadedFromDisk(level, pos);
@@ -30,7 +29,7 @@ public abstract class ChunkSerializerLoadMixin {
     }
 
     @Inject(method = "read", at = @At("RETURN"))
-    private static void ga2$exitLoad(ServerLevel level, PoiManager poi, RegionStorageInfo info, ChunkPos pos, CompoundTag tag,
+    private static void ga2$exitLoad(ServerLevel level, PoiManager poi, ChunkPos pos, CompoundTag tag,
         CallbackInfoReturnable<ProtoChunk> cir) {
         PoiPrefetch.exit();
         ChunkLoadStats.DISK_LOAD.record(System.nanoTime() - GA2$START.get()[0]);

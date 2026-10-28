@@ -56,8 +56,7 @@ import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.chunk.Palette;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.chunk.status.ChunkType;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.gameevent.GameEvent;
@@ -104,7 +103,9 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     private final LevelLightEngine lightEngine;
     /** Game time 0: scheduled tick times only need to agree between the two runs. */
     private static final LevelData LEVEL_DATA = new LevelData() {
-        @Override public BlockPos getSpawnPos() { return BlockPos.ZERO; }
+        @Override public int getXSpawn() { return 0; }
+        @Override public int getYSpawn() { return 0; }
+        @Override public int getZSpawn() { return 0; }
         @Override public float getSpawnAngle() { return 0.0F; }
         @Override public long getGameTime() { return 0L; }
         @Override public long getDayTime() { return 0L; }
@@ -127,12 +128,12 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         this.heights = heights;
         this.dimension = dimension;
         this.seed = seed;
-        this.random = randomState.getOrCreateRandomFactory(ResourceLocation.withDefaultNamespace("worldgen_region_random"))
+        this.random = randomState.getOrCreateRandomFactory(new ResourceLocation("worldgen_region_random"))
             .at(new ChunkPos(centerX, centerZ).getWorldPosition());
         this.biomeManager = new BiomeManager(this, BiomeManager.obfuscateSeed(seed));
         this.registryAccess = registryAccess;
         this.cacheHeightmaps = cacheHeightmaps;
-        this.regionChunks = cacheHeightmaps ? new RegionChunks(new ChunkPos(centerX, centerZ), HarnessWorld.FEATURE_DEPENDENCIES) : null;
+        this.regionChunks = cacheHeightmaps ? new RegionChunks(new ChunkPos(centerX, centerZ), HarnessWorld.FEATURE_RADIUS) : null;
         // no chunk has light data yet. The sky storage then answers 15 where the dimension has a sky, and block light is 0
         this.lightEngine = new LevelLightEngine(new LightChunkGetter() {
             @Override
@@ -241,7 +242,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
             ga2$onBlockStateChange(pos, old, state);
         }
         if (state.hasBlockEntity()) {
-            if (chunk.getPersistedStatus().getChunkType() == ChunkType.LEVELCHUNK) {
+            if (chunk.getStatus().getChunkType() == ChunkStatus.ChunkType.LEVELCHUNK) {
                 BlockEntity be = ((EntityBlock) state.getBlock()).newBlockEntity(pos, state);
                 if (be != null) {
                     chunk.setBlockEntity(be);
@@ -298,7 +299,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
                 }
                 be = ((EntityBlock) state.getBlock()).newBlockEntity(pos, state);
             } else {
-                be = BlockEntity.loadStatic(pos, state, tag, registryAccess);
+                be = BlockEntity.loadStatic(pos, state, tag);
             }
             if (be != null) {
                 chunk.setBlockEntity(be);
@@ -420,7 +421,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     public void levelEvent(Player player, int type, BlockPos pos, int data) {}
 
     @Override
-    public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
+    public void gameEvent(GameEvent event, Vec3 pos, GameEvent.Context context) {}
 
     // ---- unsupported in the harness: a feature touching these is excluded from the matrix
 

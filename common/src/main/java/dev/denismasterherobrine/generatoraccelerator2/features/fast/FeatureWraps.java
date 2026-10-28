@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionWriter;
@@ -64,19 +63,7 @@ public final class FeatureWraps {
     }
 
     /**
-     * {@code level.setBlock(pos, Blocks.ICE.defaultBlockState(), 2)} in {@code SnowAndFreezeFeature.place}, as another mod
-     * wraps it. {@code write} is the wrapped call, done by GA2's exact writer. Its arguments are {@code level, pos, state, flags}.
-     */
-    @FunctionalInterface
-    public interface IceWrite {
-        boolean setIce(Feature<?> feature, WorldGenLevel level, BlockPos pos, BlockState state, int flags,
-                       Operation<Boolean> write);
-    }
-
-    public static volatile IceWrite ice;
-
-    /**
-     * Another mod's handler at the tail of {@code GeodeFeature.place} (Pastel's gemstone ores around a finished geode). The
+     * Another mod's handler at the tail of {@code GeodeFeature.place} (Spectrum's gemstone ores around a finished geode). The
      * transcription runs it where vanilla runs it: before the final {@code return true}, with the same context (and random).
      */
     @FunctionalInterface
@@ -149,13 +136,7 @@ public final class FeatureWraps {
         }
     }
 
-    static void setIce(Feature<?> feature, WorldGenLevel level, Ga2Region region, BlockPos pos) {
-        IceWrite wrap = ice;
-        BlockState state = Blocks.ICE.defaultBlockState();
-        if (wrap == null) {
-            RegionWriter.setBlock(region, pos, state);
-            return;
-        }
-        wrap.setIce(feature, level, pos, state, 2, args -> RegionWriter.setBlock(region, (BlockPos) args[1], (BlockState) args[2]));
+    static void setIce(Ga2Region region, BlockPos pos) {
+        RegionWriter.setBlock(region, pos, Blocks.ICE.defaultBlockState());
     }
 }

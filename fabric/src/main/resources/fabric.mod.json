@@ -30,7 +30,6 @@
     "generatoraccelerator2.compat.blueprint.mixins.json",
     "generatoraccelerator2.compat.biomeswevegone.mixins.json",
     "generatoraccelerator2.compat.c2me.mixins.json",
-    "generatoraccelerator2.compat.lithostitched.mixins.json",
     "generatoraccelerator2.compat.terrablender.mixins.json",
     "generatoraccelerator2.compat.zeta.mixins.json",
     "generatoraccelerator2.compat.quark.mixins.json",
@@ -43,7 +42,7 @@
   "depends": {
     "fabricloader": ">=0.15.0",
     "fabric-api": "*",
-    "minecraft": "~1.21.1",
-    "java": ">=21"
+    "minecraft": "~1.20.1",
+    "java": ">=17"
   }
 }

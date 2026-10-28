@@ -20,6 +20,7 @@ import net.minecraft.world.level.biome.Climate;
  *
  * <p>TerraBlender makes a fresh uniqueness area for every chunk (a clone of the list). The area only caches values of x and z, so
  * every area gives the same values. GA2 keeps one clone with its own area. The area locks itself, so any thread may read it.
+ * TerraBlender 3.0.1 (1.20.1) has no clone: its one area per list locks itself too, so GA2 reads the list's own area.
  *
  * <p>GA2 does not compile against TerraBlender. The methods are found by name on TerraBlender's interface.
  */
@@ -32,8 +33,8 @@ public final class TerraBlenderBiomes {
     private static volatile Api api;
     private static volatile String apiProblem;
 
-    /** TerraBlender's methods, found once. */
-    private record Api(Class<?> list, MethodHandle initialized, MethodHandle treeCount, MethodHandle tree, MethodHandle copy, MethodHandle recreate,
+    /** TerraBlender's methods, found once. {@code copy} and {@code recreate} are null on a version without clones. */
+    private record Api(Class<?> list, MethodHandle initialized, MethodHandle treeCount, MethodHandle tree, @Nullable MethodHandle copy, @Nullable MethodHandle recreate,
                        MethodHandle uniqueness, MethodHandle find, ResourceKey<Biome> placeholder) {}
 
     /** Whether TerraBlender's lookup has the shape GA2 reproduces. The {@code gpu.biomes} adapter for TerraBlender's mixins. */
@@ -57,12 +58,22 @@ public final class TerraBlenderBiomes {
                 MethodHandles.Lookup l = MethodHandles.publicLookup();
                 Method find = list.getMethod("findValuePositional", Climate.TargetPoint.class, int.class, int.class, int.class);
                 Object key = Class.forName(REGION, false, TerraBlenderBiomes.class.getClassLoader()).getField("DEFERRED_PLACEHOLDER").get(null);
+                MethodHandle copy = null;
+                MethodHandle recreate = null;
+                try {
+                    copy = l.unreflect(list.getMethod("clone"));
+                    recreate = l.unreflect(list.getMethod("recreateUniqueness"));
+                } catch (NoSuchMethodException e) {
+                    // a clone without its own area would share the list's anyway
+                    copy = null;
+                    recreate = null;
+                }
                 api = new Api(list,
                     l.unreflect(list.getMethod("isInitialized")),
                     l.unreflect(list.getMethod("getTreeCount")),
                     l.unreflect(list.getMethod("getTree", int.class)),
-                    l.unreflect(list.getMethod("clone")),
-                    l.unreflect(list.getMethod("recreateUniqueness")),
+                    copy,
+                    recreate,
                     l.unreflect(list.getMethod("getUniqueness", int.class, int.class, int.class)),
                     l.unreflect(find),
                     (ResourceKey<Biome>) key);
@@ -104,8 +115,11 @@ public final class TerraBlenderBiomes {
             if (n == 0 || trees[0] == null) {
                 throw new IllegalStateException("TerraBlender's parameter list: no tree for region 0");
             }
-            Object own = a.copy().invoke(list);
-            a.recreate().invoke(own);
+            Object own = list;
+            if (a.copy() != null) {
+                own = a.copy().invoke(list);
+                a.recreate().invoke(own);
+            }
             return new Regions(a, trees, own);
         } catch (IllegalStateException e) {
             throw e;

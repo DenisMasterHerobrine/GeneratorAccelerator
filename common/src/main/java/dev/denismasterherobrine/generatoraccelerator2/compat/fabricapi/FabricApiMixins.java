@@ -8,28 +8,28 @@ import java.util.Set;
 
 /**
  * Fabric API mixins that GA2 handles ({@link KnownMixins}). Contains no Minecraft types, because the mixin plugin reads it.
- * Fabric API is present in every Fabric game. Its changes to vanilla therefore count as the platform's, as NeoForge's
- * patches do on NeoForge.
+ * Fabric API is present in every Fabric game. Its changes to vanilla therefore count as the platform's, as Forge's
+ * patches do on Forge.
  */
 public final class FabricApiMixins {
     private FabricApiMixins() {}
 
-    public static final String MOD_ID = "fabric-block-api-v1";
+    public static final String MOD_ID = "fabric-data-attachment-api-v1";
+    /** The module's id on Forge (Forgified Fabric API), where the Fabric id is only a provided alias. */
+    public static final String FORGE_MOD_ID = "fabric_data_attachment_api_v1";
 
     /**
-     * Replaces the air test in the block count of {@code LevelChunkSection.setBlockState} with a test for the three air
-     * blocks. On Fabric, GA2's section writes count blocks with the same test ({@code platform.PlatformHooks.isEmpty}).
+     * Reads a loaded chunk's attachments from Fabric's own compound of the root tag, right after {@code ChunkSerializer.read}
+     * makes the chunk, and writes them back at the end of {@code write}. No section, palette or tick list tag is touched.
      */
-    public static final String SECTION_AIR = "net.fabricmc.fabric.mixin.block.ChunkSectionMixin";
+    public static final String CHUNK_ATTACHMENTS = "net.fabricmc.fabric.mixin.attachment.ChunkSerializerMixin";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
-        new KnownMixins.Entry(MOD_ID, HookTargets.NOISE_SECTION_WRITES, SECTION_AIR, Set.of("modifyAirCheck"),
-            "Fabric API's air check still applies. GA2 counts blocks in chunk sections with the same check."),
-        // GA2's body for the method counts with the same test, so it takes the method's place with Fabric API's change in it
-        new KnownMixins.Entry(MOD_ID, HookTargets.SECTION_WRITE, SECTION_AIR, Set.of("modifyAirCheck"),
-            "Fabric API's air check still applies. GA2's block writes count blocks with the same check."));
+        new KnownMixins.Entry(MOD_ID, HookTargets.STORAGE_LOAD_PREP_UNCHANGED, CHUNK_ATTACHMENTS,
+            Set.of("readWorldChunkAttachments", "readProtoChunkAttachments", "writeChunkAttachments"),
+            "Fabric API's chunk attachments still load and save. They do not touch the block or tick data GA2 prepares."));
 
-    /** Nothing to set up. GA2's section writes count blocks with the same test. */
+    /** Nothing to set up. The prepared parts are used as they are. */
     public static void register() {
         for (KnownMixins.Entry e : ENTRIES) {
             CompatAdapters.register(e.hook(), e.mixin(), () -> true);

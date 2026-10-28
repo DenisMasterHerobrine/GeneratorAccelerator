@@ -4,8 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.ByteBufferBuilder;
-import com.mojang.blaze3d.vertex.MeshData;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import dev.denismasterherobrine.generatoraccelerator2.view.SectionBuffers;
 import dev.denismasterherobrine.generatoraccelerator2.view.VramStats;
@@ -54,19 +53,12 @@ public abstract class VertexBufferMixin implements SectionBuffers.Buffer {
     }
 
     @Inject(method = "upload", at = @At("HEAD"))
-    private void ga2$countUpload(MeshData meshData, CallbackInfo ci) {
-        this.ga2$uploads++;
-    }
-
-    @Inject(method = "uploadIndexBuffer(Lcom/mojang/blaze3d/vertex/ByteBufferBuilder$Result;)V", at = @At("HEAD"))
-    private void ga2$countIndexUpload(ByteBufferBuilder.Result result, CallbackInfo ci) {
+    private void ga2$countUpload(BufferBuilder.RenderedBuffer buffer, CallbackInfo ci) {
         this.ga2$uploads++;
     }
 
     /** Every new storage of the buffer, with its size. */
-    @WrapOperation(method = { "uploadVertexBuffer",
-        "uploadIndexBuffer(Lcom/mojang/blaze3d/vertex/MeshData$DrawState;Ljava/nio/ByteBuffer;)Lcom/mojang/blaze3d/systems/RenderSystem$AutoStorageIndexBuffer;",
-        "uploadIndexBuffer(Lcom/mojang/blaze3d/vertex/ByteBufferBuilder$Result;)V" },
+    @WrapOperation(method = { "uploadVertexBuffer", "uploadIndexBuffer" },
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;glBufferData(ILjava/nio/ByteBuffer;I)V"))
     private void ga2$store(int target, ByteBuffer data, int usage, Operation<Void> original) {
         long size = data.remaining();

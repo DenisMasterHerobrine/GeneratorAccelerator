@@ -149,7 +149,6 @@ public final class FillHarness {
         }
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX + 3, groundY - 20, minZ + 3, minX + 12, groundY - 5, minZ + 12), TerrainAdjustment.BEARD_BOX, 2));
         pieces.add(new Beardifier.Rigid(new BoundingBox(minX - 9, groundY + 10, minZ + 4, minX + 2, groundY + 20, minZ + 9), TerrainAdjustment.BURY, -4));
-        pieces.add(new Beardifier.Rigid(new BoundingBox(minX + 8, groundY - 40, minZ - 5, minX + 20, groundY - 30, minZ + 6), TerrainAdjustment.ENCAPSULATE, 0));
         for (int i = 0; i < 40; i++) {
             junctions.add(new JigsawJunction(minX - 12 + r.nextInt(40), groundY - 2 + r.nextInt(5), minZ - 12 + r.nextInt(40), r.nextInt(3) - 1,
                 i % 2 == 0 ? StructureTemplatePool.Projection.RIGID : StructureTemplatePool.Projection.TERRAIN_MATCHING));

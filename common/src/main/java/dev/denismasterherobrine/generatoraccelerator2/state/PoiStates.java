@@ -1,17 +1,23 @@
 package dev.denismasterherobrine.generatoraccelerator2.state;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.CallbackReplay;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.block.state.BlockState;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Every block a generation region writes goes to {@code ServerLevel.onBlockStateChange}. That method looks both states up in
  * the POI types' state map ({@code PoiTypes.forState}, two hash lookups). It does nothing when neither state has a POI type,
  * which holds for almost every block worldgen writes. Whether a state has a POI type is fixed while a server runs. The types
- * are registered before the server starts, and NeoForge rebuilds the map only when registries are swapped, between servers.
+ * are registered before the server starts, and Forge rebuilds the map only when registries are swapped, between servers.
  * So each state computes the answer once per server start and stores it in a field ({@code BlockStateFlagsMixin}). A change
  * between two states without a POI type skips the call. Off when another mod changes {@code onBlockStateChange},
  * {@code PoiTypes.forState} or the call in {@code WorldGenRegion.setBlock} (hook {@code state.poiSkip}).
@@ -37,7 +43,7 @@ public final class PoiStates {
         epoch = (epoch + 1) & 0x3FFFFFFF;
     }
 
-    /** Set when another mod's handler of the call acts on the server thread only (Pastel's). That thread always makes the call. */
+    /** Set when another mod's handler of the call acts on the server thread only. That thread always makes the call. */
     private static volatile boolean keepOnServerThread;
 
     public static void keepOnServerThread() {
@@ -46,13 +52,59 @@ public final class PoiStates {
 
     /** True when {@code level.onBlockStateChange(pos, oldState, newState)} can be left out (it would do nothing). */
     public static boolean skip(ServerLevel level, BlockState oldState, BlockState newState) {
-        if (!ENABLED || !HOOK.allowed() || poi(oldState) || poi(newState) || keepOnServerThread && level.getServer().isSameThread()) {
+        if (!ENABLED || !HOOK.allowed() || poi(oldState) || poi(newState) || keepOnServerThread && level.getServer().isSameThread()
+            || !callbacksReady()) {
             return false;
         }
         if (FeatureStats.DETAILED) {
             SKIPPED.increment();
         }
         return true;
+    }
+
+    private static final String METHOD = "onBlockStateChange";
+    private static final MethodType CALLBACK = MethodType.methodType(void.class, ServerLevel.class, BlockPos.class, BlockState.class, BlockState.class,
+        CallbackInfo.class);
+    /** Other mods' callbacks of the left-out call ({@link CallbackReplay}): at the head, then at the return. Null until first asked. */
+    private static volatile MethodHandle[] heads;
+    private static volatile MethodHandle[] returns;
+    private static volatile boolean callbacksOk;
+
+    private static boolean callbacksReady() {
+        if (heads == null) {
+            synchronized (PoiStates.class) {
+                if (heads == null) {
+                    boolean any = CallbackReplay.any(CallbackReplay.POI_SKIP, METHOD);
+                    callbacksOk = !any || CallbackReplay.complete(CallbackReplay.POI_SKIP, METHOD, CALLBACK, CALLBACK);
+                    returns = any ? CallbackReplay.handles(CallbackReplay.POI_SKIP, METHOD, CallbackReplay.Point.RETURN, CALLBACK) : new MethodHandle[0];
+                    heads = any ? CallbackReplay.handles(CallbackReplay.POI_SKIP, METHOD, CallbackReplay.Point.HEAD, CALLBACK) : new MethodHandle[0];
+                }
+            }
+        }
+        return callbacksOk;
+    }
+
+    /** The call {@link #skip} left out: its body would do nothing, so only other mods' callbacks run, as vanilla runs them. */
+    public static void skipped(ServerLevel level, BlockPos pos, BlockState oldState, BlockState newState) {
+        MethodHandle[] h = heads;
+        MethodHandle[] r = returns;
+        if (h.length == 0 && r.length == 0) {
+            return;
+        }
+        try {
+            for (MethodHandle m : h) {
+                CallbackInfo ci = new CallbackInfo(METHOD, true);
+                m.invokeExact(level, pos, oldState, newState, ci);
+                if (ci.isCancelled()) {
+                    return;
+                }
+            }
+            for (MethodHandle m : r) {
+                m.invokeExact(level, pos, oldState, newState, new CallbackInfo(METHOD, true));
+            }
+        } catch (Throwable t) {
+            throw Reflect.unchecked(t);
+        }
     }
 
     private static boolean poi(BlockState state) {

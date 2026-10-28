@@ -37,7 +37,7 @@ public final class FeaturesConfig {
         b.push("features");
         ENABLED = b.comment("Master switch for every feature-stage optimization. Output is identical to vanilla either way.").define("enabled", true);
         REGION_CACHE = b.comment("Remember which chunk object each (x, z) of a generation region resolves to instead of resolving it on every block access.",
-            "Turns itself off while a mod with its own chunk system runs (Moonrise, C2ME).").define("regionCache", true);
+            "Turns itself off while a mod with its own chunk system runs (C2ME).").define("regionCache", true);
         REGION_READS = b.comment("Answer a generation region's getBlockState and getFluidState from the chunks it resolved and the chunk sections themselves",
             "(ProtoChunk's own reads), instead of resolving the chunk and asking it on every read. Needs regionCache.").define("regionReads", true);
         PLACEMENT_PIPELINE = b.comment("Run placement modifiers through an explicit loop instead of a lazy stream chain; vanilla modifiers are evaluated",

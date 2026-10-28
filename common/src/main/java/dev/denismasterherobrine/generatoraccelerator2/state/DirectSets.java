@@ -1,12 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
-import dev.denismasterherobrine.generatoraccelerator2.compat.CodeShape;
 import java.lang.reflect.Method;
 import java.util.List;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
-import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 
 /**
@@ -16,14 +14,9 @@ import org.slf4j.Logger;
  *
  * <p>Each resource key of a set's entries gets an index, kept on the key ({@code ResourceKeyIndexMixin}). Each set keeps the bits
  * of its entries' keys. Only reference holders are answered this way, and only for sets whose entries are all reference holders
- * with keys. How two reference holders compare decides the rest:
- * <ul>
- *   <li>NeoForge's {@code Holder.Reference.equals}: the same holder, or another reference holder with the same key instance. Its
- *   {@code hashCode} is the key's. So a holder is in the set exactly when its key's bit is set.</li>
- *   <li>Vanilla's (no {@code equals} of its own): the same object. A holder whose key's bit is not set is not in the set. One whose
- *   bit is set is asked of the set.</li>
- * </ul>
- * Any other code in those methods leaves every set to vanilla.
+ * with keys. Two reference holders compare as the same object (vanilla's {@code Holder.Reference} has no {@code equals} of its
+ * own). So a holder whose key's bit is not set is not in the set. One whose bit is set is asked of the set. A reference holder
+ * that compares in another way leaves every set to vanilla.
  */
 public final class DirectSets {
     private DirectSets() {}
@@ -44,15 +37,8 @@ public final class DirectSets {
 
     /** Sets are left to vanilla. */
     public static final int OFF = 0;
-    /** Reference holders compare by key (NeoForge). */
-    public static final int KEY = 1;
     /** Reference holders compare by identity (vanilla). */
-    public static final int IDENTITY = 2;
-
-    /** Fingerprints ({@link CodeShape}) of NeoForge 21.1's {@code Holder.Reference} methods. */
-    private static final String NEOFORGE_EQUALS = "7d62267ee3bcc958";
-    private static final String NEOFORGE_HASH_CODE = "144768d8c639ceb3";
-    private static final String NEOFORGE_GET_KEY = "5d553308fad1de30";
+    public static final int IDENTITY = 1;
 
     public static final int MODE = mode();
 
@@ -66,19 +52,10 @@ public final class DirectSets {
         if (!StateFast.ENABLED) {
             return OFF;
         }
-        boolean equals = declares("equals", Object.class), hashCode = declares("hashCode");
-        if (!equals && !hashCode) {
+        if (!declares("equals", Object.class) && !declares("hashCode")) {
             return IDENTITY;
         }
-        String owner = Holder.Reference.class.getName();
-        ClassNode node = CodeShape.classNode(owner);
-        String e = CodeShape.fingerprint(CodeShape.method(node, "equals", "(Ljava/lang/Object;)Z"));
-        String h = CodeShape.fingerprint(CodeShape.method(node, "hashCode", "()I"));
-        String k = CodeShape.fingerprint(CodeShape.method(node, "getKey", "()Lnet/minecraft/resources/ResourceKey;"));
-        if (e.equals(NEOFORGE_EQUALS) && h.equals(NEOFORGE_HASH_CODE) && k.equals(NEOFORGE_GET_KEY)) {
-            return KEY;
-        }
-        LOGGER.info("Holder.Reference compares in an unknown way (equals {}, hashCode {}, getKey {}) -> direct holder sets by vanilla", e, h, k);
+        LOGGER.info("Holder.Reference compares in an unknown way -> direct holder sets by vanilla");
         return OFF;
     }
 
@@ -119,21 +96,19 @@ public final class DirectSets {
 
     /** No. */
     public static final int NO = 0;
-    /** Yes. */
-    public static final int YES = 1;
     /** The set answers. */
-    public static final int ASK = 2;
+    public static final int ASK = 1;
 
     /**
-     * Whether a reference holder with {@code key} is in the set with these bits, under {@code mode}. The bits were read before
+     * Whether a reference holder with {@code key} may be in the set with these bits. The bits were read before
      * the key's index: a key given its index later belongs to no entry of this set.
      */
-    public static int answer(int mode, long[] bits, ResourceKey<?> key) {
+    public static int answer(long[] bits, ResourceKey<?> key) {
         int i = ((Indexed) (Object) key).ga2$directIndex();
         int w = i >>> 6;
         if (i == 0 || w >= bits.length || (bits[w] & (1L << i)) == 0) {
             return NO;
         }
-        return mode == KEY ? YES : ASK;
+        return ASK;
     }
 }

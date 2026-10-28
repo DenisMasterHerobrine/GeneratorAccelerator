@@ -23,7 +23,6 @@ import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.storage.ChunkSerializer;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import net.minecraft.world.ticks.ProtoChunkTicks;
@@ -41,13 +40,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = ChunkSerializer.class, priority = 5000)
 public abstract class ChunkSerializerReadMixin {
     @Inject(method = "read", at = @At("HEAD"))
-    private static void ga2$begin(ServerLevel level, PoiManager poi, RegionStorageInfo info, ChunkPos pos, CompoundTag tag,
+    private static void ga2$begin(ServerLevel level, PoiManager poi, ChunkPos pos, CompoundTag tag,
                                   CallbackInfoReturnable<ProtoChunk> cir) {
         LoadPrep.begin(tag);
     }
 
     @Inject(method = "read", at = @At("RETURN"))
-    private static void ga2$end(ServerLevel level, PoiManager poi, RegionStorageInfo info, ChunkPos pos, CompoundTag tag,
+    private static void ga2$end(ServerLevel level, PoiManager poi, ChunkPos pos, CompoundTag tag,
                                 CallbackInfoReturnable<ProtoChunk> cir) {
         LoadPrep.end();
     }

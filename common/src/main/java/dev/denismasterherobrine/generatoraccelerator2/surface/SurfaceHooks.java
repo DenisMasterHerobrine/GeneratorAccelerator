@@ -13,10 +13,13 @@ public final class SurfaceHooks {
     private SurfaceHooks() {}
 
     private static final ThreadLocal<Boolean> DISABLED = ThreadLocal.withInitial(() -> Boolean.FALSE);
-    /** Threads inside {@link #runVanilla}. While there are none, the override is not looked up (see {@code DfcHooks}). */
+    /** Threads inside {@link #runLoopRules}: GA2's builder off, the compiled rules in vanilla's loop on. */
+    private static final ThreadLocal<Boolean> BUILDER_OFF = ThreadLocal.withInitial(() -> Boolean.FALSE);
+    /** Threads inside {@link #runVanilla} or {@link #runLoopRules}. While there are none, the overrides are not looked up (see {@code DfcHooks}). */
     private static final AtomicInteger OVERRIDES = new AtomicInteger();
     private static final HookTargets.Hook BUILD = HookTargets.hook(HookTargets.SURFACE_BUILD);
     private static final HookTargets.Hook BIOME_ZOOM = HookTargets.hook(HookTargets.SURFACE_BIOME_ZOOM);
+    private static final HookTargets.Hook LOOP_RULES = HookTargets.hook(HookTargets.SURFACE_LOOP_RULES);
 
     public static final LongAdder CHUNKS_FAST = new LongAdder();
     public static final LongAdder CHUNKS_VANILLA = new LongAdder();
@@ -34,7 +37,12 @@ public final class SurfaceHooks {
     }
 
     public static boolean enabled() {
-        return !overridden() && SurfaceConfig.enabled() && BUILD.allowed();
+        return !overridden() && !(OVERRIDES.get() != 0 && BUILDER_OFF.get()) && SurfaceConfig.enabled() && BUILD.allowed();
+    }
+
+    /** Whether vanilla's loop applies the compiled rules ({@link LoopRules}) where it builds a surface. */
+    public static boolean loopRulesEnabled() {
+        return !overridden() && SurfaceConfig.enabled() && SurfaceConfig.loopRules() && LOOP_RULES.allowed();
     }
 
     public static boolean zoomAllowed() {
@@ -50,6 +58,19 @@ public final class SurfaceHooks {
             r.run();
         } finally {
             DISABLED.set(prev);
+            OVERRIDES.decrementAndGet();
+        }
+    }
+
+    /** Runs {@code r} with GA2's builder off on this thread: vanilla's loop builds surfaces with the compiled rules. */
+    public static void runLoopRules(Runnable r) {
+        OVERRIDES.incrementAndGet();
+        boolean prev = BUILDER_OFF.get();
+        BUILDER_OFF.set(Boolean.TRUE);
+        try {
+            r.run();
+        } finally {
+            BUILDER_OFF.set(prev);
             OVERRIDES.decrementAndGet();
         }
     }

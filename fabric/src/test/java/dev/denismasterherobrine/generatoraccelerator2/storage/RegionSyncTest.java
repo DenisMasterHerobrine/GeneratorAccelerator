@@ -19,7 +19,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,7 +43,6 @@ public class RegionSyncTest {
         assertFalse(RegionSync.openUnsynced(false, null), "a storage that does not sync stays as it is");
         assertFalse(RegionSync.consumeClaim(), "no claim without a sync request");
         assertTrue(RegionSync.enabled(), "batched syncing off: " + RegionSync.stats());
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION, ResourceLocation.withDefaultNamespace("overworld")), "chunk");
         Path batched = dir.resolve("batched");
         Path synced = dir.resolve("synced");
         Files.createDirectories(batched);
@@ -52,8 +50,8 @@ public class RegionSyncTest {
         List<CompoundTag> tags = FastRegionWriteTest.synthetic();
         long delay = 10_000_000L;
         RegionSync.Batched b;
-        try (RegionFile file = new RegionFile(info, batched.resolve("r.0.0.mca"), batched, RegionSync.openUnsynced(true, null));
-             RegionFile reference = new RegionFile(info, synced.resolve("r.0.0.mca"), synced, true)) {
+        try (RegionFile file = new RegionFile(batched.resolve("r.0.0.mca"), batched, RegionSync.openUnsynced(true, null));
+             RegionFile reference = new RegionFile(synced.resolve("r.0.0.mca"), synced, true)) {
             b = (RegionSync.Batched) (Object) file;
             assertTrue(b.ga2$batched(), "the file took the claim");
             assertFalse(((RegionSync.Batched) (Object) reference).ga2$batched(), "a synced file is not batched");

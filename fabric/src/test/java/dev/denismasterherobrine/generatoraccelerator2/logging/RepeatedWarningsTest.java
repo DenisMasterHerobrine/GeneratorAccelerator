@@ -21,8 +21,7 @@ import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.chunk.status.ChunkPyramid;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import sun.misc.Unsafe;
@@ -42,7 +41,7 @@ public class RepeatedWarningsTest {
         Holder<PoiType> armorer = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.ARMORER);
         Holder<PoiType> butcher = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.BUTCHER);
         PoiSection section = new PoiSection(() -> {});
-        String pair = armorer.getRegisteredName() + " -> " + butcher.getRegisteredName();
+        String pair = HolderNames.name(armorer) + " -> " + HolderNames.name(butcher);
         for (int i = 0; i < 3; i++) {
             BlockPos pos = new BlockPos(i, 0, 0);
             section.add(pos, armorer);
@@ -52,7 +51,7 @@ public class RepeatedWarningsTest {
         assertEquals(2, RepeatedWarnings.repeats(RepeatedWarnings.Kind.POI_MISMATCH, pair), "the first mismatch is logged, the two after it counted");
         section.add(new BlockPos(5, 0, 0), butcher);
         section.add(new BlockPos(5, 0, 0), armorer);
-        assertEquals(0, RepeatedWarnings.repeats(RepeatedWarnings.Kind.POI_MISMATCH, butcher.getRegisteredName() + " -> " + armorer.getRegisteredName()),
+        assertEquals(0, RepeatedWarnings.repeats(RepeatedWarnings.Kind.POI_MISMATCH, HolderNames.name(butcher) + " -> " + HolderNames.name(armorer)),
             "another pair of types is logged once more");
         String report = new SystemReport().toLineSeparatedString();
         assertTrue(report.contains("GA2 worldgen warnings") && report.contains("POI data mismatches: 4 [" + pair + " x3"),
@@ -106,7 +105,7 @@ public class RepeatedWarningsTest {
         WorldGenRegion region = (WorldGenRegion) ((Unsafe) theUnsafe.get(null)).allocateInstance(WorldGenRegion.class);
         ProtoChunk chunk = new ProtoChunk(center, UpgradeData.EMPTY, LevelHeightAccessor.create(-64, 384), HarnessWorld.registries().biomes, null);
         set(region, "center", chunk);
-        set(region, "generatingStep", ChunkPyramid.GENERATION_PYRAMID.getStepTo(ChunkStatus.FEATURES));
+        set(region, "generatingStatus", ChunkStatus.FEATURES);
         set(region, "currentlyGenerating", generating);
         return region;
     }

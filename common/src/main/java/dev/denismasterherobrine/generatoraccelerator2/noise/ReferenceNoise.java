@@ -11,7 +11,7 @@ import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import net.minecraft.world.level.levelgen.synth.PerlinNoise;
 
 /**
- * Line-by-line port of the vanilla 1.21.1 noise code, kept independent of the fused kernel.
+ * Line-by-line port of the vanilla 1.20.1 noise code, kept independent of the fused kernel.
  * The mixins replace the vanilla methods at runtime, so this is the only way to obtain the
  * original values for comparison in {@link SelfCheck}.
  */

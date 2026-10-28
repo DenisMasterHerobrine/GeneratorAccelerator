@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.transformer.ext.ITargetClassContext;
  * {@code postApply} from inside Mixin's apply step. MixinExtras adds the calls of its late injectors ({@code @WrapOperation},
  * {@code @WrapWithCondition}, {@code @ModifyExpressionValue}, {@code @WrapMethod}) only afterwards, in MixinExtras' transformer
  * extensions. Those extensions run in the order they were registered. MixinExtras registers them from the plugin of its
- * own mixin config. On NeoForge that plugin may load after this mod's config. This extension then moves itself behind the
+ * own mixin config. On Forge that plugin may load after this mod's config. This extension then moves itself behind the
  * MixinExtras extensions before the first class is transformed, and again if another MixinExtras copy registers later.
  * This extension therefore sees the late injector calls too. If this extension cannot be registered, the plugin inspects
  * in {@code postApply} as before and misses those late injectors.

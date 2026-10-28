@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+#issueTrackerURL = ""
+license = "PolyForm-Shield-1.0.0"
+
+[[mods]]
+modId = "generatoraccelerator2"
+version = "${version}"
+displayName = "Generator Accelerator 2"
+authors = "DenisMasterHerobrine"
+description = '''
+'''
+#logoFile = ""
+
+[[dependencies.generatoraccelerator2]]
+modId = "forge"
+mandatory = true
+versionRange = "[47,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.generatoraccelerator2]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.20.2)"
+ordering = "NONE"
+side = "BOTH"

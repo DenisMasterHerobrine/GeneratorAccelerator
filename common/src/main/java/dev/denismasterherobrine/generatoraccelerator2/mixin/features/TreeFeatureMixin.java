@@ -17,8 +17,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class TreeFeatureMixin {
     @Inject(method = "place(Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;)Z", at = @At("HEAD"), cancellable = true)
     private void ga2$place(FeaturePlaceContext<?> ctx, CallbackInfoReturnable<Boolean> cir) {
-        if (ModdedFeatures.fastPath(this.getClass(), TreeFeature.class) && ctx.level() instanceof Ga2Region region && region.ga2$plain() && FeatureHooks.enabled() && FeaturesCompat.treesAllowed()) {
-            cir.setReturnValue(TreeFast.place(ctx, region));
+        if (ModdedFeatures.fastPath(this.getClass(), TreeFeature.class) && ctx.level() instanceof Ga2Region region && region.ga2$plain() && FeatureHooks.enabled()
+            && FeaturesCompat.treesAllowed() && TreeFast.callbacksReady()) {
+            cir.setReturnValue(TreeFast.place((TreeFeature) (Object) this, ctx, region));
         }
     }
 }

@@ -45,23 +45,36 @@ public final class RefCount {
 
     public static List<Node> children(Node n) {
         List<Node> out = new ArrayList<>(3);
-        switch (n) {
-            case Node.Ap2 a -> { out.add(a.a()); out.add(a.b()); }
-            case Node.MulOrAdd m -> out.add(m.input());
-            case Node.Mapped m -> out.add(m.input());
-            case Node.Clamp c -> out.add(c.input());
-            case Node.RangeChoice r -> { out.add(r.input()); out.add(r.inRange()); out.add(r.outRange()); }
-            case Node.ShiftedNoise s -> { out.add(s.shiftX()); out.add(s.shiftY()); out.add(s.shiftZ()); }
-            case Node.Weird w -> out.add(w.input());
-            case Node.Spline s -> splineCoords(s.spline(), out);
-            case Node.BlendDensity b -> out.add(b.input());
-            case Node.Marker m -> out.add(m.child());
-            case Node.Select s -> { condChildren(s.cond(), out); out.add(s.whenJump()); out.add(s.whenFall()); }
-            case Node.StaticCall c -> { for (Object a : c.args()) { if (a instanceof Node nn) out.add(nn); else intChildren((INode) a, out); } }
-            case Node.NoiseAt na -> { out.add(na.x()); out.add(na.y()); out.add(na.z()); }
-            case Node.IntToDouble i -> intChildren(i.value(), out);
-            case Node.RoundFloat r -> out.add(r.value());
-            default -> { }
+        if (n instanceof Node.Ap2 a) {
+out.add(a.a()); out.add(a.b());
+        } else if (n instanceof Node.MulOrAdd m) {
+            out.add(m.input());
+        } else if (n instanceof Node.Mapped m) {
+            out.add(m.input());
+        } else if (n instanceof Node.Clamp c) {
+            out.add(c.input());
+        } else if (n instanceof Node.RangeChoice r) {
+out.add(r.input()); out.add(r.inRange()); out.add(r.outRange());
+        } else if (n instanceof Node.ShiftedNoise s) {
+out.add(s.shiftX()); out.add(s.shiftY()); out.add(s.shiftZ());
+        } else if (n instanceof Node.Weird w) {
+            out.add(w.input());
+        } else if (n instanceof Node.Spline s) {
+            splineCoords(s.spline(), out);
+        } else if (n instanceof Node.BlendDensity b) {
+            out.add(b.input());
+        } else if (n instanceof Node.Marker m) {
+            out.add(m.child());
+        } else if (n instanceof Node.Select s) {
+condChildren(s.cond(), out); out.add(s.whenJump()); out.add(s.whenFall());
+        } else if (n instanceof Node.StaticCall c) {
+for (Object a : c.args()) { if (a instanceof Node nn) out.add(nn); else intChildren((INode) a, out); }
+        } else if (n instanceof Node.NoiseAt na) {
+out.add(na.x()); out.add(na.y()); out.add(na.z());
+        } else if (n instanceof Node.IntToDouble i) {
+            intChildren(i.value(), out);
+        } else if (n instanceof Node.RoundFloat r) {
+            out.add(r.value());
         }
         return out;
     }
@@ -78,13 +91,16 @@ public final class RefCount {
 
     /** Double-typed nodes reachable from an integer expression (integer nodes themselves are never shared or spilled). */
     public static void intChildren(INode n, List<Node> out) {
-        switch (n) {
-            case INode.IntBin b -> { intChildren(b.a(), out); intChildren(b.b(), out); }
-            case INode.IntNeg g -> intChildren(g.a(), out);
-            case INode.DoubleToInt d -> out.add(d.value());
-            case INode.IntStaticCall c -> { for (Object a : c.args()) { if (a instanceof Node nn) out.add(nn); else intChildren((INode) a, out); } }
-            case INode.SelectInt s -> { condChildren(s.cond(), out); intChildren(s.whenJump(), out); intChildren(s.whenFall(), out); }
-            default -> { }
+        if (n instanceof INode.IntBin b) {
+intChildren(b.a(), out); intChildren(b.b(), out);
+        } else if (n instanceof INode.IntNeg g) {
+            intChildren(g.a(), out);
+        } else if (n instanceof INode.DoubleToInt d) {
+            out.add(d.value());
+        } else if (n instanceof INode.IntStaticCall c) {
+for (Object a : c.args()) { if (a instanceof Node nn) out.add(nn); else intChildren((INode) a, out); }
+        } else if (n instanceof INode.SelectInt s) {
+condChildren(s.cond(), out); intChildren(s.whenJump(), out); intChildren(s.whenFall(), out);
         }
     }
 

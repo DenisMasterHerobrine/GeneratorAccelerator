@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.runtime;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SkyBounds;
@@ -38,6 +39,7 @@ import javax.annotation.Nullable;
  */
 public final class ChunkBinding {
     private static final AtomicInteger DIAG_LOGS = new AtomicInteger();
+    private static final HookTargets.Hook FINAL_DENSITY = HookTargets.hook(HookTargets.NOISE_FINAL_DENSITY);
 
     private final NoiseChunk chunk;
     private final NoiseChunkAccessor acc;
@@ -232,8 +234,10 @@ public final class ChunkBinding {
                 }
             }
         }
+        // another mod may build that cache from another final density. The cache then fills the vanilla way
+        boolean finalDensityOwn = FINAL_DENSITY.allowed();
         for (int i = 0; i < cellTemplates.size(); i++) {
-            if (cellTemplates.get(i).marker == null) {
+            if (cellTemplates.get(i).marker == null && finalDensityOwn) {
                 for (DensityFunction cache : cellCaches) {
                     if (!claimed.containsKey(cache) && cache instanceof DensityFunctions.MarkerOrMarked mm) {
                         binding.cellIndex.put(mm.wrapped(), i);
@@ -252,7 +256,7 @@ public final class ChunkBinding {
         // columns that are computed in parts with the same values (no blending: the set has no sky bounds otherwise)
         SkyBounds skyTemplate = set.sky();
         if (skyTemplate != null && SkyBounds.ENABLED && column != null && complete
-            && binding.blenderEmpty && !beardEverywhere && cells.length == 1 && cellTemplates.get(0).marker == null && VERIFY_CELLS == 0) {
+            && binding.blenderEmpty && !beardEverywhere && cells.length == 1 && cellTemplates.get(0).marker == null && finalDensityOwn && VERIFY_CELLS == 0) {
             binding.sky = skyTemplate.forChunk(resolve(pairing, skyTemplate.externTemplates()));
         }
         return binding;

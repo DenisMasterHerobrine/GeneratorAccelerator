@@ -5,7 +5,7 @@ import com.mojang.blaze3d.vertex.VertexBuffer;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import javax.annotation.Nullable;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 /**
  * Gives the VRAM of stale section meshes back to the driver.
  *
- * <p>Each render section owns one vertex buffer per block layer (solid, cutout, translucent and so on). Vanilla uploads a layer
+ * <p>Each render chunk (a 16 x 16 x 16 section) owns one vertex buffer per block layer (solid, cutout, translucent and so on). Vanilla uploads a layer
  * only when the section has blocks in it. A layer that became empty keeps its last mesh in VRAM. The view area also moves its
  * sections along as the camera travels. A moved section keeps every mesh of its old place until it is rebuilt at the new one.
  * So each buffer holds the last mesh it ever had, and VRAM grows the further the player travels. Here such a buffer is emptied.
@@ -54,26 +54,38 @@ public final class SectionBuffers {
         void ga2$evicted(boolean evicted);
     }
 
+    /** A rebuilt section: its layers without blocks give their VRAM back. Those with blocks just got the new mesh. */
+    public static void freeEmpty(ChunkRenderDispatcher.RenderChunk section) {
+        ChunkRenderDispatcher.CompiledChunk compiled = section.getCompiledChunk();
+        for (RenderType layer : RenderType.chunkBufferLayers()) {
+            if (compiled.isEmpty(layer)) {
+                free(section.getBuffer(layer));
+            }
+        }
+    }
+
     /**
-     * Render thread, before the frame's sections are compiled. The sections in view are stamped with the time and the camera's
-     * column. An evicted one is marked dirty, so it is rebuilt this frame. About once a second, a section gives its meshes back when
+     * Render thread, before the frame's sections are compiled, for each section in view: stamped with the time and the camera's
+     * column. An evicted one is marked dirty, so it is rebuilt this frame.
+     */
+    public static void seen(ChunkRenderDispatcher.RenderChunk s, long now, int cameraX, int cameraZ) {
+        Section g = (Section) s;
+        g.ga2$seen(now, cameraX, cameraZ);
+        if (g.ga2$evicted()) {
+            g.ga2$evicted(false);
+            s.setDirty(false);
+        }
+    }
+
+    /**
+     * Render thread, after {@link #seen} for the frame's sections. About once a second, a section gives its meshes back when
      * it has been out of view for {@link RenderThreads#EVICT_HIDDEN_SECONDS}, is farther than {@link RenderThreads#EVICT_MIN_CHUNKS}
      * from the camera, and the camera has moved {@link RenderThreads#EVICT_TRAVEL_CHUNKS} from where it last saw the section. Only
      * the sections a moving camera left behind are evicted. A section just out of view while the player turns keeps its meshes.
      * The compiled state stays. The occlusion graph still passes through the section, and its empty buffers draw nothing.
      */
-    public static void evictHidden(Iterable<SectionRenderDispatcher.RenderSection> visible, @Nullable SectionRenderDispatcher.RenderSection[] all,
-                                   Vec3 camera) {
-        long now = System.nanoTime();
+    public static void evictHidden(@Nullable ChunkRenderDispatcher.RenderChunk[] all, Vec3 camera, long now) {
         int cx = Mth.floor(camera.x), cz = Mth.floor(camera.z);
-        for (SectionRenderDispatcher.RenderSection s : visible) {
-            Section g = (Section) s;
-            g.ga2$seen(now, cx, cz);
-            if (g.ga2$evicted()) {
-                g.ga2$evicted(false);
-                s.setDirty(false);
-            }
-        }
         if (all == null || now - lastSweep < 1_000_000_000L) {
             return;
         }
@@ -82,9 +94,9 @@ public final class SectionBuffers {
         double min = RenderThreads.EVICT_MIN_CHUNKS * 16.0;
         long travel = RenderThreads.EVICT_TRAVEL_CHUNKS * 16L;
         long freed = 0;
-        for (SectionRenderDispatcher.RenderSection s : all) {
+        for (ChunkRenderDispatcher.RenderChunk s : all) {
             Section g = (Section) s;
-            if (g.ga2$evicted() || now - g.ga2$seen() < hidden || s.getCompiled() == SectionRenderDispatcher.CompiledSection.UNCOMPILED) {
+            if (g.ga2$evicted() || now - g.ga2$seen() < hidden || s.getCompiledChunk() == ChunkRenderDispatcher.CompiledChunk.UNCOMPILED) {
                 continue;
             }
             long tx = cx - g.ga2$seenX(), tz = cz - g.ga2$seenZ();

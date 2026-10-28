@@ -54,10 +54,13 @@ remapJar {
     input.set shadowJar.archiveFile
 }
 
-apply from: file('names.gradle')
+// production Fabric runs under intermediary names
+ext.ga2NamesNamespace = 'intermediary'
+ext.ga2NamesMappings = configurations.mappings
+apply from: rootProject.file('gradle/names.gradle')
 
-// The tests run inside Fabric Loader (fabric-loader-junit), so GA2's mixins are applied to the game they test, as they were
-// in NeoForge's unit test environment. The game is bootstrapped once by testutil.GameBootstrap.
+// The tests run inside Fabric Loader (fabric-loader-junit), so GA2's mixins are applied to the game they test. The game is
+// bootstrapped once by testutil.GameBootstrap.
 dependencies {
     testImplementation "net.fabricmc:fabric-loader-junit:$rootProject.fabric_loader_version"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
@@ -90,6 +93,9 @@ test {
         jvmArgs "-XX:StartFlightRecording=filename=${System.getProperty('ga2.jfr')},settings=profile,method-profiling=max,allocation-profiling=maximum", '-XX:FlightRecorderOptions:stackdepth=256'
     }
     maxHeapSize = '4G'
+    // the test classes spread over several test JVMs, each with its own game, so each JVM keeps its own global state.
+    // -Pga2.testForks=1 runs them all in one JVM
+    maxParallelForks = (project.findProperty('ga2.testForks') ?: Math.max(1, Math.min(4, Runtime.runtime.availableProcessors().intdiv(4)))) as int
     // tests seed the JDK's shared shuffle random (Collections.r), which vanilla's beehive decorator draws from
     jvmArgs '--add-opens', 'java.base/java.util=ALL-UNNAMED'
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full'; showStandardStreams = true }

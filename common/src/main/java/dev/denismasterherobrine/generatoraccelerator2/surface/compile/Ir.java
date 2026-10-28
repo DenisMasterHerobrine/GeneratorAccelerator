@@ -106,14 +106,20 @@ public final class Ir {
     public record ExternCond(int id, int index, Scope scope, boolean positional) implements Cond {}
 
     public static Scope scope(Cond c) {
-        return switch (c) {
-            case Noise n -> Scope.COLUMN;
-            case Steep s -> Scope.COLUMN;
-            case Slope s -> Scope.COLUMN;
-            case Hole h -> Scope.COLUMN;
-            case ExternCond e -> e.scope();
-            case Not n -> scope(n.target());
-            default -> Scope.BLOCK;
-        };
+        if (c instanceof Noise n) {
+            return Scope.COLUMN;
+        } else if (c instanceof Steep s) {
+            return Scope.COLUMN;
+        } else if (c instanceof Slope s) {
+            return Scope.COLUMN;
+        } else if (c instanceof Hole h) {
+            return Scope.COLUMN;
+        } else if (c instanceof ExternCond e) {
+            return e.scope();
+        } else if (c instanceof Not n) {
+            return scope(n.target());
+        } else {
+            return Scope.BLOCK;
+        }
     }
 }

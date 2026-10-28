@@ -17,18 +17,15 @@ import net.minecraft.util.SimpleBitStorage;
 
 /**
  * {@code ChunkAccess.findBlockLightSources}, which lighting a new chunk runs once. For every section whose palette may hold
- * a light source, the game reads all 4096 block states and asks each for its light emission. On NeoForge the query is made
+ * a light source, the game reads all 4096 block states and asks each for its light emission. On Forge the query is made
  * at the block's position. This class reads the section's storage in the same order (y, z, x) and decides per palette entry
  * instead. Some blocks have an emission that does not depend on position ({@link PlatformHooks#positionalLightEmission}).
- * On NeoForge these are the blocks that keep the default {@code getLightEmission(state, level, pos)}. On Fabric it is every
+ * On Forge these are the blocks that keep the default {@code getLightEmission(state, level, pos)}. On Fabric it is every
  * block. Such a block emits {@code state.getLightEmission()} wherever it is. Only blocks that override the method are asked
  * per position. The consumer gets the same positions and states in the same order.
  */
 public final class LightSources {
     private LightSources() {}
-
-    /** The game's coarse filter, as in its {@code findBlockLightSources}. */
-    private static final Predicate<BlockState> MAY_EMIT = PlatformHooks::mayEmitLight;
 
     private static final byte NONE = 1;
     private static final byte EMITS = 2;
@@ -58,11 +55,13 @@ public final class LightSources {
     }
 
     public static void find(ChunkAccess chunk, BiConsumer<BlockPos, BlockState> consumer) {
+        // the game's coarse filter, as in its findBlockLightSources
+        Predicate<BlockState> mayEmit = state -> PlatformHooks.mayEmitLight(state, chunk);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int[] local = new int[256];
         for (int sectionY = chunk.getMinSection(); sectionY < chunk.getMaxSection(); sectionY++) {
             LevelChunkSection section = chunk.getSection(chunk.getSectionIndexFromSectionY(sectionY));
-            if (!section.maybeHas(MAY_EMIT)) {
+            if (!section.maybeHas(mayEmit)) {
                 continue;
             }
             BlockPos origin = SectionPos.of(chunk.getPos(), sectionY).origin();

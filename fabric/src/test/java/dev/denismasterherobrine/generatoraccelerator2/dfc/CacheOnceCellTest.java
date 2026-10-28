@@ -78,7 +78,7 @@ public class CacheOnceCellTest {
         wrapped.add("argument1", router.get("final_density"));
         wrapped.add("argument2", JsonParser.parseString(CACHE_ONCE_NOISE));
         router.add("final_density", wrapped);
-        settings = NoiseGeneratorSettings.DIRECT_CODEC.parse(ops, json).getOrThrow(IllegalStateException::new);
+        settings = NoiseGeneratorSettings.DIRECT_CODEC.parse(ops, json).getOrThrow(false, error -> {});
         return RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 4242L);
     }
 

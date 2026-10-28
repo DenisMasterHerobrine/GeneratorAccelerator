@@ -17,6 +17,7 @@ import dev.denismasterherobrine.generatoraccelerator2.surface.compile.SurfacePro
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -93,6 +94,8 @@ public final class SurfaceSpec {
     /** Compat externs ({@link SurfaceExtern.Gpu}). Their int table data is stored by slot, and their OpenCL by the program's extern index. */
     private final List<int[]> extData = new ArrayList<>();
     private final String[] extRuleCode, extCondCode;
+    /** The OpenCL functions the externs call, by name ({@link SurfaceExtern.GpuSetup#helper}). */
+    private final Map<String, String> extHelpers = new LinkedHashMap<>();
     /** An extern's code evaluates a noise of its own ({@code SF_SPEC}). */
     private boolean externNoise;
     /** Per biome index, whether another mod's code writes the chunk before the surface in that biome ({@link #declareStepWriter}). */
@@ -223,6 +226,11 @@ public final class SurfaceSpec {
                 // The spec's index among the program's noises is known only when the source is written (SF_SPEC).
                 externNoise = true;
                 return "nn(s->c, SF_SPEC(" + SurfaceSpec.this.noise(n) + "), " + x + ", " + y + ", " + z + ")";
+            }
+
+            @Override
+            public void helper(String name, String code) {
+                extHelpers.putIfAbsent(name, code);
             }
         };
         this.extRuleCode = new String[program.externRules.size()];
@@ -410,16 +418,17 @@ public final class SurfaceSpec {
     }
 
     private void collectStates(Ir.Rule r) {
-        switch (r) {
-            case Ir.Seq s -> s.rules().forEach(this::collectStates);
-            case Ir.Test t -> collectStates(t.then());
-            case Ir.State st -> state(st.state());
-            case Ir.Bands b -> {
-            }
-            case Ir.ExternRule e -> {
-                // The extern's states are collected with its code (externCode).
-            }
-            default -> throw new Unsupported("rule " + r.getClass().getSimpleName());
+        if (r instanceof Ir.Seq s) {
+            s.rules().forEach(this::collectStates);
+        } else if (r instanceof Ir.Test t) {
+            collectStates(t.then());
+        } else if (r instanceof Ir.State st) {
+            state(st.state());
+        } else if (r instanceof Ir.Bands b) {
+        } else if (r instanceof Ir.ExternRule e) {
+            // The extern's states are collected with its code (externCode).
+        } else {
+            throw new Unsupported("rule " + r.getClass().getSimpleName());
         }
     }
 
@@ -433,12 +442,15 @@ public final class SurfaceSpec {
     }
 
     private static boolean usesBands(Ir.Rule r) {
-        return switch (r) {
-            case Ir.Seq s -> s.rules().stream().anyMatch(SurfaceSpec::usesBands);
-            case Ir.Test t -> usesBands(t.then());
-            case Ir.Bands b -> true;
-            default -> false;
-        };
+        if (r instanceof Ir.Seq s) {
+            return s.rules().stream().anyMatch(SurfaceSpec::usesBands);
+        } else if (r instanceof Ir.Test t) {
+            return usesBands(t.then());
+        } else if (r instanceof Ir.Bands b) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     /** Whether the tables still answer as the rules would. The tags must be the same and the lowering's assumptions must still hold. */
@@ -478,43 +490,60 @@ public final class SurfaceSpec {
     static final String SEED64 = "long sf_seed64(__global const int* t, int i) { return (long) ((ulong) (uint) t[i] | ((ulong) (uint) t[i + 1] << 32)); }\n";
 
     private String cond(Ir.Cond c) {
-        return switch (c) {
-            case Ir.Biome b -> "sf_pred(s, " + b.slot() + ")";
-            case Ir.Noise n -> "sf_noise_in(s, " + n.slot() + ", " + (specBase + slotSpec[n.slot()]) + ", " + d(n.min()) + ", " + d(n.max()) + ")";
-            case Ir.Gradient g -> "sf_grad(s, " + gradLo[g.slot()] + ", " + gradHi[g.slot()] + ", " + g.slot() + ")";
-            case Ir.YCheck y -> "(s->y + " + (y.addStone() ? "s->sda" : "0") + " >= " + anchorY[y.anchor()] + " + s->sd * " + y.mult() + ")";
-            case Ir.Water w -> "(s->wh == INT_MIN || s->y + " + (w.addStone() ? "s->sda" : "0") + " >= s->wh + " + w.offset() + " + s->sd * " + w.mult() + ")";
-            case Ir.StoneDepth sd -> "sf_stone(s, " + sd.offset() + ", " + (sd.addSurface() ? 1 : 0) + ", " + sd.secondaryRange() + ", " + (sd.ceiling() ? 1 : 0) + ")";
-            case Ir.Steep st -> "sf_steep(s)";
-            case Ir.Slope sl -> "sf_slope(s, " + sl.min() + ", " + sl.max() + ")";
-            case Ir.Hole h -> "(s->sd <= 0)";
-            case Ir.AboveSurface a -> "(s->y >= s->minSurf)";
-            case Ir.Temperature t -> "sf_cold(s)";
-            case Ir.Not n -> "(!" + cond(n.target()) + ")";
-            case Ir.All a -> a.conds().isEmpty() ? "1" : "(" + String.join(" && ", a.conds().stream().map(this::cond).toList()) + ")";
-            case Ir.Any a -> a.conds().isEmpty() ? "0" : "(" + String.join(" || ", a.conds().stream().map(this::cond).toList()) + ")";
-            case Ir.Const k -> k.value() ? "1" : "0";
-            case Ir.ExternCond e -> "(" + extCondCode[e.index()] + ")";
-            default -> throw new Unsupported("condition " + c.getClass().getSimpleName());
-        };
+        if (c instanceof Ir.Biome b) {
+            return "sf_pred(s, " + b.slot() + ")";
+        } else if (c instanceof Ir.Noise n) {
+            return "sf_noise_in(s, " + n.slot() + ", " + (specBase + slotSpec[n.slot()]) + ", " + d(n.min()) + ", " + d(n.max()) + ")";
+        } else if (c instanceof Ir.Gradient g) {
+            return "sf_grad(s, " + gradLo[g.slot()] + ", " + gradHi[g.slot()] + ", " + g.slot() + ")";
+        } else if (c instanceof Ir.YCheck y) {
+            return "(s->y + " + (y.addStone() ? "s->sda" : "0") + " >= " + anchorY[y.anchor()] + " + s->sd * " + y.mult() + ")";
+        } else if (c instanceof Ir.Water w) {
+            return "(s->wh == INT_MIN || s->y + " + (w.addStone() ? "s->sda" : "0") + " >= s->wh + " + w.offset() + " + s->sd * " + w.mult() + ")";
+        } else if (c instanceof Ir.StoneDepth sd) {
+            return "sf_stone(s, " + sd.offset() + ", " + (sd.addSurface() ? 1 : 0) + ", " + sd.secondaryRange() + ", " + (sd.ceiling() ? 1 : 0) + ")";
+        } else if (c instanceof Ir.Steep st) {
+            return "sf_steep(s)";
+        } else if (c instanceof Ir.Slope sl) {
+            return "sf_slope(s, " + sl.min() + ", " + sl.max() + ")";
+        } else if (c instanceof Ir.Hole h) {
+            return "(s->sd <= 0)";
+        } else if (c instanceof Ir.AboveSurface a) {
+            return "(s->y >= s->minSurf)";
+        } else if (c instanceof Ir.Temperature t) {
+            return "sf_cold(s)";
+        } else if (c instanceof Ir.Not n) {
+            return "(!" + cond(n.target()) + ")";
+        } else if (c instanceof Ir.All a) {
+            return a.conds().isEmpty() ? "1" : "(" + String.join(" && ", a.conds().stream().map(this::cond).toList()) + ")";
+        } else if (c instanceof Ir.Any a) {
+            return a.conds().isEmpty() ? "0" : "(" + String.join(" || ", a.conds().stream().map(this::cond).toList()) + ")";
+        } else if (c instanceof Ir.Const k) {
+            return k.value() ? "1" : "0";
+        } else if (c instanceof Ir.ExternCond e) {
+            return "(" + extCondCode[e.index()] + ")";
+        } else {
+            throw new Unsupported("condition " + c.getClass().getSimpleName());
+        }
     }
 
     private void rule(StringBuilder b, Ir.Rule r, String ind) {
-        switch (r) {
-            case Ir.Seq s -> {
-                for (Ir.Rule c : s.rules()) {
-                    rule(b, c, ind);
-                }
+        if (r instanceof Ir.Seq s) {
+            for (Ir.Rule c : s.rules()) {
+                rule(b, c, ind);
             }
-            case Ir.Test t -> {
-                b.append(ind).append("if (").append(cond(t.cond())).append(") {\n");
-                rule(b, t.then(), ind + "  ");
-                b.append(ind).append("}\n");
-            }
-            case Ir.State st -> b.append(ind).append("return ").append(stateIds.get(st.state())).append(";\n");
-            case Ir.Bands bd -> b.append(ind).append("return sf_band(s);\n");
-            case Ir.ExternRule e -> b.append(ind).append(extRuleCode[e.index()]).append('\n');
-            default -> throw new Unsupported("rule " + r.getClass().getSimpleName());
+        } else if (r instanceof Ir.Test t) {
+            b.append(ind).append("if (").append(cond(t.cond())).append(") {\n");
+            rule(b, t.then(), ind + "  ");
+            b.append(ind).append("}\n");
+        } else if (r instanceof Ir.State st) {
+            b.append(ind).append("return ").append(stateIds.get(st.state())).append(";\n");
+        } else if (r instanceof Ir.Bands bd) {
+            b.append(ind).append("return sf_band(s);\n");
+        } else if (r instanceof Ir.ExternRule e) {
+            b.append(ind).append(extRuleCode[e.index()]).append('\n');
+        } else {
+            throw new Unsupported("rule " + r.getClass().getSimpleName());
         }
     }
 
@@ -753,6 +782,9 @@ public final class SurfaceSpec {
               return !(t >= 0.15f);
             }
             """);
+        for (String helper : extHelpers.values()) {
+            b.append(helper);
+        }
         b.append("int sf_apply(SC* s) {\n");
         rule(b, program.root, "  ");
         b.append("  return -1;\n}\n");

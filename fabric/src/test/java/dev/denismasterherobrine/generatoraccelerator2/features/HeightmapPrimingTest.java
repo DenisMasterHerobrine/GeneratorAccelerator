@@ -8,7 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.junit.jupiter.api.Test;
 
@@ -26,9 +26,9 @@ public class HeightmapPrimingTest {
                 for (int[] c : CHUNKS) {
                     ProtoChunk vanilla = world.noise(c[0], c[1]);
                     ProtoChunk fast = world.noise(c[0], c[1]);
-                    Heightmap.primeHeightmaps(vanilla, ChunkStatus.FINAL_HEIGHTMAPS);
-                    HeightmapPriming.prime(fast, ChunkStatus.FINAL_HEIGHTMAPS, Heightmap::primeHeightmaps);
-                    for (Heightmap.Types type : ChunkStatus.FINAL_HEIGHTMAPS) {
+                    Heightmap.primeHeightmaps(vanilla, ChunkStatus.POST_FEATURES);
+                    HeightmapPriming.prime(fast, ChunkStatus.POST_FEATURES, Heightmap::primeHeightmaps);
+                    for (Heightmap.Types type : ChunkStatus.POST_FEATURES) {
                         assertEquals(vanilla.hasPrimedHeightmap(type), fast.hasPrimedHeightmap(type), "presence " + type);
                         assertArrayEquals(vanilla.getOrCreateHeightmapUnprimed(type).getRawData(), fast.getOrCreateHeightmapUnprimed(type).getRawData(),
                             type + ", " + preset + " seed " + seed + " chunk " + c[0] + "," + c[1]);
@@ -52,7 +52,7 @@ public class HeightmapPrimingTest {
             ProtoChunk vanilla = world.noise(c[0], c[1]);
             ProtoChunk fast = world.noise(c[0], c[1]);
             for (ProtoChunk chunk : new ProtoChunk[] { vanilla, fast }) {
-                chunk.setPersistedStatus(ChunkStatus.CARVERS);
+                chunk.setStatus(ChunkStatus.CARVERS);
                 // a "neighbour's" writes: a pillar above the surface and a hole into it (the first primes the final maps)
                 int top = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG).getFirstAvailable(5, 7);
                 chunk.setBlockState(new BlockPos(5, top + 3, 7), Blocks.OAK_LOG.defaultBlockState(), false);
@@ -61,9 +61,9 @@ public class HeightmapPrimingTest {
                 chunk.setBlockState(new BlockPos(9, top2 - 1, 2), Blocks.AIR.defaultBlockState(), false);
                 chunk.setBlockState(new BlockPos(9, top2 - 2, 2), Blocks.WATER.defaultBlockState(), false);
             }
-            Heightmap.primeHeightmaps(vanilla, ChunkStatus.FINAL_HEIGHTMAPS);
-            HeightmapPriming.prime(fast, ChunkStatus.FINAL_HEIGHTMAPS, Heightmap::primeHeightmaps);
-            for (Heightmap.Types type : ChunkStatus.FINAL_HEIGHTMAPS) {
+            Heightmap.primeHeightmaps(vanilla, ChunkStatus.POST_FEATURES);
+            HeightmapPriming.prime(fast, ChunkStatus.POST_FEATURES, Heightmap::primeHeightmaps);
+            for (Heightmap.Types type : ChunkStatus.POST_FEATURES) {
                 assertArrayEquals(vanilla.getOrCreateHeightmapUnprimed(type).getRawData(), fast.getOrCreateHeightmapUnprimed(type).getRawData(),
                     type + ", chunk " + c[0] + "," + c[1]);
             }

@@ -14,6 +14,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -176,6 +177,22 @@ public final class ColumnHooks {
         default boolean setsUpShared() {
             return false;
         }
+
+        /**
+         * True for code that keeps a build's values in the surface system's fields between its places. Two builds at once would share
+         * them, so each thread then builds on its own surface system ({@link SurfaceCopies}).
+         */
+        default boolean keepsSystemState() {
+            return false;
+        }
+
+        /**
+         * True for a {@link Place#END} hook that only writes blocks and reads nothing the surface wrote. Where the GPU builds the
+         * surface, it runs on the CPU right after the GPU's blocks are written ({@link #afterBlocks}), as vanilla runs it after its loop.
+         */
+        default boolean afterBlocks() {
+            return false;
+        }
     }
 
     /** Whether {@code mixin}'s code is set up (its handlers found). */
@@ -186,13 +203,15 @@ public final class ColumnHooks {
     /**
      * Runs the record hooks ({@link Hook#record}) for a chunk whose surface another builder makes (the GPU's), before that builder
      * writes: the start hooks, then per column the top hooks with the column's biome at one above its top
-     * ({@code biomeManager.getBiome}, vanilla's lookup), then the end hooks. Does nothing without record hooks.
+     * ({@code biomeManager.getBiome}, vanilla's lookup), then the end hooks. Does nothing without record hooks. Returns the frame they
+     * ran with, for the hooks that run once the blocks are written ({@link #afterBlocks}), or null.
      */
-    public static void records(SurfaceSystem system, RandomState randomState, BiomeManager biomeManager, Registry<Biome> biomes, boolean legacy,
+    @Nullable
+    public static Frame records(SurfaceSystem system, RandomState randomState, BiomeManager biomeManager, Registry<Biome> biomes, boolean legacy,
                                WorldGenerationContext context, ChunkAccess chunk, SurfaceRules.RuleSource rule) {
         Resolved r = resolved();
         if (r == null || !r.valid() || !r.hasRecords()) {
-            return;
+            return null;
         }
         Frame f = new Frame();
         f.system = system;
@@ -223,12 +242,36 @@ public final class ColumnHooks {
         } catch (Throwable t) {
             throw Resolved.rethrow(t);
         }
+        return f;
+    }
+
+    /** Runs the end hooks that write once the other builder's blocks are in ({@link Hook#afterBlocks}), with the records' frame. */
+    public static void afterBlocks(@Nullable Frame f) {
+        Resolved r = resolved();
+        if (f == null || r == null || !r.valid()) {
+            return;
+        }
+        try {
+            for (Hook h : r.end) {
+                if (h.afterBlocks()) {
+                    h.run(f);
+                }
+            }
+        } catch (Throwable t) {
+            throw Resolved.rethrow(t);
+        }
     }
 
     /** True when no hook of the column loop reads the NoiseChunk (or there are no hooks), and the hooks can all run. */
     public static boolean noiseChunkFree() {
         Resolved r = resolved();
         return r == null || r.valid() && !r.readsNoiseChunk();
+    }
+
+    /** True when some hook keeps a build's values in the surface system ({@link Hook#keepsSystemState}). */
+    public static boolean keepsSystemState() {
+        Resolved r = resolved();
+        return r != null && r.keepsSystemState();
     }
 
     /** Builds a mixin's hooks by looking up its merged handler methods. Throws when the methods do not fit. */
@@ -387,11 +430,11 @@ public final class ColumnHooks {
 
         private static final Test PLAIN = Holder::is;
 
-        /** Whether some hook only records ({@link Hook#record}). */
+        /** Whether some hook only records ({@link Hook#record}) or writes once the blocks are in ({@link Hook#afterBlocks}). */
         boolean hasRecords() {
             for (Hook[] hooks : new Hook[][] { start, top, end }) {
                 for (Hook h : hooks) {
-                    if (h.record()) {
+                    if (h.record() || h.afterBlocks()) {
                         return true;
                     }
                 }
@@ -412,6 +455,18 @@ public final class ColumnHooks {
             for (Hook[] hooks : new Hook[][] { start, top, rules, frozen, end, { topWrapper, frozenWrapper } }) {
                 for (Hook h : hooks) {
                     if (h != null && h.readsNoiseChunk()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /** Whether some hook keeps a build's values in the surface system ({@link Hook#keepsSystemState}). */
+        boolean keepsSystemState() {
+            for (Hook[] hooks : new Hook[][] { start, top, rules, frozen, end, { topWrapper, frozenWrapper } }) {
+                for (Hook h : hooks) {
+                    if (h != null && h.keepsSystemState()) {
                         return true;
                     }
                 }
@@ -490,10 +545,12 @@ public final class ColumnHooks {
 
     /**
      * The handler method another mod's mixin merged into {@code SurfaceSystem}. Its merged name ends with {@code "$" + name},
-     * and it takes exactly {@code params}. That excludes MixinExtras' bridge for sugar, which takes references.
+     * and it takes exactly {@code params}. That excludes MixinExtras' bridge for sugar, which takes references, and GA2's own
+     * handlers, which can share a mod's handler name and signature (GA2's {@code ga2$buildSurface} and Environmental's
+     * {@code buildSurface}).
      */
     public static MethodHandle handler(String name, Class<?> returnType, Class<?>... params) throws ReflectiveOperationException {
-        MethodHandle h = Reflect.mergedMethod(SurfaceSystem.class, "$" + name, false, returnType, params);
+        MethodHandle h = Reflect.mergedMethod(SurfaceSystem.class, n -> n.endsWith("$" + name) && !n.contains("$ga2$"), false, returnType, params);
         if (h == null) {
             throw new NoSuchMethodException("SurfaceSystem.*$" + name + Arrays.toString(params));
         }

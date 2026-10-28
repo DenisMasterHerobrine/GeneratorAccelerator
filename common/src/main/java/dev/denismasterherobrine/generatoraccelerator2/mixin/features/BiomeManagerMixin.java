@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.features;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -71,7 +72,7 @@ public abstract class BiomeManagerMixin {
             Holder<Biome> vanilla = original.call(pos);
             if (vanilla != biome && GA2_DIFFERING.incrementAndGet() <= 10) {
                 Ga2Log.get("Verify").warn("region biome mismatch at {}: expected {}, got {}",
-                    pos, vanilla.getRegisteredName(), biome.getRegisteredName());
+                    pos, HolderNames.name(vanilla), HolderNames.name(biome));
             }
         }
     }

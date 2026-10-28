@@ -40,7 +40,7 @@ public class RegionWriterTest {
             Blocks.STONE.defaultBlockState(), Blocks.AIR.defaultBlockState(), Blocks.CAVE_AIR.defaultBlockState(), Blocks.WATER.defaultBlockState(),
             Blocks.LAVA.defaultBlockState(), Blocks.OAK_LOG.defaultBlockState(), Blocks.OAK_LEAVES.defaultBlockState().setValue(BlockStateProperties.DISTANCE, 3),
             Blocks.CHEST.defaultBlockState(), Blocks.SPAWNER.defaultBlockState(), Blocks.SNOW.defaultBlockState(), Blocks.KELP_PLANT.defaultBlockState(),
-            Blocks.SHORT_GRASS.defaultBlockState(), Blocks.GLOW_LICHEN.defaultBlockState(), Blocks.BEE_NEST.defaultBlockState(), Blocks.DIRT.defaultBlockState(),
+            Blocks.GRASS.defaultBlockState(), Blocks.GLOW_LICHEN.defaultBlockState(), Blocks.BEE_NEST.defaultBlockState(), Blocks.DIRT.defaultBlockState(),
             Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.MOSS_BLOCK.defaultBlockState(), Blocks.AMETHYST_BLOCK.defaultBlockState(),
             Blocks.LIGHTNING_ROD.defaultBlockState(), Blocks.VINE.defaultBlockState(), Blocks.TALL_GRASS.defaultBlockState()
         };

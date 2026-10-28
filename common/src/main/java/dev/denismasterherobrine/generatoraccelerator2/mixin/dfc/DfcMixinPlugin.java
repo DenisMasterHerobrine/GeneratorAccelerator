@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Coremods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.BeardifierChain;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CallbackReplay;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.LateInspection;
@@ -13,6 +14,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.MergedMethods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Takeover;
 import dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaMixins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
@@ -82,10 +84,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
 
     /** The methods of a vanilla modifier class whose work the placement pipeline does. */
     private static final List<String> MODIFIER_METHODS = List.of("getPositions", "shouldPlace", "count");
-    private static final String CHUNK_STATUS = "Lnet/minecraft/world/level/chunk/status/ChunkStatus;";
+    private static final String CHUNK_STATUS = "Lnet/minecraft/world/level/chunk/ChunkStatus;";
     private static final String FEATURE_CTX = "Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;";
     private static final String CHUNK_READ = "read(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/ai/village/poi/PoiManager;"
-        + "Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/world/level/chunk/ProtoChunk;";
+        + "Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/world/level/chunk/ProtoChunk;";
     /** The methods whose work SculkFast does, by name, across the sculk classes. Each class has some of them. */
     private static final List<String> SCULK_METHODS = List.of("updateCursors", "addCursors", "addCursor", "clear", "update", "shouldUpdate", "mergeWith",
         "getBlockBehaviour", "getRandomizedNonCornerNeighbourOffsets", "getValidMovementPos", "isMovementUnobstructed", "isUnobstructed",
@@ -101,7 +103,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     private static final Map<String, FeatureHook> FEATURE_HOOKS = Map.ofEntries(
         Map.entry("WorldGenRegionMixin", new FeatureHook(FeatureTargets.REGION, List.of(
             "getChunk(II" + CHUNK_STATUS + "Z)Lnet/minecraft/world/level/chunk/ChunkAccess;",
-            "<init>(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/util/StaticCache2D;Lnet/minecraft/world/level/chunk/status/ChunkStep;Lnet/minecraft/world/level/chunk/ChunkAccess;)V"))),
+            "<init>(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;" + CHUNK_STATUS + "I)V"))),
         // the reads skip getChunk(int, int) and ProtoChunk's reads. They still look chunks up through getChunk(int, int, ChunkStatus, boolean).
         Map.entry("WorldGenRegionReadsMixin", new FeatureHook(FeatureTargets.REGION_READS, List.of(
             "getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
@@ -174,9 +176,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("ChunkGeneratorDecorationMixin", new FeatureHook(FeatureTargets.DECORATION, List.of(
             "applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"))));
 
-    /** The block search {@code findBlockLightSources} runs. NeoForge's search, with its dynamic light emission test, or vanilla's on Fabric. */
-    private static final String LIGHT_SOURCE_SEARCH = Platform.isNeoForge()
-        ? "findBlocks(Ljava/util/function/Predicate;Ljava/util/function/BiPredicate;Ljava/util/function/BiConsumer;)V"
+    /** The block search {@code findBlockLightSources} runs. Forge's search, with its light emission test by position, or vanilla's on Fabric. */
+    private static final String LIGHT_SOURCE_SEARCH = Platform.isForge()
+        ? "findBlocks(Ljava/util/function/BiPredicate;Ljava/util/function/BiConsumer;)V"
         : "findBlocks(Ljava/util/function/Predicate;Ljava/util/function/BiConsumer;)V";
 
     /** Scheduling, surface and carver hooks, keyed by mixin simple name. Recorded in {@link HookTargets}. */
@@ -261,6 +263,15 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                     + "Lnet/minecraft/world/level/levelgen/WorldGenerationContext;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;"
                     + "Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;)V",
                 "getSurfaceDepth(II)I", "getSurfaceSecondary(II)D", "getBand(III)Lnet/minecraft/world/level/block/state/BlockState;"), MergedMethods.Mode.BYPASS),
+            // the compiled rules in vanilla's loop read vanilla's context, so other mods' code elsewhere in the loop stays as it is.
+            // Only a change to the rule's apply call counts
+            new FeatureHook(HookTargets.SURFACE_LOOP_RULES, List.of(
+                "buildSurface(Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/core/Registry;Z"
+                    + "Lnet/minecraft/world/level/levelgen/WorldGenerationContext;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;"
+                    + "Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;)V"), List.of(), MergedMethods.Mode.WRAP,
+                // the call returns Object, so a modifier of the rule it gives names only Object
+                List.of("Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;", "Lnet/minecraft/world/level/levelgen/SurfaceRules$SurfaceRule;",
+                    "Ljava/lang/Object;")),
             new FeatureHook(HookTargets.SURFACE_TOP_MATERIAL, List.of(
                 "topMaterial(Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;Lnet/minecraft/world/level/levelgen/carver/CarvingContext;"
                     + "Ljava/util/function/Function;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;"
@@ -284,9 +295,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         // GPU world generation answers the noise and biome steps at their head (gpu.GpuSteps). The biome step's work is done on the GPU.
         Map.entry("GpuGeneratorMixin", List.of(
             new FeatureHook(HookTargets.GPU_NOISE, List.of(
-                "fillFromNoise(Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)Ljava/util/concurrent/CompletableFuture;")),
+                "fillFromNoise(Ljava/util/concurrent/Executor;Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)Ljava/util/concurrent/CompletableFuture;")),
             new FeatureHook(HookTargets.GPU_BIOMES, List.of(
-                "createBiomes(Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)Ljava/util/concurrent/CompletableFuture;")),
+                "createBiomes(Ljava/util/concurrent/Executor;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)Ljava/util/concurrent/CompletableFuture;")),
             new FeatureHook(HookTargets.GPU_BIOMES, List.of(
                 "doCreateBiomes(Lnet/minecraft/world/level/levelgen/blending/Blender;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)V"),
                 MergedMethods.Mode.BYPASS))),
@@ -303,7 +314,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                     + "Lnet/minecraft/world/level/levelgen/blending/Blender;)V")))),
         Map.entry("HolderTagsMixin", List.of(
             new FeatureHook(HookTargets.TAG_BITS, List.of("is(Lnet/minecraft/tags/TagKey;)Z", "bindTags(Ljava/util/Collection;)V"), MergedMethods.Mode.BYPASS),
-            // vanilla has no equals or hashCode here. NeoForge adds both. A mod that adds or changes them counts as a change
+            // vanilla and Forge have no equals or hashCode here. A mod that adds or changes them counts as a change
             new FeatureHook(HookTargets.DIRECT_SETS, List.of("equals(Ljava/lang/Object;)Z", "hashCode()I", "key()Lnet/minecraft/resources/ResourceKey;",
                 "kind()Lnet/minecraft/core/Holder$Kind;", "getKey()Lnet/minecraft/resources/ResourceKey;"), MergedMethods.Mode.BYPASS))),
         Map.entry("DirectSetMixin", List.of(
@@ -364,8 +375,14 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.NOISE_FILL_STEPS, List.of("updateForX(ID)V", "updateForY(ID)V"), MergedMethods.Mode.BYPASS),
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of(
                 "getInterpolatedState()Lnet/minecraft/world/level/block/state/BlockState;",
-                "lambda$new$0(Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
-                MergedMethods.Mode.BYPASS))),
+                "method_40530(Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
+                MergedMethods.Mode.BYPASS),
+            // the constructor builds the final-density cell cache from the router's final density. The compiled final density and
+            // the GPU's terrain compute the router's. Another mod's redirect or wrapper of the router or of its functions there counts
+            new FeatureHook(HookTargets.NOISE_FINAL_DENSITY, List.of("<init>"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/world/level/levelgen/NoiseRouter;", "Lnet/minecraft/world/level/levelgen/DensityFunction;")),
+            new FeatureHook(HookTargets.GPU_NOISE, List.of("<init>"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/world/level/levelgen/NoiseRouter;", "Lnet/minecraft/world/level/levelgen/DensityFunction;")))),
         Map.entry("MaterialRuleListMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of("calculate(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
                 MergedMethods.Mode.BYPASS),
@@ -381,9 +398,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                     + "Lnet/minecraft/world/level/block/Block;Z)Lit/unimi/dsi/fastutil/objects/ObjectArrayList;"),
                 MergedMethods.Mode.BYPASS))),
         // placeInWorld's processBlockInfos call, clipped to the bounding box (structure.TemplatePlacement). One mixin per loader:
-        // NeoForge's call has a sixth argument. A listed method the running loader does not have is never matched.
+        // Forge's call has a sixth argument. A listed method the running loader does not have is never matched.
         Map.entry("StructureTemplatePlaceMixin", TEMPLATE_CLIP_HOOKS),
-        Map.entry("StructureTemplatePlaceNeoMixin", TEMPLATE_CLIP_HOOKS),
+        Map.entry("StructureTemplatePlaceForgeMixin", TEMPLATE_CLIP_HOOKS),
         Map.entry("CacheAllInCellInspectMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of("compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D"), MergedMethods.Mode.BYPASS))),
         // a change to the vein rule turns off the whole-cell short cut and the rule's transcription (dfc.runtime.VeinRule).
@@ -392,7 +409,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.NOISE_VEIN_RULE, List.of(
                 "create(Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction;"
                     + "Lnet/minecraft/world/level/levelgen/PositionalRandomFactory;)Lnet/minecraft/world/level/levelgen/NoiseChunk$BlockStateFiller;",
-                "lambda$create$0(Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/levelgen/PositionalRandomFactory;"
+                "method_40547(Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/levelgen/PositionalRandomFactory;"
                     + "Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
                 MergedMethods.Mode.BYPASS))),
         // Biolith's built parameter list returned at the head of parameters() (compat/biolith)
@@ -417,7 +434,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             // whole-cell air reads the vanilla picker as a function of y alone. A changed picker is asked per block instead.
             new FeatureHook(HookTargets.NOISE_FLUID_PICKER, List.of(
                 "createFluidPicker(Lnet/minecraft/world/level/levelgen/NoiseGeneratorSettings;)Lnet/minecraft/world/level/levelgen/Aquifer$FluidPicker;",
-                "lambda$createFluidPicker$4(ILnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;III)Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"),
+                "method_45509(Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;ILnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"
+                    + "Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;III)Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"),
                 MergedMethods.Mode.BYPASS))),
         // the fossil probe answers for vanilla's placement and biome check. A change to either turns the probe off.
         Map.entry("NetherFossilStructureMixin", List.of(
@@ -435,19 +453,19 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         // the ring bound follows from how vanilla computes and stores the positions. A change to that computation or storage
         // keeps every check on the positions themselves. So does a wrapper of the positions inside the check, after GA2's callback.
         Map.entry("ChunkGeneratorStructureStateAccessor", List.of(
-            new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of("generatePositions", "lambda$generatePositions$4", "generateRingPositions",
-                "lambda$generateRingPositions$5", "getRingPositionsFor"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of("generatePositions", "method_46711", "generateRingPositions",
+                "method_46698", "getRingPositionsFor"), MergedMethods.Mode.BYPASS))),
         Map.entry("ConcentricRingsStructurePlacementMixin", List.of(
             new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of(
                 "isPlacementChunk(Lnet/minecraft/world/level/chunk/ChunkGeneratorStructureState;II)Z")))),
-        // generateSurface has two GA2 handlers. One takes the step over at its head, when GA2 runs every change other mods
-        // make to generateSurface itself. Otherwise, the other handler hands the generator call to the pool.
-        // The SURFACE and CARVERS steps hand only their generator call to the pool. Other mods' code before the call runs as
-        // in vanilla (before GA2's wrapper). Code after the call would run before the call finishes, so the call stays inline.
-        Map.entry("ChunkStatusTasksMixin", List.of(
-            new FeatureHook(HookTargets.SURFACE_STEP, List.of("generateSurface"), "!ga2$surfaceStep"),
-            new FeatureHook(HookTargets.SURFACE_STEP_BODY, List.of("generateSurface"), "ga2$surfaceStep"),
-            new FeatureHook(HookTargets.CARVER_STEP, List.of("generateCarvers")))),
+        // The SURFACE and CARVERS tasks (ChunkStatus lambdas method_16569 and method_38282) hand only their generator call to the
+        // pool. Other mods' code before the call runs as in vanilla (before GA2's wrapper). Code after the call would run before
+        // the call finishes, so the call stays inline. When GA2 takes the SURFACE step over, it runs none of the task, so every
+        // change other mods make to it counts there.
+        Map.entry("ChunkStatusStepsMixin", List.of(
+            new FeatureHook(HookTargets.SURFACE_STEP, List.of("method_16569")),
+            new FeatureHook(HookTargets.SURFACE_STEP_BODY, List.of("method_16569"), MergedMethods.Mode.BYPASS),
+            new FeatureHook(HookTargets.CARVER_STEP, List.of("method_38282")))),
         // the join wait decides the spawn area loop through its count. Another mod that changes that loop (callbacks aside)
         // keeps its own wait.
         Map.entry("MinecraftServerJoinMixin", List.of(
@@ -561,7 +579,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         // a chunk asked off the server thread that already has the status skips the method's body (the task on the server thread)
         Map.entry("ServerChunkCachePresentMixin", List.of(
             new FeatureHook(HookTargets.CHUNK_PRESENT_OFF_THREAD,
-                List.of("getChunk(IILnet/minecraft/world/level/chunk/status/ChunkStatus;Z)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
+                List.of("getChunk(IILnet/minecraft/world/level/chunk/ChunkStatus;Z)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
         // a loaded section's palettes are decoded entry by entry, then built by unpack, as the codecs would
         Map.entry("PaletteCodecInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(
@@ -608,10 +626,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             // loadAsync's task is vanilla's up to the parse. submitTask and the pending writes are used as vanilla uses them.
             new FeatureHook(HookTargets.STORAGE_PARALLEL_READ, List.of("loadAsync(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"),
                 List.of("submitTask(Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;")),
-            new FeatureHook(HookTargets.STORAGE_PRECOMPRESS, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "store(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Ljava/util/concurrent/CompletableFuture;",
+            new FeatureHook(HookTargets.STORAGE_PRECOMPRESS, List.of("<init>(Ljava/nio/file/Path;ZLjava/lang/String;)V", "store(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Ljava/util/concurrent/CompletableFuture;",
                 "runStore(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/storage/IOWorker$PendingStore;)V")),
             // the scan asks the worker's own isOldChunk (Tectonic's version check there keeps working)
-            new FeatureHook(HookTargets.STORAGE_OLD_CHUNK_SCAN, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "createOldDataForRegion(II)Ljava/util/concurrent/CompletableFuture;",
+            new FeatureHook(HookTargets.STORAGE_OLD_CHUNK_SCAN, List.of("<init>(Ljava/nio/file/Path;ZLjava/lang/String;)V", "createOldDataForRegion(II)Ljava/util/concurrent/CompletableFuture;",
                 "scanChunk(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/StreamTagVisitor;)Ljava/util/concurrent/CompletableFuture;"),
                 List.of("isOldChunk(Lnet/minecraft/nbt/CompoundTag;)Z")))));
 
@@ -627,22 +645,22 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     }
 
     /**
-     * GA2 mixins apply, with two exceptions. The mailbox, main thread executor and unload mixins stay out under C2ME or Moonrise, whose chunk systems
-     * schedule that work themselves. With takeover off, the DFC's NoiseChunk and climate hooks step aside for the mods
+     * GA2 mixins apply, with two exceptions. The mailbox, main thread executor and unload mixins stay out under C2ME, whose chunk system
+     * schedules that work itself. With takeover off, the DFC's NoiseChunk and climate hooks step aside for the mods
      * known to patch that code. Otherwise, overlapping mixins of other performance mods are cancelled instead
      * (compat/Takeover through MixinSquared).
      */
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (mixinClassName.endsWith(".StructureTemplatePlaceMixin") || mixinClassName.endsWith(".StructureTemplatePlaceNeoMixin")) {
-            // the loader's own processBlockInfos call: vanilla's five arguments on Fabric, NeoForge's six
-            return mixinClassName.endsWith("Neo" + "Mixin") == Platform.isNeoForge();
+        if (mixinClassName.endsWith(".StructureTemplatePlaceMixin") || mixinClassName.endsWith(".StructureTemplatePlaceForgeMixin")) {
+            // the loader's own processBlockInfos call: vanilla's five arguments on Fabric, Forge's six
+            return mixinClassName.endsWith("Forge" + "Mixin") == Platform.isForge();
         }
         if ((mixinClassName.endsWith(".ChunkMapMailboxMixin") || mixinClassName.endsWith(".MainThreadExecutorMixin")
             || mixinClassName.endsWith(".ChunkMapUnloadMixin") || mixinClassName.endsWith(".ThreadedLightTasksMixin")
             || mixinClassName.endsWith(".ChunkMapLightTasksMixin") || mixinClassName.endsWith(".ThreadedLightLayersMixin"))
-            && (Compat.isLoaded("c2me") || Compat.isLoaded("moonrise"))) {
-            // their chunk systems schedule these mailboxes, their light engines and their unloads themselves
+            && Compat.isLoaded("c2me")) {
+            // its chunk system schedules these mailboxes, its light engine and its unloads itself
             return false;
         }
         if (mixinClassName.contains(".mixin.chunkload.") && !mixinClassName.endsWith(".ClientChunkPacketTimingMixin")
@@ -688,7 +706,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     private static final String BEARDIFIER_COMPUTE = "compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D";
     /** The formulas the piece index and the culling bounds take from vanilla (compute itself is read by BeardifierChain). */
     private static final List<String> BEARDIFIER_STATICS = List.of(
-        "getBuryContribution(DDD)D", "getBeardContribution(IIII)D", "computeBeardContribution(III)D", "isInKernelRange(I)Z");
+        "getBuryContribution(III)D", "getBeardContribution(IIII)D", "computeBeardContribution(III)D", "isInKernelRange(I)Z");
 
     @Override
     public List<String> getMixins() {
@@ -737,6 +755,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         boolean forced = !hooks.isEmpty() && Boolean.getBoolean(HookTargets.forceProperty(hooks.get(0).name()));
         if (!late) {
             LOGGER.warn("{}: fast {} off (late mixin inspection unavailable)",
+                Names.mojangClass(targetClass.name), methods);
+        } else if (!LithiumMixins.overwriteCallsFit(targetClass)) {
+            LOGGER.info("{}: {} with a Lithium counter callback GA2 does not know -> GA2 versions not applied",
                 Names.mojangClass(targetClass.name), methods);
         } else if (changedBy.isEmpty() || forced) {
             LateOverwrites.install(targetClass, methods);
@@ -833,7 +854,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         List<FeatureHook> stepHooks = STEP_HOOKS.get(mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1));
         if (stepHooks != null && mixinClassName.startsWith(OWN_MIXIN_PACKAGE)) {
             for (FeatureHook hook : stepHooks) {
-                HookTargets.recordChanges(hook.name(), Coremods.with(targetClass.name, hook.methods(), hook.inspectCalls(targetClass)));
+                HookTargets.recordChanges(hook.name(), CallbackReplay.take(hook.name(), targetClass,
+                    Coremods.with(targetClass.name, hook.methods(), hook.inspectCalls(targetClass))));
             }
             return;
         }
@@ -852,7 +874,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         }
         FeatureHook featureHook = FEATURE_HOOKS.get(mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1));
         if (featureHook != null && mixinClassName.contains(".mixin.features.")) {
-            FeatureTargets.recordChanges(featureHook.name(), Coremods.with(targetClass.name, featureHook.methods(), featureHook.inspectCalls(targetClass)));
+            FeatureTargets.recordChanges(featureHook.name(), CallbackReplay.take(featureHook.name(), targetClass,
+                Coremods.with(targetClass.name, featureHook.methods(), featureHook.inspectCalls(targetClass))));
             return;
         }
         if (mixinClassName.endsWith(".mixin.aquifer.NoiseChunkSurfaceMixin")) {

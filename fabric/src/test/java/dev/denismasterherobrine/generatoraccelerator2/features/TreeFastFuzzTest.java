@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import dev.denismasterherobrine.generatoraccelerator2.features.tree.TreeBees;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.Fuzz;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -29,7 +30,7 @@ import java.lang.reflect.Field;
  * pass meets other trees' leaves and logs. Blocks, ticks, side effects and the random's state must be the same.
  */
 public class TreeFastFuzzTest {
-    private static final int TRIALS = 12;
+    private static final int TRIALS = Fuzz.size(12, 4);
 
     @Test
     void treesMatchVanilla() {
@@ -62,7 +63,7 @@ public class TreeFastFuzzTest {
         List<String> failures = new ArrayList<>();
         int compared = 0;
         int placed = 0;
-        for (long terrainSeed : new long[] { 20261002L, 777L }) {
+        for (long terrainSeed : Fuzz.seeds(20261002L, 777L)) {
             for (FeatureRun.ConfiguredCase c : trees) {
                 for (int t = 0; t < TRIALS; t++) {
                     FeatureRun.Result ref = run(r, c, terrainSeed, t, true);

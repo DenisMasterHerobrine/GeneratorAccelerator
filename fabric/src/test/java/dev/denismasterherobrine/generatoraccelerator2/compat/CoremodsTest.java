@@ -20,7 +20,7 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
- * {@link Coremods}' comparison. A coremod's inserted call is found and named after the class it calls. NeoForge's own
+ * {@link Coremods}' comparison. A coremod's inserted call is found and named after the class it calls. Forge's own
  * rewrites are not changes, and neither are switched invoke opcodes on the class's own methods. A change that calls no
  * other mod's code is reported as unknown. Uses real game classes, read from the jar.
  */
@@ -40,16 +40,16 @@ public class CoremodsTest {
 
     @Test
     void sameCodeIsNoChange() throws Exception {
-        String owner = "net/minecraft/world/level/chunk/status/ChunkStatusTasks";
-        assertNull(Coremods.compare(owner, method(read(owner), "generateSurface"), method(read(owner), "generateSurface")));
+        String owner = "net/minecraft/world/level/chunk/ChunkStatus";
+        assertNull(Coremods.compare(owner, method(read(owner), "method_16569"), method(read(owner), "method_16569")));
     }
 
     @Test
     void twilightForestBlanketingIsFound() throws Exception {
-        String owner = "net/minecraft/world/level/chunk/status/ChunkStatusTasks";
-        MethodNode original = method(read(owner), "generateSurface");
-        MethodNode changed = method(read(owner), "generateSurface");
-        // what ChunkStatusTaskTransformer does: after the generator call, chunkBlanketing(chunk, region)
+        String owner = "net/minecraft/world/level/chunk/ChunkStatus";
+        MethodNode original = method(read(owner), "method_16569");
+        MethodNode changed = method(read(owner), "method_16569");
+        // what a coremod like Twilight Forest's does to the SURFACE task (method_16569): after the generator call, chunkBlanketing(chunk, region)
         AbstractInsnNode call = null;
         for (AbstractInsnNode insn = changed.instructions.getFirst(); insn != null; insn = insn.getNext()) {
             if (insn instanceof MethodInsnNode m && m.name.equals("buildSurface")) {
@@ -58,7 +58,7 @@ public class CoremodsTest {
         }
         assertNotNull(call);
         InsnList inserted = new InsnList();
-        inserted.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        inserted.add(new VarInsnNode(Opcodes.ALOAD, 4));
         inserted.add(new VarInsnNode(Opcodes.ALOAD, 5));
         inserted.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "twilightforest/asmhooks/WorldgenHooks", "chunkBlanketing",
             "(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/server/level/WorldGenRegion;)V", false));
@@ -127,8 +127,8 @@ public class CoremodsTest {
     }
 
     @Test
-    void neoForgeGettersAreNoChange() throws Exception {
-        // NeoForge's ReplaceFieldWithGetterAccess on Structure: its methods read settings through getModifiedStructureSettings()
+    void forgeGettersAreNoChange() throws Exception {
+        // Forge's field_to_method coremod on Structure: its methods read settings through getModifiedStructureSettings()
         String owner = "net/minecraft/world/level/levelgen/structure/Structure";
         ClassNode jar = read(owner);
         ClassNode loaded = read(owner);
@@ -147,7 +147,7 @@ public class CoremodsTest {
                 }
             }
         }
-        Coremods.applyNeoForge(jar);
+        Coremods.applyForge(jar);
         for (MethodNode m : loaded.methods) {
             MethodNode o = method(jar, m.name);
             if (o.desc.equals(m.desc)) {

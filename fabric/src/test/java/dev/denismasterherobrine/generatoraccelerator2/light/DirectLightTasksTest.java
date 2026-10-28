@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -26,6 +27,7 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ChunkTaskPriorityQueueSorter;
 import net.minecraft.server.level.ThreadedLevelLightEngine;
+import net.minecraft.util.thread.BlockableEventLoop;
 import net.minecraft.util.thread.ProcessorHandle;
 import net.minecraft.util.thread.ProcessorMailbox;
 import net.minecraft.world.level.BlockGetter;
@@ -40,7 +42,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import org.junit.jupiter.api.Test;
@@ -137,7 +139,7 @@ public class DirectLightTasksTest {
         ProtoChunk[] chunks = HarnessWorld.clone(world.registries, base, world.heights);
         LevelLightEngine engine = new LevelLightEngine(getter(chunks, world.heights), true, true);
         for (ProtoChunk c : chunks) {
-            c.setPersistedStatus(ChunkStatus.INITIALIZE_LIGHT);
+            c.setStatus(ChunkStatus.INITIALIZE_LIGHT);
             c.initializeLightSources();
             LevelChunkSection[] sections = c.getSections();
             for (int i = 0; i < sections.length; i++) {
@@ -190,7 +192,7 @@ public class DirectLightTasksTest {
             List<CompletableFuture<?>> steps = new ArrayList<>();
             for (ProtoChunk c : order) {
                 steps.add(CompletableFuture.supplyAsync(() -> {
-                    c.setPersistedStatus(ChunkStatus.INITIALIZE_LIGHT);
+                    c.setStatus(ChunkStatus.INITIALIZE_LIGHT);
                     c.initializeLightSources();
                     return engine.initializeLight(c, false);
                 }, workers).thenCompose(f -> f));
@@ -218,7 +220,7 @@ public class DirectLightTasksTest {
                 });
                 held.await(60, TimeUnit.SECONDS);
                 apply(chunks, changes);
-                CompletableFuture<?> done = engine.waitForPendingTasks(0, 0);
+                CompletableFuture<?> done = pendingTasks(engine);
                 release.countDown();
                 done.get(60, TimeUnit.SECONDS);
             }
@@ -298,12 +300,46 @@ public class DirectLightTasksTest {
     }
 
     /**
-     * A chunk map without its constructor run. The light engine only asks it for a chunk's queue level, a lambda the sorter
-     * would read. The direct path never reads it.
+     * A chunk map without its constructor run. The light engine asks it for a chunk's queue level, a lambda the sorter would
+     * read, and has it release a lit chunk's light ticket on the main thread. Those releases are queued and never run.
      */
     static ChunkMap chunkMap() throws Exception {
         Field f = Unsafe.class.getDeclaredField("theUnsafe");
         f.setAccessible(true);
-        return (ChunkMap) ((Unsafe) f.get(null)).allocateInstance(ChunkMap.class);
+        ChunkMap map = (ChunkMap) ((Unsafe) f.get(null)).allocateInstance(ChunkMap.class);
+        Field main = ChunkMap.class.getDeclaredField("mainThreadExecutor");
+        main.setAccessible(true);
+        main.set(map, new BlockableEventLoop<Runnable>("ga2-test-main") {
+            @Override
+            protected Runnable wrapRunnable(Runnable task) {
+                return task;
+            }
+
+            @Override
+            protected boolean shouldRun(Runnable task) {
+                return false;
+            }
+
+            @Override
+            protected Thread getRunningThread() {
+                return Thread.currentThread();
+            }
+        });
+        return map;
+    }
+
+    /** Done once the tasks queued before it have run, as a no-op task queued after the light update (the engine's own addTask). */
+    private static CompletableFuture<?> pendingTasks(ThreadedLevelLightEngine engine) throws ReflectiveOperationException {
+        Class<?> type = Class.forName(ThreadedLevelLightEngine.class.getName() + "$TaskType");
+        Object postUpdate = type.getEnumConstants()[1];
+        Method add = ThreadedLevelLightEngine.class.getDeclaredMethod("addTask", int.class, int.class, type, Runnable.class);
+        add.setAccessible(true);
+        return CompletableFuture.runAsync(() -> {}, task -> {
+            try {
+                add.invoke(engine, 0, 0, postUpdate, task);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        });
     }
 }

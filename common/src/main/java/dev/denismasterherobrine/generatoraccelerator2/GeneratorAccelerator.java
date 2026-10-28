@@ -20,11 +20,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.logging.RepeatedWarnings;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedInjectors;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedRegions;
 import dev.denismasterherobrine.generatoraccelerator2.config.ConfigManager;
-import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.verify.DfcCommand;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesConfig;
@@ -172,10 +168,6 @@ public final class GeneratorAccelerator {
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
         BiolithSearch.forgetWorlds();
-        if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
-            LithostitchedInjectors.forgetWorlds();
-            LithostitchedRegions.forgetWorlds();
-        }
         if (server == stopped) {
             server = null;
         }

@@ -82,7 +82,7 @@ subprojects {
         mappings loom.officialMojangMappings()
     }
 
-    // Compile against NeoForge's Mixin, not the newer one Fabric Loader brings: Mixin 0.17.4 made @Redirect's `at` an array,
+    // Compile against Forge's Mixin, not the newer one Fabric Loader brings: Mixin 0.17.4 made @Redirect's `at` an array,
     // so javac writes it as one, and MixinExtras (and older Mixin) read it as a single @At and crash on every class GA2 redirects in.
     configurations.named('compileClasspath') {
         resolutionStrategy.force "net.fabricmc:sponge-mixin:$rootProject.compile_mixin_version"
@@ -98,7 +98,8 @@ subprojects {
     }
 
     tasks.withType(JavaCompile).configureEach {
-        it.options.release = 21
+        // 1.20.1 launchers run Java 17
+        it.options.release = 17
     }
 
     tasks.named('build') {

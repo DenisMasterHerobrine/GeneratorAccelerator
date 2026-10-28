@@ -7,35 +7,32 @@ import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
-import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.status.ChunkStep;
-import net.minecraft.world.level.chunk.status.WorldGenContext;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Oh The Biomes We've Gone's crag garden and basalt barrera terrain ({@code ChunkStatusTasksMixin.injectExtensions}). The
- * mod injects it before the SURFACE step's generator call. GA2 runs the mod's handler on the same worker as the generator
- * call ({@link StepHandlers}), with the arguments and locals that vanilla's step holds there.
+ * Oh The Biomes We've Gone's crag garden and basalt barrera terrain ({@code injectCragTerrain}). The
+ * mod injects it at the return of the SURFACE task, right after the generator call. GA2 runs the mod's handler on the same
+ * worker, right after the generator call ({@link StepHandlers}), with the arguments and locals that vanilla's step holds there.
  *
- * <p>Reviewed for running on several threads at once (2.6.0). The handler creates its noises, block state providers,
- * random sources and biome cache per call. It writes only the step's own chunk ({@code ChunkAccess.setBlockState}). It
- * reads that chunk's worldgen heightmap and blocks, registry entries and a constant lookup table ({@code MathUtil}). It
- * reads biomes from the generator's biome source with the level's climate sampler, a function of the position alone.
- * The basalt part also asks a chunk up to eight chunks away for its generator height. The mod keeps that height in a
- * per-chunk cache and fills it without synchronization. GA2 locks the cache ({@code mixin.ChunkAccessHeightsMixin}).
- * Without that lock in place, the step stays on the worldgen thread.
+ * <p>Reviewed for running on several threads at once (1.7.1). The handler creates its noises, block state providers and
+ * random sources per call. It writes only the step's own chunk ({@code ChunkAccess.setBlockState}). It reads that chunk's
+ * worldgen heightmap and blocks, registry entries and a constant lookup table. It reads biomes through the step's region
+ * ({@code WorldGenRegion.getBiome}): the chunk's own biomes, and outside it the generator's biome source with the level's
+ * climate sampler, a function of the position alone. The basalt part also asks a chunk up to eight chunks away for its
+ * generator height. The mod keeps that height in a per-chunk cache and fills it without synchronization. GA2 locks the cache
+ * ({@code mixin.ChunkAccessHeightsMixin}). Without that lock in place, the step stays on the worldgen thread.
  *
- * <p>The handler asks the biome source for each of the chunk's 256 columns, and around the columns of the mod's two
- * biomes. It does so through its own {@code BiomeManager}. Inside the handler, GA2 remembers that manager's answers per
- * quart point ({@link NoiseBiomeMemo}), so the biome source is asked once per point.
+ * <p>Inside the handler, GA2 remembers the biome lookups per quart point ({@link NoiseBiomeMemo}), so the biome source is
+ * asked once per point.
  */
 public final class BiomesWeveGoneTerrain {
     private BiomesWeveGoneTerrain() {}
@@ -50,15 +47,15 @@ public final class BiomesWeveGoneTerrain {
 
     public static void register() {
         StepHandlers.register(BiomesWeveGoneMixins.STEP, BiomesWeveGoneTerrain::handlers);
-        // the handler writes a column only where the biome at its land height (through the biome source and vanilla's zoom) is one
-        // of these two. The GPU's surface leaves chunks near them to the CPU, which builds the surface after the handler
+        // the handler writes a column only where the biome at its land height (through vanilla's zoom) is one of these two. The
+        // GPU's surface leaves chunks near them to the CPU
         SurfaceSpec.declareStepWriter(BiomesWeveGoneMixins.STEP, Set.of(
             biome("crag_gardens"), biome("basalt_barrera")));
     }
 
     private static ResourceKey<Biome> biome(String path) {
         return ResourceKey.create(Registries.BIOME,
-            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+            new ResourceLocation(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     /** The lock of a chunk's generator height cache ({@code mixin.ChunkAccessHeightsMixin}). */
@@ -71,20 +68,25 @@ public final class BiomesWeveGoneTerrain {
         if (!heightsLocked()) {
             throw new NoSuchMethodException("the lock of ChunkAccess.getHeight(ChunkGenerator, ...) is not in place");
         }
-        // (WorldGenContext, ChunkStep, StaticCache2D, ChunkAccess, CallbackInfoReturnable, @Local ServerLevel, @Local WorldGenRegion)
-        MethodHandle extensions = StepHandlers.staticHandler("injectExtensions", WorldGenContext.class, ChunkStep.class, StaticCache2D.class,
-            ChunkAccess.class, CallbackInfoReturnable.class, ServerLevel.class, WorldGenRegion.class);
+        // the SURFACE task's arguments (ChunkStatus, ServerLevel, ChunkGenerator, List, ChunkAccess), CallbackInfo, @Local WorldGenRegion
+        MethodHandle extensions = StepHandlers.staticHandler("injectCragTerrain", ChunkStatus.class, ServerLevel.class, ChunkGenerator.class, List.class,
+            ChunkAccess.class, CallbackInfo.class, WorldGenRegion.class);
         return List.of(new StepHandlers.Handler() {
             @Override
             public String handler() {
-                return "injectExtensions";
+                return "injectCragTerrain";
+            }
+
+            @Override
+            public boolean afterCall() {
+                return true;
             }
 
             @Override
             public void run(StepHandlers.Frame f) throws Throwable {
-                CallbackInfoReturnable<CompletableFuture<ChunkAccess>> cir = new CallbackInfoReturnable<>("generateSurface", false);
+                CallbackInfo ci = new CallbackInfo("method_16569", false);
                 try (NoiseBiomeMemo ignored = NoiseBiomeMemo.open()) {
-                    extensions.invoke(f.ctx(), f.step(), f.cache(), f.chunk(), cir, f.level(), f.region());
+                    extensions.invoke(f.call().status(), f.level(), f.call().generator(), f.call().neighbors(), f.chunk(), ci, f.region());
                 }
             }
         });

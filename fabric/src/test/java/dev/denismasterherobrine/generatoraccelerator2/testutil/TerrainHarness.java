@@ -22,7 +22,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.Aquifer;
@@ -135,16 +135,16 @@ public final class TerrainHarness {
         public ProtoChunk biomes(int cx, int cz) {
             ProtoChunk chunk = emptyChunk(cx, cz);
             noiseChunk(chunk);
-            generator.createBiomes(randomState, Blender.empty(), null, chunk).join();
-            chunk.setPersistedStatus(ChunkStatus.BIOMES);
+            generator.createBiomes(Runnable::run, randomState, Blender.empty(), null, chunk).join();
+            chunk.setStatus(ChunkStatus.BIOMES);
             return chunk;
         }
 
         /** BIOMES and NOISE steps. */
         public ProtoChunk noise(int cx, int cz) {
             ProtoChunk chunk = biomes(cx, cz);
-            generator.fillFromNoise(Blender.empty(), randomState, null, chunk).join();
-            chunk.setPersistedStatus(ChunkStatus.NOISE);
+            generator.fillFromNoise(Runnable::run, Blender.empty(), randomState, null, chunk).join();
+            chunk.setStatus(ChunkStatus.NOISE);
             return chunk;
         }
 

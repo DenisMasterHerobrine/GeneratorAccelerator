@@ -47,13 +47,14 @@ public final class SeededStatics {
         BY_TYPE.put(type, new Entry(type, seedField, List.copyOf(statics)));
     }
 
-    /** The static fields of {@code type}'s entry ({@code owner.name}, internal names), or an empty set. */
+    /** The fields of {@code type}'s entry, its seed field and the statics made from it ({@code owner.name}, internal names), or an empty set. */
     static Set<String> fields(Class<?> type) {
         Entry e = BY_TYPE.get(type.getName());
         if (e == null) {
             return Set.of();
         }
         Set<String> out = new HashSet<>();
+        out.add(type.getName().replace('.', '/') + "." + e.seedField());
         for (String s : e.statics()) {
             out.add(type.getName().replace('.', '/') + "." + s);
         }

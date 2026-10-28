@@ -43,7 +43,7 @@ public final class SchedulingConfig {
             "ring around them that big features read, so no decoration sees another one half done.").defineInRange("featuresGuardRadius", 2, 1, 3);
         DEDICATED_MAILBOX_THREADS = b.comment("Run each dimension's chunk task sorter, worldgen mailbox and light engine on their own threads instead of the shared",
             "worker pool, where they would wait behind the parallel steps (light then only runs once the pool runs dry). Applies to",
-            "dimensions loaded after the change. Ignored while Moonrise or C2ME runs the chunk system.").define("dedicatedMailboxThreads", true);
+            "dimensions loaded after the change. Ignored while C2ME runs the chunk system.").define("dedicatedMailboxThreads", true);
         STEADY_LIGHT_UPDATES = b.comment("Schedule light updates whenever the main thread polls for tasks. Vanilla skips them while the distance manager is",
             "busy, which during heavy generation means light only catches up after generation stops, holding finished chunks back.").define("steadyLightUpdates", true);
         CHUNKY_IN_FLIGHT = b.comment("How many chunks Chunky may request at once (its chunky.maxWorkingCount, 50 by default). A chunk spends most of its",

@@ -14,8 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.chunk.status.ChunkType;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
@@ -43,7 +42,7 @@ public final class RegionWriter {
             region.ga2$onBlockStateChange(pos, old, state);
         }
         if (state.hasBlockEntity()) {
-            if (chunk.getPersistedStatus().getChunkType() == ChunkType.LEVELCHUNK) {
+            if (chunk.getStatus().getChunkType() == ChunkStatus.ChunkType.LEVELCHUNK) {
                 BlockEntity blockEntity = ((EntityBlock) state.getBlock()).newBlockEntity(pos, state);
                 if (blockEntity != null) {
                     chunk.setBlockEntity(blockEntity);
@@ -75,8 +74,8 @@ public final class RegionWriter {
             }
             return chunk.setBlockState(pos, state, false);
         }
-        ChunkStatus status = chunk.getPersistedStatus();
-        if (status.isOrAfter(ChunkStatus.INITIALIZE_LIGHT) || !status.heightmapsAfter().equals(ChunkStatus.FINAL_HEIGHTMAPS)) {
+        ChunkStatus status = chunk.getStatus();
+        if (status.isOrAfter(ChunkStatus.INITIALIZE_LIGHT) || !status.heightmapsAfter().equals(ChunkStatus.POST_FEATURES)) {
             if (FeatureStats.DETAILED) {
                 FeatureStats.WRITES_DELEGATED.increment();
             }
@@ -107,7 +106,7 @@ public final class RegionWriter {
     }
 
     /**
-     * The chunk's four final heightmaps in {@code ChunkStatus.FINAL_HEIGHTMAPS} iteration order,
+     * The chunk's four final heightmaps in {@code ChunkStatus.POST_FEATURES} iteration order,
      * priming the missing ones first exactly as {@code ProtoChunk.setBlockState} does on that write.
      */
     public static Heightmap[] finalHeightmaps(Ga2Region region, ChunkAccess chunk, int cx, int cz) {
@@ -120,7 +119,7 @@ public final class RegionWriter {
             }
         }
         EnumSet<Heightmap.Types> missing = null;
-        for (Heightmap.Types type : ChunkStatus.FINAL_HEIGHTMAPS) {
+        for (Heightmap.Types type : ChunkStatus.POST_FEATURES) {
             if (!chunk.hasPrimedHeightmap(type)) {
                 if (missing == null) {
                     missing = EnumSet.noneOf(Heightmap.Types.class);
@@ -131,9 +130,9 @@ public final class RegionWriter {
         if (missing != null) {
             HeightmapPriming.primeForWrite(chunk, missing, Heightmap::primeHeightmaps);
         }
-        Heightmap[] maps = new Heightmap[ChunkStatus.FINAL_HEIGHTMAPS.size()];
+        Heightmap[] maps = new Heightmap[ChunkStatus.POST_FEATURES.size()];
         int i = 0;
-        for (Heightmap.Types type : ChunkStatus.FINAL_HEIGHTMAPS) {
+        for (Heightmap.Types type : ChunkStatus.POST_FEATURES) {
             maps[i++] = chunk.getOrCreateHeightmapUnprimed(type);
         }
         if (slot >= 0) {

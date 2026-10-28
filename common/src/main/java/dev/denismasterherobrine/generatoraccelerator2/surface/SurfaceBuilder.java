@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.surface;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import com.google.common.collect.MapMaker;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkBlocks;
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWrites;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.SurfaceSystemAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.surface.compile.DeepPlan;
@@ -55,10 +56,9 @@ public final class SurfaceBuilder {
     private static final Set<String> LOGGED_OPAQUE = ConcurrentHashMap.newKeySet();
 
     /**
-     * Programs by the rule's shape ({@link Shape}), for a rule asked as a new object each time. Citadel (Alex's Caves, Alex's
-     * Mobs) merges its rules into the surface rule on every call, so each chunk came with a new sequence of the same rules. Each
-     * chunk then lowered and compiled them again, into classes the JIT never compiled: 3,086 such classes ran in one 49 s
-     * square of a 575-mod pack, and the surface step took half of the workers' time. Cleared when the server stops.
+     * Programs by the rule's shape ({@link Shape}), for a rule asked as a new object each time. A mod that merges its rules into the
+     * surface rule on every call hands each chunk a new sequence of the same rules. Each chunk would then lower and compile them
+     * again, into classes the JIT never compiles. Cleared when the server stops.
      */
     private static final ConcurrentMap<Shape, SurfaceProgram> BY_SHAPE = new ConcurrentHashMap<>();
     /** Programs found by their shape after the rule object itself missed. */
@@ -234,7 +234,7 @@ public final class SurfaceBuilder {
     }
 
     /** Applies the opaque sources to the vanilla context in the program's (= vanilla's) apply order. */
-    private static void instantiateOpaques(SurfaceProgram program, SurfaceEval eval, SurfaceRules.Context shadow) {
+    static void instantiateOpaques(SurfaceProgram program, SurfaceEval eval, SurfaceRules.Context shadow) {
         int n = program.opaques.size();
         eval.opaqueRules = new SurfaceRules.SurfaceRule[n];
         eval.opaqueConds = new SurfaceRules.Condition[n];
@@ -465,8 +465,20 @@ public final class SurfaceBuilder {
             this.count = new int[n];
             this.columns = new long[n][4];
             for (int s = 0; s < n; s++) {
-                eligible[s] = deep.bulkSection((blocks.minSection() + s) << 4, defaultBlock);
+                int minY = (blocks.minSection() + s) << 4;
+                eligible[s] = deep.bulkSection(minY, defaultBlock) && direct(deep, minY);
             }
+        }
+
+        /** Whether the plan's states in the section at {@code minY} may be written without {@code setBlockState} ({@link SectionWrites}). */
+        private static boolean direct(DeepPlan deep, int minY) {
+            for (int ly = 0; ly < 16; ly++) {
+                BlockState target = deep.state(minY + ly);
+                if (target != null && !SectionWrites.skips(target)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         boolean defer(int k, int l, int sectionMinY) {

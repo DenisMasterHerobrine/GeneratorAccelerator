@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 import javax.annotation.Nullable;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Beardifier;
@@ -42,12 +43,16 @@ public final class BeardExtras {
      */
     private record Provider(String mixin, String data, String pieces, String junctions) {}
 
+    private static final String YUNG_MIXIN = "com.yungnickyoung.minecraft.yungsapi.mixin.BeardifierMixin";
+    private static final String INTEGRATED_MIXIN = "com.craisinlord.integrated_api.mixins.structures.BeardifierMixin";
+
     private static final List<Provider> PROVIDERS = List.of(
-        new Provider("com.yungnickyoung.minecraft.yungsapi.mixin.BeardifierMixin",
-            "com.yungnickyoung.minecraft.yungsapi.world.structure.terrainadaptation.beardifier.EnhancedBeardifierData",
+        new Provider(YUNG_MIXIN, "com.yungnickyoung.minecraft.yungsapi.world.structure.terrainadaptation.beardifier.EnhancedBeardifierData",
             "yungsapi_getEnhancedPieceIterator", "yungsapi_getEnhancedJunctionIterator"),
-        new Provider("com.craisinlord.integrated_api.mixins.structures.BeardifierMixin",
-            "com.craisinlord.integrated_api.world.terrainadaptation.beardifier.EnhancedBeardifierData",
+        // YUNG's API 4.0 names the same lists without its prefix
+        new Provider(YUNG_MIXIN, "com.yungnickyoung.minecraft.yungsapi.world.structure.terrainadaptation.beardifier.EnhancedBeardifierData",
+            "getEnhancedRigidIterator", "getEnhancedJunctionIterator"),
+        new Provider(INTEGRATED_MIXIN, "com.craisinlord.integrated_api.world.terrainadaptation.beardifier.EnhancedBeardifierData",
             "getEnhancedRigidIterator", "getEnhancedJunctionIterator"),
         new Provider("com.finndog.moogs_structures.mixins.terrainadaptation.BeardifierMixin",
             "com.finndog.moogs_structures.world.structures.terrainadaptation.beardifier.EnhancedBeardifierData",
@@ -171,8 +176,17 @@ public final class BeardExtras {
             if (p.mixin().equals(mixin)) {
                 Class<?> data = Class.forName(p.data(), false, BeardExtras.class.getClassLoader());
                 MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-                MethodHandle pieces = lookup.unreflect(data.getMethod(p.pieces()));
-                MethodHandle junctions = lookup.unreflect(data.getMethod(p.junctions()));
+                Method piecesMethod;
+                Method junctionsMethod;
+                try {
+                    piecesMethod = data.getMethod(p.pieces());
+                    junctionsMethod = data.getMethod(p.junctions());
+                } catch (NoSuchMethodException e) {
+                    // another version of the mod, listed as a provider of its own
+                    continue;
+                }
+                MethodHandle pieces = lookup.unreflect(piecesMethod);
+                MethodHandle junctions = lookup.unreflect(junctionsMethod);
                 return new Lists(pieces.asType(MethodType.methodType(Object.class, Beardifier.class)),
                     junctions.asType(MethodType.methodType(Object.class, Beardifier.class)));
             }
@@ -342,8 +356,8 @@ public final class BeardExtras {
                 if (known.none(beardifier)) {
                     return new EnhancedBeard.Chunk(EnhancedBeard.Kind.YUNG, List.of(), List.of(), null);
                 }
-                EnhancedBeard.Kind kind = cb.owner().equals(PROVIDERS.get(0).mixin()) ? EnhancedBeard.Kind.YUNG
-                    : cb.owner().equals(PROVIDERS.get(1).mixin()) ? EnhancedBeard.Kind.INTEGRATED : null;
+                EnhancedBeard.Kind kind = cb.owner().equals(YUNG_MIXIN) ? EnhancedBeard.Kind.YUNG
+                    : cb.owner().equals(INTEGRATED_MIXIN) ? EnhancedBeard.Kind.INTEGRATED : null;
                 if (kind == null || known.junctions == null) {
                     return null;
                 }
@@ -353,6 +367,24 @@ public final class BeardExtras {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * {@code beardifier}, made without {@code forStructuresInChunk} (GA2's self-test), with the empty piece lists the enhanced
+     * beardifiers' mixins set there for a chunk without their pieces. YUNG's API 4.0 reads its lists without a null check.
+     */
+    public static Beardifier withEmptyLists(Beardifier beardifier) {
+        for (Method m : beardifier.getClass().getMethods()) {
+            if (m.getName().contains("setEnhanced") && m.getParameterCount() == 1 && m.getParameterTypes()[0] == ObjectListIterator.class) {
+                try {
+                    m.invoke(beardifier, new ObjectArrayList<>().iterator());
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    // that mod's step then fails the self-test, which keeps the GPU off as before
+                    Ga2Log.get("Beardifier").warn("empty piece list not set through {} -> {}", m.getName(), e.toString());
+                }
+            }
+        }
+        return beardifier;
     }
 
     /** True when cells away from every vanilla piece may skip this beardifier although other mods change its density. */

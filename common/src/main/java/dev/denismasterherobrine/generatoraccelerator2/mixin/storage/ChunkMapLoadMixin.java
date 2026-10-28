@@ -49,7 +49,7 @@ public abstract class ChunkMapLoadMixin {
             }
             // The POI read starts first, so the disk reads it while the chunk is prepared.
             CompletableFuture<?> poiRead = poi
-                ? PoiPrefetch.start(poiManager, ((SectionStorageAccessor) poiManager).ga2$simpleRegionStorage(), pos, tag.get()) : null;
+                ? PoiPrefetch.start(poiManager, ((SectionStorageAccessor) poiManager).ga2$worker(), pos, tag.get()) : null;
             CompletableFuture<Optional<CompoundTag>> prepared;
             if (!prepare) {
                 prepared = CompletableFuture.completedFuture(tag);

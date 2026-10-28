@@ -14,8 +14,8 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProc
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 /**
- * Where the loaders' Minecraft differs. NeoForge patches light emission to depend on position. It counts a section's blocks
- * by its own {@code isEmpty}, applies biome modifiers and lets mods pick dungeon mobs. Vanilla (Fabric) does none of that.
+ * Where the loaders' Minecraft differs. Forge patches light emission to depend on position, applies biome modifiers, lets
+ * mods pick dungeon mobs and hands structure processors the template. Vanilla (Fabric) does none of that.
  * Each platform module provides a {@link Service} ({@code META-INF/services}).
  */
 public final class PlatformHooks {
@@ -23,7 +23,7 @@ public final class PlatformHooks {
 
     /** The loader's side of {@link PlatformHooks}. */
     public interface Service {
-        boolean mayEmitLight(BlockState state);
+        boolean mayEmitLight(BlockState state, BlockGetter chunk);
 
         boolean positionalLightEmission(Class<?> blockClass);
 
@@ -33,12 +33,10 @@ public final class PlatformHooks {
 
         EntityType<?> randomMonsterRoomMob(RandomSource random);
 
-        boolean isEmpty(BlockState state);
-
         Biome.ClimateSettings climateSettings(Biome biome);
 
         /**
-         * One processor's step on a template block, as the loader's {@code StructureTemplate.processBlockInfos} calls it. NeoForge
+         * One processor's step on a template block, as the loader's {@code StructureTemplate.processBlockInfos} calls it. Forge
          * calls {@code process} with the template, vanilla {@code processBlock}.
          */
         @Nullable
@@ -52,9 +50,9 @@ public final class PlatformHooks {
 
     private static final Service SERVICE = Platform.load(Service.class);
 
-    /** The coarse light source filter a section's palette is tested with before its blocks are read. */
-    public static boolean mayEmitLight(BlockState state) {
-        return SERVICE.mayEmitLight(state);
+    /** The coarse light source filter a section's palette is tested with before the blocks of {@code chunk} are read. */
+    public static boolean mayEmitLight(BlockState state, BlockGetter chunk) {
+        return SERVICE.mayEmitLight(state, chunk);
     }
 
     /** True when the block's light emission may depend on its position. Each position is then queried. */
@@ -77,15 +75,7 @@ public final class PlatformHooks {
         return SERVICE.randomMonsterRoomMob(random);
     }
 
-    /**
-     * Whether a chunk section counts the state as empty for its non-empty block count. On NeoForge this is {@code isEmpty()},
-     * which blocks may override. On vanilla it is {@code isAir()}.
-     */
-    public static boolean isEmpty(BlockState state) {
-        return SERVICE.isEmpty(state);
-    }
-
-    /** The biome's climate as the game sees it. On NeoForge, after biome modifiers. On vanilla, the biome's own. */
+    /** The biome's climate as the game sees it. On Forge, after biome modifiers. On vanilla, the biome's own. */
     public static Biome.ClimateSettings climateSettings(Biome biome) {
         return SERVICE.climateSettings(biome);
     }

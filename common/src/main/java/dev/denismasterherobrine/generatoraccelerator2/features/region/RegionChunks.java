@@ -1,18 +1,15 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.region;
 
-import net.minecraft.world.level.chunk.status.ChunkDependencies;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * The chunks a {@code WorldGenRegion} has resolved so far, by position. A slot is filled with the
- * result of vanilla's lookup and the dependency status that lookup was allowed to see. Later
- * requests for a status at or before that status get the same object vanilla would return. The
- * reason: the future of a generation chunk holder for a status completes once and keeps its chunk
- * for the whole task. A neighbour within the write radius cannot be replaced by an imposter before
- * this chunk's own stage ends. Farther chunks are only read through the same sections either way.
+ * result of vanilla's lookup and the status that chunk had then. Later requests for a status at or
+ * before that status get the same object vanilla would return. The reason: the region's chunk list
+ * is fixed for the whole task, and a chunk's status only ever moves forward.
  *
  * <p>Also holds the per-chunk heightmap arrays the writer uses, so a write does not walk an
  * {@code EnumSet} and an {@code EnumMap} four times.
@@ -26,17 +23,16 @@ public final class RegionChunks {
     private ChunkAccess[] chunks;
     private ChunkStatus[] served;
     private Heightmap[][] finalHeightmaps;
-    private final ChunkDependencies dependencies;
 
-    public RegionChunks(ChunkPos center, ChunkDependencies directDependencies) {
+    /** {@code radius}: the region's chunks around its center on each side. */
+    public RegionChunks(ChunkPos center, int radius) {
         this.centerX = center.x;
         this.centerZ = center.z;
-        this.radius = Math.max(0, directDependencies.size() - 1);
-        this.size = 2 * radius + 1;
-        this.dependencies = directDependencies;
+        this.radius = Math.max(0, radius);
+        this.size = 2 * this.radius + 1;
     }
 
-    /** Slot index, or -1 when outside the dependency radius. */
+    /** Slot index, or -1 when outside the region. */
     public int slot(int cx, int cz) {
         int dx = cx - centerX + radius;
         int dz = cz - centerZ + radius;
@@ -53,7 +49,7 @@ public final class RegionChunks {
             return null;
         }
         ChunkStatus st = served[s];
-        return st != null && requested.isOrBefore(st) ? chunks[s] : null;
+        return st != null && st.isOrAfter(requested) ? chunks[s] : null;
     }
 
     /** Records vanilla's successful lookup. */
@@ -62,16 +58,12 @@ public final class RegionChunks {
         if (s < 0 || chunk == null) {
             return;
         }
-        int distance = Math.max(Math.abs(cx - centerX), Math.abs(cz - centerZ));
-        if (distance >= dependencies.size()) {
-            return;
-        }
         if (served == null) {
             chunks = new ChunkAccess[size * size];
             served = new ChunkStatus[size * size];
         }
-        ChunkStatus st = dependencies.get(distance);
-        if (served[s] == null || served[s].isBefore(st)) {
+        ChunkStatus st = chunk.getStatus();
+        if (served[s] == null || !served[s].isOrAfter(st)) {
             chunks[s] = chunk;
             served[s] = st;
         }

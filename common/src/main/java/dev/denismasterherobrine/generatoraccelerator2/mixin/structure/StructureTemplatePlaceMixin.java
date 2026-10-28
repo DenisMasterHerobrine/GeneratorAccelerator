@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.At;
 
 /**
  * {@code placeInWorld}'s call of {@code processBlockInfos}, clipped to the bounding box ({@link TemplatePlacement}). Vanilla's
- * five-argument call, as Fabric runs it. NeoForge's call has a sixth argument ({@link StructureTemplatePlaceNeoMixin}); the
+ * five-argument call, as Fabric runs it. Forge's call has a sixth argument ({@link StructureTemplatePlaceForgeMixin}). The
  * mixin plugin applies the one for the running loader.
  */
 @Mixin(value = StructureTemplate.class, priority = 5000)

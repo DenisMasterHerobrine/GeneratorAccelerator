@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * task. While the chunk is being generated again, the holder is not ready, so the task re-queues itself on every poll.
  * {@code processUnloads} then runs the task for the rest of every tick. With no time left, the main thread never polls
  * the chunk tasks that other threads wait for. A generation step that asks the server level for a chunk then never
- * finishes. Lithostitched's in-structure predicate does this from a feature's placement filter. The holder stays in
+ * finishes. A structure predicate in a feature's placement filter can do this. The holder stays in
  * use and the loop goes on. Chunk generation stalls for minutes, and the worker pool adds a thread for every blocked
  * step.
  *

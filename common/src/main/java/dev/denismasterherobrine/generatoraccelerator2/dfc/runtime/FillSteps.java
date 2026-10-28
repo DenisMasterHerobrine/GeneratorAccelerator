@@ -128,7 +128,7 @@ public final class FillSteps {
     }
 
     private static volatile MethodHandle ironsTracked;
-    // Iron's Spellbooks is a NeoForge mod. Its config is a NeoForge ModConfigSpec, read reflectively (isLoaded(), and get() of the value)
+    // Iron's Spellbooks is a Forge mod. Its config is a ForgeConfigSpec, read reflectively (isLoaded(), and get() of the value)
     private static volatile MethodHandle ironsSpecLoaded;
     private static volatile MethodHandle ironsDetection;
     private static volatile boolean ironsResolved;

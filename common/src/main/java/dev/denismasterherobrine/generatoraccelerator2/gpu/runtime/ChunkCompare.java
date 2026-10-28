@@ -38,7 +38,16 @@ public final class ChunkCompare {
             var da = sa[s].getStates().data;
             var db = sb[s].getStates().data;
             if (da.palette().getClass() != db.palette().getClass() || da.palette().getSize() != db.palette().getSize()) {
-                return "palette of section " + s + ": " + da.palette().getSize() + " vs " + db.palette().getSize() + " entries";
+                // whether the blocks differ too, or only how the section holds them
+                String blocks = ", the same blocks";
+                for (int i = 0; i < 4096; i++) {
+                    if (sa[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15) != sb[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15)) {
+                        blocks = ", blocks differ";
+                        break;
+                    }
+                }
+                return "palette of section " + s + ": " + da.palette().getSize() + " " + da.palette().getClass().getSimpleName() + " vs " + db.palette().getSize() + " "
+                    + db.palette().getClass().getSimpleName() + " entries (bits " + da.storage().getBits() + " vs " + db.storage().getBits() + ")" + blocks;
             }
             for (int p = 0; p < da.palette().getSize(); p++) {
                 if (da.palette().valueFor(p) != db.palette().valueFor(p)) {

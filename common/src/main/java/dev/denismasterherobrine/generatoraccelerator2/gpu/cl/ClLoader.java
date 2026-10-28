@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -29,7 +30,8 @@ import java.util.zip.ZipInputStream;
 public final class ClLoader {
     private ClLoader() {}
 
-    public static final String LWJGL_VERSION = "3.3.3";
+    /** The LWJGL version of the bundled jars, which the build writes next to them ({@code lwjgl.version}). */
+    public static final String LWJGL_VERSION = bundledVersion();
     private static final String IMPL = "dev.denismasterherobrine.generatoraccelerator2.gpu.cl.lwjgl.LwjglCl";
     private static final String IMPL_PACKAGE = "dev.denismasterherobrine.generatoraccelerator2.gpu.cl.lwjgl.";
     private static final String GA2_PACKAGE = "dev.denismasterherobrine.generatoraccelerator2.";
@@ -137,6 +139,18 @@ public final class ClLoader {
     }
 
     /** Copies a bundled jar out of GA2's jar, once per content. The file is replaced when its size or contents differ. */
+    /** The version the build bundled. Minecraft 1.20.1's LWJGL when the file is missing (a jar built without it). */
+    private static String bundledVersion() {
+        try (InputStream in = ClLoader.class.getClassLoader().getResourceAsStream(BUNDLE + "lwjgl.version")) {
+            if (in != null) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
+            }
+        } catch (IOException e) {
+            // the fallback below
+        }
+        return "3.3.1";
+    }
+
     private static Path extract(Path dir, String name) throws IOException {
         byte[] bytes;
         try (InputStream in = ClLoader.class.getClassLoader().getResourceAsStream(BUNDLE + name)) {

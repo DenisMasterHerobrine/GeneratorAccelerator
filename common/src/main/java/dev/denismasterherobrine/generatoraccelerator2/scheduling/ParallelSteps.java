@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkGeneratorStructureStateAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.structure.RingBounds;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceCopies;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -22,18 +23,14 @@ import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
 import net.minecraft.Util;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
-import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.chunk.status.ChunkStep;
-import net.minecraft.world.level.chunk.status.WorldGenContext;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
@@ -43,7 +40,7 @@ import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStr
 /**
  * Runs the SURFACE and CARVERS chunk steps on the worker pool, the way vanilla already runs NOISE.
  *
- * <p>Vanilla runs both inside {@code ChunkGenerationTask.runUntilWait} on the single worldgen
+ * <p>Vanilla runs both inside {@code ChunkMap.scheduleChunkGeneration}'s step on the single worldgen
  * mailbox, so only one chunk's surface or carvers run at a time. Each step only writes its own chunk.
  * It only reads data that is final once the step may start: the chunk's own noise, neighbour biomes,
  * structure starts. The dependency system orders steps by future completion rather than by thread. A
@@ -85,27 +82,28 @@ public final class ParallelSteps {
      *
      * @return the step's future, or {@code null} to run vanilla's step
      */
-    public static CompletableFuture<ChunkAccess> surfaceStep(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
+    public static CompletableFuture<ChunkAccess> surfaceStep(StepCall call) {
+        ChunkAccess chunk = call.chunk();
         if (!SchedulingConfig.parallelSurface() || !StepThreads.onVanillaMailbox() || !HookTargets.allowed(HookTargets.SURFACE_STEP_BODY)
-            || !HookTargets.unchanged(HookTargets.SURFACE_ENTRY)) {
+            || !HookTargets.unchanged(HookTargets.SURFACE_ENTRY) || surfaceBuildShared(call.generator())) {
             return null;
         }
         StepHandlers.Handler[] handlers = StepHandlers.surface();
         if (handlers == null) {
             return null;
         }
-        ChunkGenerator generator = ctx.generator();
+        ChunkGenerator generator = call.generator();
         if (generator.getClass() == NoiseBasedChunkGenerator.class && ((ChunkAccessAccessor) chunk).ga2$noiseChunk() == null
             && GpuTerrain.of(chunk) == null) {
             // a NoiseChunk would be built inside the step, blender included. Run vanilla's step, all inline
             return null;
         }
-        ServerLevel level = ctx.level();
-        WorldGenRegion region = new WorldGenRegion(level, cache, step, chunk);
+        ServerLevel level = call.level();
+        WorldGenRegion region = call.region(0);
         StructureManager structures = level.structureManager().forWorldGenRegion(region);
         RandomState randomState = level.getChunkSource().randomState();
         Blender blender = Blender.of(region);
-        StepHandlers.Frame frame = new StepHandlers.Frame(ctx, step, cache, chunk, level, region);
+        StepHandlers.Frame frame = new StepHandlers.Frame(call, level, region);
         SURFACE_ASYNC.increment();
         SURFACE_TAKEN.increment();
         return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_surface", () -> {
@@ -113,19 +111,20 @@ public final class ParallelSteps {
                 StepHandlers.run(handlers, frame, false);
                 StepThreads.withBlender(blender, () -> generator.buildSurface(region, structures, randomState, chunk));
                 StepHandlers.run(handlers, frame, true);
-            }, step, chunk, generator);
+            }, call);
             return chunk;
-        }), StepLane.executor(StepLane.level(cache, chunk)));
+        }), StepLane.executor(StepLane.level(call)));
     }
 
     /**
-     * The generator call of the SURFACE step on the worker pool. {@code call} runs it with vanilla's arguments.
+     * The generator call of the SURFACE step on the worker pool. {@code generatorCall} runs it with vanilla's arguments.
      * Vanilla's step has built the region and done everything other mods add before the call on the worldgen thread.
      *
      * @return the step's future, or {@code null} to make the call inline
      */
-    public static CompletableFuture<ChunkAccess> surface(ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, ChunkGenerator generator,
-                                                         WorldGenRegion region, Runnable call) {
+    public static CompletableFuture<ChunkAccess> surface(StepCall call, ChunkGenerator generator,
+                                                         WorldGenRegion region, Runnable generatorCall) {
+        ChunkAccess chunk = call.chunk();
         if (!SchedulingConfig.parallelSurface() || !StepThreads.onVanillaMailbox() || !HookTargets.unchanged(HookTargets.SURFACE_STEP)) {
             // off, another chunk system's thread, or another mod's code after the call in the step
             SURFACE_INLINE.increment();
@@ -142,16 +141,20 @@ public final class ParallelSteps {
             SURFACE_INLINE.increment();
             return null;
         }
+        if (surfaceBuildShared(generator)) {
+            SURFACE_INLINE.increment();
+            return null;
+        }
         // the generator's own entry point, so other mods' changes to it keep working. The blender is computed here, on the
         // worldgen thread, like vanilla's step computes it. SurfaceBlenderMixin hands it in
         Blender blender = Blender.of(region);
-        Runnable work = () -> StepThreads.withBlender(blender, call);
+        Runnable work = () -> StepThreads.withBlender(blender, generatorCall);
         SURFACE_ASYNC.increment();
         Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_surface", () -> {
-            run(work, step, chunk, generator);
+            run(work, call);
             return chunk;
         });
-        Executor executor = StepLane.executor(StepLane.level(cache, chunk));
+        Executor executor = StepLane.executor(StepLane.level(call));
         // the GPU's surface may still be on its way. The step then runs once the surface is in (or the wait for it is over),
         // instead of a worker waiting for it
         CompletableFuture<Void> gpu = GpuSurfaceJob.whenReady(chunk);
@@ -166,13 +169,24 @@ public final class ParallelSteps {
     public static final LongAdder SURFACE_DEFERRED = new LongAdder();
 
     /**
+     * True when other mods change {@code SurfaceSystem.buildSurface} in ways GA2 does not know, and their surfaces cannot get a
+     * surface system of their own. Such code may keep a chunk's state in the dimension's one surface system, as Environmental's pine
+     * barrens stone does, so two chunks built at once would mix it up. Vanilla's generator builds on the thread's own system
+     * ({@link SurfaceCopies}). Another generator, or the copies turned off, keeps the step on the worldgen thread, one surface at a
+     * time as in vanilla. The known changes were reviewed for GA2's surface builder, which builds several at once.
+     */
+    private static boolean surfaceBuildShared(ChunkGenerator generator) {
+        return SurfaceCopies.needed() && (!SurfaceCopies.ENABLED || generator.getClass() != NoiseBasedChunkGenerator.class);
+    }
+
+    /**
      * The generator call of the CARVERS step on the worker pool. Vanilla's step has built the region and applied the
      * carving mask filter around old chunks on the worldgen thread.
      *
      * @return the step's future, or {@code null} to make the call inline
      */
-    public static CompletableFuture<ChunkAccess> carvers(ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, ChunkGenerator generator,
-                                                         Runnable call) {
+    public static CompletableFuture<ChunkAccess> carvers(StepCall call, ChunkGenerator generator, Runnable generatorCall) {
+        ChunkAccess chunk = call.chunk();
         if (!SchedulingConfig.parallelCarvers() || !StepThreads.onVanillaMailbox() || !HookTargets.unchanged(HookTargets.CARVER_STEP)) {
             CARVERS_INLINE.increment();
             return null;
@@ -184,9 +198,9 @@ public final class ParallelSteps {
         }
         CARVERS_ASYNC.increment();
         return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_carvers", () -> {
-            run(call, step, chunk, generator);
+            run(generatorCall, call);
             return chunk;
-        }), StepLane.executor(StepLane.level(cache, chunk)));
+        }), StepLane.executor(StepLane.level(call)));
     }
 
     public static final LongAdder FEATURES_WAITED = new LongAdder();
@@ -210,7 +224,8 @@ public final class ParallelSteps {
      *
      * @return the step's future, or {@code null} to let vanilla run the step inline
      */
-    public static CompletableFuture<ChunkAccess> structureStarts(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
+    public static CompletableFuture<ChunkAccess> structureStarts(StepCall call) {
+        ChunkAccess chunk = call.chunk();
         if (StepThreads.runningVanilla()) {
             return null;
         }
@@ -219,13 +234,13 @@ public final class ParallelSteps {
             return null;
         }
         STARTS_ASYNC.increment();
-        MinecraftServer server = ctx.level().getServer();
+        MinecraftServer server = call.level().getServer();
         Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_structure_starts", () -> StepThreads.guarded(server, () -> {
-            run(() -> StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)).join(), step, chunk, ctx.generator());
+            run(() -> StepThreads.vanilla(call::runVanilla).join(), call);
             return chunk;
         }));
-        Executor executor = StepLane.executor(StepLane.level(cache, chunk));
-        CompletableFuture<?> rings = pendingRings(ctx.level(), chunk.getPos());
+        Executor executor = StepLane.executor(StepLane.level(call));
+        CompletableFuture<?> rings = pendingRings(call.level(), chunk.getPos());
         if (rings == null) {
             return CompletableFuture.supplyAsync(body, executor);
         }
@@ -264,7 +279,8 @@ public final class ParallelSteps {
      *
      * @return the step's future, or {@code null} to let vanilla run the step inline
      */
-    public static CompletableFuture<ChunkAccess> structureReferences(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
+    public static CompletableFuture<ChunkAccess> structureReferences(StepCall call) {
+        ChunkAccess chunk = call.chunk();
         if (StepThreads.runningVanilla()) {
             return null;
         }
@@ -273,11 +289,11 @@ public final class ParallelSteps {
             return null;
         }
         REFERENCES_ASYNC.increment();
-        MinecraftServer server = ctx.level().getServer();
+        MinecraftServer server = call.level().getServer();
         return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_structure_references", () -> StepThreads.guarded(server, () -> {
-            run(() -> StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)).join(), step, chunk, ctx.generator());
+            run(() -> StepThreads.vanilla(call::runVanilla).join(), call);
             return chunk;
-        })), StepLane.executor(StepLane.level(cache, chunk)));
+        })), StepLane.executor(StepLane.level(call)));
     }
 
     /**
@@ -288,7 +304,8 @@ public final class ParallelSteps {
      *
      * @return the step's future, or {@code null} to let vanilla run the step inline
      */
-    public static CompletableFuture<ChunkAccess> features(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
+    public static CompletableFuture<ChunkAccess> features(StepCall call) {
+        ChunkAccess chunk = call.chunk();
         if (StepThreads.runningVanilla()) {
             return null;
         }
@@ -296,16 +313,16 @@ public final class ParallelSteps {
             FEATURES_INLINE.increment();
             return null;
         }
-        AreaLocks locks = AreaLocks.of(ctx.level());
+        AreaLocks locks = AreaLocks.of(call.level());
         if (!SchedulingConfig.parallelFeatures() && locks.idle()) {
             FEATURES_INLINE.increment();
             return null;
         }
         FEATURES_ASYNC.increment();
         CompletableFuture<ChunkAccess> result = new CompletableFuture<>();
-        AreaLocks.Request request = AreaLocks.features(chunk.getPos(), SchedulingConfig.featuresGuardRadius(), StepLane.level(cache, chunk));
-        MinecraftServer server = ctx.level().getServer();
-        Runnable granted = dispatcher("wgen_features", server, locks, request, ctx, step, cache, chunk, result);
+        AreaLocks.Request request = AreaLocks.features(chunk.getPos(), SchedulingConfig.featuresGuardRadius(), StepLane.level(call));
+        MinecraftServer server = call.level().getServer();
+        Runnable granted = dispatcher("wgen_features", server, locks, request, call, result);
         long scheduled = System.nanoTime();
         Runnable dispatch = () -> {
             FEATURES_LOCK_WAIT.since(scheduled);
@@ -330,26 +347,27 @@ public final class ParallelSteps {
      *
      * @return the step's future, or {@code null} to let vanilla run the step inline
      */
-    public static CompletableFuture<ChunkAccess> initializeLight(WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk) {
+    public static CompletableFuture<ChunkAccess> initializeLight(StepCall call) {
+        ChunkAccess chunk = call.chunk();
         if (StepThreads.runningVanilla() || !StepThreads.onVanillaMailbox()) {
             return null;
         }
-        if (chunk.getPersistedStatus().isOrAfter(ChunkStatus.LIGHT)) {
+        if (chunk.getStatus().isOrAfter(ChunkStatus.LIGHT)) {
             // loaded from disk: every neighbour that could decorate into it is past FEATURES, so nothing writes into it any
             // more. Vanilla's inline step costs less than a trip through the pool
             return null;
         }
-        AreaLocks locks = AreaLocks.of(ctx.level());
+        AreaLocks locks = AreaLocks.of(call.level());
         // On the pool while its read key keeps out every decoration that writes the chunk. Decorations take area locks only when parallel.
         boolean async = SchedulingConfig.parallelLightInit() && SchedulingConfig.parallelFeatures();
         if (!async && locks.idle()) {
             // every request is registered by this thread, so nothing can start while this step runs
             return null;
         }
-        AreaLocks.Request request = AreaLocks.single(chunk.getPos(), StepLane.level(cache, chunk));
+        AreaLocks.Request request = AreaLocks.single(chunk.getPos(), StepLane.level(call));
         CompletableFuture<ChunkAccess> result = new CompletableFuture<>();
-        MinecraftServer server = ctx.level().getServer();
-        Runnable dispatch = dispatcher("wgen_light_init", server, locks, request, ctx, step, cache, chunk, result);
+        MinecraftServer server = call.level().getServer();
+        Runnable dispatch = dispatcher("wgen_light_init", server, locks, request, call, result);
         if (locks.acquireOrPark(request, dispatch)) {
             if (async) {
                 LIGHT_INIT_ASYNC.increment();
@@ -358,7 +376,7 @@ public final class ParallelSteps {
             }
             CompletableFuture<ChunkAccess> inner;
             try {
-                inner = StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk));
+                inner = StepThreads.vanilla(call::runVanilla);
             } finally {
                 locks.release(request);
             }
@@ -369,12 +387,12 @@ public final class ParallelSteps {
     }
 
     /** Hands a granted request's step to the worker pool. If the pool refuses (shutting down), the locks are released and the step fails. */
-    private static Runnable dispatcher(String taskName, MinecraftServer server, AreaLocks locks, AreaLocks.Request request, WorldGenContext ctx, ChunkStep step,
-                                       StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, CompletableFuture<ChunkAccess> result) {
+    private static Runnable dispatcher(String taskName, MinecraftServer server, AreaLocks locks, AreaLocks.Request request, StepCall call,
+                                       CompletableFuture<ChunkAccess> result) {
         return () -> {
             try {
-                StepLane.execute(StepLane.level(cache, chunk), Util.wrapThreadWithTaskName(taskName, () -> {
-                    StepThreads.guarded(server, () -> runLocked(locks, request, ctx, step, cache, chunk, result));
+                StepLane.execute(StepLane.level(call), Util.wrapThreadWithTaskName(taskName, () -> {
+                    StepThreads.guarded(server, () -> runLocked(locks, request, call, result));
                 }));
             } catch (RejectedExecutionException e) {
                 locks.release(request);
@@ -385,12 +403,12 @@ public final class ParallelSteps {
 
     /** Runs the original step while {@code request}'s locks are held, releases them, then completes {@code result}. */
     @SuppressWarnings("unchecked")
-    private static Void runLocked(AreaLocks locks, AreaLocks.Request request, WorldGenContext ctx, ChunkStep step, StaticCache2D<GenerationChunkHolder> cache,
-                                  ChunkAccess chunk, CompletableFuture<ChunkAccess> result) {
+    private static Void runLocked(AreaLocks locks, AreaLocks.Request request, StepCall call,
+                                  CompletableFuture<ChunkAccess> result) {
         CompletableFuture<ChunkAccess> inner;
         try {
             CompletableFuture<ChunkAccess>[] holder = new CompletableFuture[1];
-            run(() -> holder[0] = StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)), step, chunk, ctx.generator());
+            run(() -> holder[0] = StepThreads.vanilla(call::runVanilla), call);
             inner = holder[0];
         } catch (Throwable t) {
             locks.release(request);
@@ -412,11 +430,12 @@ public final class ParallelSteps {
     private static final ThreadLocal<int[]> RUNNING = ThreadLocal.withInitial(() -> new int[1]);
 
     /**
-     * Runs a step body. A failure carries the same crash report vanilla builds in {@code ChunkMap.applyStep}. When the thread's
-     * outermost body ends, the thread's reused fast-path objects let go of the region
+     * Runs a step body. A failure carries the crash report vanilla builds in {@code ChunkMap.scheduleChunkGeneration}, plus the
+     * status and thread. When the thread's outermost body ends, the thread's reused fast-path objects let go of the region
      * ({@link RegionRefs}).
      */
-    private static void run(Runnable work, ChunkStep step, ChunkAccess chunk, ChunkGenerator generator) {
+    private static void run(Runnable work, StepCall call) {
+        ChunkAccess chunk = call.chunk();
         int[] running = RUNNING.get();
         running[0]++;
         try {
@@ -427,10 +446,10 @@ public final class ParallelSteps {
             ChunkPos pos = chunk.getPos();
             CrashReport report = CrashReport.forThrowable(exception, "Exception generating new chunk");
             CrashReportCategory category = report.addCategory("Chunk to be generated");
-            category.setDetail("Status being generated", () -> step.targetStatus().getName());
+            category.setDetail("Status being generated", () -> call.status().toString());
             category.setDetail("Location", String.format(Locale.ROOT, "%d,%d", pos.x, pos.z));
             category.setDetail("Position hash", ChunkPos.asLong(pos.x, pos.z));
-            category.setDetail("Generator", generator);
+            category.setDetail("Generator", call.generator());
             category.setDetail("Thread", Thread.currentThread().getName());
             throw new ReportedException(report);
         } finally {

@@ -1,0 +1,86 @@
+plugins {
+    id 'com.gradleup.shadow'
+}
+
+architectury {
+    platformSetupLoomIde()
+    forge()
+}
+
+// Forge 1.20.1 reads mixin configs from the jar manifest (MixinConfigs), not from mods.toml
+def ga2MixinConfigs = [
+        'generatoraccelerator2.mixins.json',
+        // Compat with other worldgen mods, one config per mod (compat/<modid>/mixin); each applies only while its mod is loaded
+        'generatoraccelerator2.compat.biolith.mixins.json',
+        'generatoraccelerator2.compat.blueprint.mixins.json',
+        'generatoraccelerator2.compat.biomeswevegone.mixins.json',
+        'generatoraccelerator2.compat.c2me.mixins.json',
+        'generatoraccelerator2.compat.terrablender.mixins.json',
+        'generatoraccelerator2.compat.zeta.mixins.json',
+        'generatoraccelerator2.compat.quark.mixins.json',
+        'generatoraccelerator2.compat.spelunkery.mixins.json',
+        'generatoraccelerator2.compat.supplementaries.mixins.json',
+        'generatoraccelerator2.parallellight.mixins.json',
+        // Client render threads
+        'generatoraccelerator2.view.mixins.json',
+]
+
+loom {
+    forge {
+        // Forge has no access widener support: convert the common AW into META-INF/accesstransformer.cfg.
+        convertAccessWideners = true
+        extraAccessWideners.add loom.accessWidenerPath.get().asFile.name
+        mixinConfigs(*ga2MixinConfigs)
+    }
+}
+
+configurations {
+    common {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+    compileClasspath.extendsFrom common
+    runtimeClasspath.extendsFrom common
+    developmentForge.extendsFrom common
+
+    // Files in this configuration will be bundled into your mod using the Shadow plugin.
+    // Don't use the `shadow` configuration from the plugin itself as it's meant for excluding files.
+    shadowBundle {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    forge "net.minecraftforge:forge:$rootProject.forge_version"
+
+    // Forge 47 does not ship MixinExtras
+    include(implementation("io.github.llamalad7:mixinextras-forge:$rootProject.mixinextras_version"))
+    // Bundled: lets GA2 cancel the mixins it takes over from other performance mods (see compat/Takeover)
+    include(implementation("com.github.bawnorton.mixinsquared:mixinsquared-forge:$rootProject.mixinsquared_version"))
+
+    common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
+    shadowBundle project(path: ':common', configuration: 'transformProductionForge')
+}
+
+processResources {
+    inputs.property 'version', project.version
+
+    filesMatching('META-INF/mods.toml') {
+        expand version: project.version
+    }
+}
+
+shadowJar {
+    configurations = [project.configurations.shadowBundle]
+    archiveClassifier = 'dev-shadow'
+}
+
+remapJar {
+    input.set shadowJar.archiveFile
+}
+
+// production Forge runs under SRG member names (classes keep their Mojang names)
+ext.ga2NamesNamespace = 'srg'
+ext.ga2NamesMappings = providers.provider { loom.mappingConfiguration.tinyMappingsWithSrg.toFile() }
+apply from: rootProject.file('gradle/names.gradle')

@@ -8,7 +8,7 @@ import java.util.function.Supplier;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.status.ChunkStep;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,13 +22,13 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(WorldGenRegion.class)
 public abstract class WorldGenRegionWarningsMixin {
     @Shadow private Supplier<String> currentlyGenerating;
-    @Shadow @Final private ChunkStep generatingStep;
+    @Shadow @Final private ChunkStatus generatingStatus;
 
     @WrapOperation(method = "ensureCanWrite", at = @At(value = "INVOKE", target = "Lnet/minecraft/Util;logAndPauseIfInIde(Ljava/lang/String;)V"),
         require = 0)
     private void ga2$farWriteOnce(String message, Operation<Void> original) {
         String generating = RepeatedWarnings.generating(this.currentlyGenerating);
-        String source = generating != null ? generating : "status " + this.generatingStep.targetStatus().getName();
+        String source = generating != null ? generating : "status " + this.generatingStatus.toString();
         switch (RepeatedWarnings.decide(RepeatedWarnings.Kind.FAR_WRITE, source)) {
             case LOG -> original.call(message);
             case DEBUG -> RepeatedWarnings.debug("{}", message);

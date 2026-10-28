@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.storage.SimpleRegionStorage;
+import net.minecraft.world.level.chunk.storage.IOWorker;
 
 /**
  * Reads a saved chunk's points of interest together with the chunk.
@@ -42,8 +42,8 @@ public final class PoiPrefetch {
     }
 
     /** Starts reading the POI column of {@code pos} for the load of {@code chunkTag}. The future completes when the read has. */
-    public static CompletableFuture<?> start(Object poiStorage, SimpleRegionStorage regions, ChunkPos pos, CompoundTag chunkTag) {
-        CompletableFuture<Optional<CompoundTag>> read = regions.read(pos);
+    public static CompletableFuture<?> start(Object poiStorage, IOWorker worker, ChunkPos pos, CompoundTag chunkTag) {
+        CompletableFuture<Optional<CompoundTag>> read = worker.loadAsync(pos);
         BY_TAG.put(chunkTag, new Pending(poiStorage, pos, read));
         ChunkLoadStats.POI_PREFETCHED.increment();
         return read;

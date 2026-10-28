@@ -67,10 +67,10 @@ public class SavePrepTest {
                         String where = preset + " " + c[0] + "," + c[1] + " section " + sections;
                         Tag states = SavePrep.take(section.getStates(), () -> null);
                         assertNotNull(states, where + " states prepared");
-                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow()), states, where + " states");
+                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow(false, error -> {})), states, where + " states");
                         Tag biomeTag = SavePrep.take((PalettedContainer<?>) section.getBiomes(), () -> null);
                         assertNotNull(biomeTag, where + " biomes prepared");
-                        same(vanilla(() -> biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow()), biomeTag, where + " biomes");
+                        same(vanilla(() -> biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow(false, error -> {})), biomeTag, where + " biomes");
                         // taken once: the next save encodes again unless prepared again
                         assertNull(SavePrep.take(section.getStates(), () -> null), where + " taken once");
                         sections++;
@@ -104,7 +104,7 @@ public class SavePrepTest {
             } else {
                 assertNotNull(tag, "section " + i + " is unchanged");
                 PalettedContainer<BlockState> states = sections[i].getStates();
-                same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, states).getOrThrow()), tag, "section " + i);
+                same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, states).getOrThrow(false, error -> {})), tag, "section " + i);
             }
         }
         assertEquals(changed + 1, SavePrep.CHANGED.sum());
@@ -132,14 +132,14 @@ public class SavePrepTest {
                         // unchanged
                         Tag tag = SavePrep.take(container, () -> null);
                         assertNotNull(tag, where);
-                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow()), tag, where);
+                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {})), tag, where);
                     }
                     case 1 -> {
                         // the value already there: the data is the same, so is the tag
                         container.getAndSetUnchecked(5, 6, 7, container.get(5, 6, 7));
                         Tag tag = SavePrep.take(container, () -> null);
                         assertNotNull(tag, where);
-                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow()), tag, where);
+                        same(vanilla(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {})), tag, where);
                     }
                     case 2 -> {
                         // another value of the palette
@@ -178,7 +178,7 @@ public class SavePrepTest {
             SavePrep.prepareContainer(container, data -> SectionCodec.biomes(FastPack.pack(data, registry.asHolderIdMap(), PalettedContainer.Strategy.SECTION_BIOMES)));
             Tag tag = SavePrep.take(container, () -> null);
             assertNotNull(tag, "n=" + n);
-            same(vanilla(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow()), tag, "biomes n=" + n);
+            same(vanilla(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {})), tag, "biomes n=" + n);
         }
     }
 
@@ -264,7 +264,7 @@ public class SavePrepTest {
     private static byte[] bytes(Tag tag) {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            NbtIo.writeAnyTag(tag, new DataOutputStream(out));
+            NbtIo.writeUnnamedTag(tag, new DataOutputStream(out));
             return out.toByteArray();
         } catch (IOException e) {
             throw new IllegalStateException(e);

@@ -26,11 +26,6 @@ public final class RenderThreads {
     /** {@code -Dgeneratoraccelerator2.renderThreads=false} keeps vanilla's shared pool. */
     public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.renderThreads"));
     /**
-     * {@code -Dgeneratoraccelerator2.renderThreads.keepEdge=false} shows a rebuilt graph as vanilla does
-     * ({@code SectionOcclusionGraphMixin}).
-     */
-    public static final boolean KEEP_EDGE = !"false".equals(System.getProperty("generatoraccelerator2.renderThreads.keepEdge"));
-    /**
      * {@code -Dgeneratoraccelerator2.freeSectionBuffers=false} keeps stale section meshes in VRAM as vanilla does ({@code SectionBuffers}).
      * Here and not there, because the mixin plugin reads it before the client's classes may load.
      */
@@ -91,8 +86,7 @@ public final class RenderThreads {
                     int priority = Math.max(workerPriority(), Thread.NORM_PRIORITY + 1);
                     e = pool("GA2 Section Graph", 1, priority);
                     graph = e;
-                    LOGGER.info("visibility graph: own thread at priority {}, sections at the view's edge kept {}", priority,
-                        KEEP_EDGE ? "-> on (-Dgeneratoraccelerator2.renderThreads.keepEdge=false for vanilla)" : "-> off");
+                    LOGGER.info("visibility graph: own thread at priority {}", priority);
                 }
             }
         }

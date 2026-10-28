@@ -195,7 +195,7 @@ final class Toml {
                     out.add(indent + "#" + line);
                 }
             }
-            out.add(indent + value.getPath().getLast() + " = " + format(value.get()));
+            out.add(indent + value.getPath().get(value.getPath().size() - 1) + " = " + format(value.get()));
         }
         out.add("");
         return out;

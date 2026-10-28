@@ -14,7 +14,7 @@ import java.util.List;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;
 
 /**
- * Notices shown to the player once, through the loader's own screen. NeoForge shows them on its loading warnings screen. On
+ * Notices shown to the player once, through the loader's own screen. Forge shows them on its loading warnings screen. On
  * Fabric they open over the title screen.
  */
 public final class Notices {

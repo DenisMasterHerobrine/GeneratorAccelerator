@@ -8,14 +8,14 @@ import org.slf4j.event.Level;
 import org.slf4j.helpers.AbstractLogger;
 
 /**
- * GA2's loggers, one per area, named {@code GA2/<area>}. NeoForge's log layout prints the logger name, so its lines carry the
+ * GA2's loggers, one per area, named {@code GA2/<area>}. Forge's log layout prints the logger name, so its lines carry the
  * area once. Vanilla's layout prints no logger name, so there the area goes at the head of the message
  * instead. Messages themselves never carry the area. Safe to use from the mixin plugin, since it uses no Minecraft types.
  */
 public final class Ga2Log {
     private Ga2Log() {}
 
-    private static final boolean LAYOUT_NAMES_LOGGER = present("net.neoforged.fml.loading.FMLLoader");
+    private static final boolean LAYOUT_NAMES_LOGGER = present("net.minecraftforge.fml.loading.FMLLoader");
 
     public static Logger get(String area) {
         Logger logger = LoggerFactory.getLogger("GA2/" + area);

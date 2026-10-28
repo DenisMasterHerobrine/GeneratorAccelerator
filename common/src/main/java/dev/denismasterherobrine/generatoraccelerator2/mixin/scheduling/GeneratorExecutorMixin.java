@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 /**
  * While GA2 runs vanilla's scheduling, the noise and biome steps queue in {@link StepLane} at their chunk's priority.
- * {@code ChunkStatusTasksMixin} sets that priority. Otherwise, for example under another chunk system or on a direct
+ * {@code ChunkStatusStepsMixin} sets that priority. Otherwise, for example under another chunk system or on a direct
  * call, the generator keeps its own executor. The work and the thread pool stay the same.
  */
 @Mixin(value = NoiseBasedChunkGenerator.class, priority = 5000)

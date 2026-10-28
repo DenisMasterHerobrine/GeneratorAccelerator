@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
+import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceCopies;
 import java.util.function.Function;
 import net.minecraft.core.Registry;
 import net.minecraft.world.level.StructureManager;
@@ -16,6 +17,7 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.SurfaceSystem;
 import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import org.spongepowered.asm.mixin.Mixin;
@@ -44,10 +46,14 @@ public abstract class GpuSurfaceMixin {
         }
         NoiseBasedChunkGenerator self = (NoiseBasedChunkGenerator) (Object) this;
         NoiseGeneratorSettings settings = self.generatorSettings().value();
+        // the thread's own surface system when other mods' code keeps a build's values in it (SurfaceCopies)
+        SurfaceSystem system = SurfaceCopies.forThread(randomState.surfaceSystem(), randomState);
+        ColumnHooks.Frame[] frame = new ColumnHooks.Frame[1];
         if (GpuSurfaceJob.apply(chunk,
             copy -> self.buildSurface(copy, context, randomState, structures, biomeManager, biomes, blender),
-            () -> ColumnHooks.records(randomState.surfaceSystem(), randomState, biomeManager, biomes,
-                settings.useLegacyRandomSource(), context, chunk, settings.surfaceRule()))) {
+            () -> frame[0] = ColumnHooks.records(system, randomState, biomeManager, biomes,
+                settings.useLegacyRandomSource(), context, chunk, settings.surfaceRule()),
+            () -> ColumnHooks.afterBlocks(frame[0]))) {
             ci.cancel();
         }
     }

@@ -49,7 +49,7 @@ public final class C2MEMixins {
             "C2ME's delayed point-of-interest updates still work. GA2 only skips block changes that cannot affect points of interest."),
         new KnownMixins.Entry(MOD_ID, HookTargets.STORAGE_PRECOMPRESS, IO_WORKER, Set.of(IO_EXECUTOR_HANDLER),
             "C2ME's threads for saving chunks still work. GA2 compresses the chunks before they get there."),
-        // the overwritten method keeps its runtime name: Mojang's on NeoForge, intermediary on Fabric
+        // the overwritten method keeps its runtime name: Mojang's in development, intermediary on Fabric
         new KnownMixins.Entry(MOD_ID, HookTargets.STORAGE_OLD_CHUNK_SCAN, IO_WORKER,
             Set.of(IO_EXECUTOR_HANDLER, KnownMixins.overwrite("createOldDataForRegion"), KnownMixins.overwrite("method_42333")),
             "C2ME's threads for saving chunks still work. GA2's faster scan finds old chunks for terrain blending."));

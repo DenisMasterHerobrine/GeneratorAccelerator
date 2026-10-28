@@ -50,14 +50,14 @@ public class FastPalettesTest {
                 for (int pass = 0; pass < 2; pass++) {
                     for (LevelChunkSection section : chunk.getSections()) {
                         String where = preset + " chunk " + c[0] + "," + c[1] + " pass " + pass;
-                        CompoundTag s = (CompoundTag) states.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow();
-                        CompoundTag b = (CompoundTag) biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow();
+                        CompoundTag s = (CompoundTag) states.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow(false, error -> {});
+                        CompoundTag b = (CompoundTag) biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow(false, error -> {});
                         PalettedContainer<BlockState> fastStates = FastPalettes.states(s);
                         PalettedContainerRO<Holder<Biome>> fastBiomes = FastPalettes.biomes(registry, b);
                         assertNotNull(fastStates, where + " states decoded");
                         assertNotNull(fastBiomes, where + " biomes decoded");
-                        assertTrue(LoadPrep.sameDecoded(states, states.parse(NbtOps.INSTANCE, s).getOrThrow(), fastStates), where + " states");
-                        assertTrue(LoadPrep.sameDecoded(biomes, biomes.parse(NbtOps.INSTANCE, b).getOrThrow(), fastBiomes), where + " biomes");
+                        assertTrue(LoadPrep.sameDecoded(states, states.parse(NbtOps.INSTANCE, s).getOrThrow(false, error -> {}), fastStates), where + " states");
+                        assertTrue(LoadPrep.sameDecoded(biomes, biomes.parse(NbtOps.INSTANCE, b).getOrThrow(false, error -> {}), fastBiomes), where + " biomes");
                         compared++;
                     }
                 }

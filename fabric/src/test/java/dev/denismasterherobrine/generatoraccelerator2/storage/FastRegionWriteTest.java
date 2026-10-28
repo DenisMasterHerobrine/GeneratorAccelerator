@@ -32,7 +32,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,9 +74,7 @@ public class FastRegionWriteTest {
         CompoundTag huge = new CompoundTag();
         huge.put("noise", new ByteArrayTag(noise));
         tags.add(huge);
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
-        try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
+        try (RegionFile file = new RegionFile(dir.resolve("r.0.0.mca"), dir, false)) {
             for (int i = 0; i < tags.size(); i++) {
                 ByteBuffer buffer = FastRegionWrite.encode(tags.get(i), RegionFileVersion.VERSION_DEFLATE.getId());
                 Assertions.assertEquals(RegionFileVersion.VERSION_DEFLATE.getId(), buffer.get(4), "format of tag " + i);
@@ -85,7 +82,7 @@ public class FastRegionWriteTest {
             }
         }
         assertTrue(Files.list(dir).anyMatch(p -> p.toString().endsWith(".mcc")), "the huge chunk went to an external file");
-        try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
+        try (RegionFile file = new RegionFile(dir.resolve("r.0.0.mca"), dir, false)) {
             for (int i = 0; i < tags.size(); i++) {
                 try (DataInputStream in = file.getChunkDataInputStream(new ChunkPos(i % 32, i / 32))) {
                     Assertions.assertNotNull(in, "chunk " + i);
@@ -117,14 +114,12 @@ public class FastRegionWriteTest {
         if (region != null) {
             tags.addAll(RegionChunks.readTags(region, 200));
         }
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         Files.createDirectories(a);
         Files.createDirectories(b);
-        try (RegionFile va = new RegionFile(info, a.resolve("r.0.0.mca"), a, false);
-             RegionFile fa = new RegionFile(info, b.resolve("r.0.0.mca"), b, false)) {
+        try (RegionFile va = new RegionFile(a.resolve("r.0.0.mca"), a, false);
+             RegionFile fa = new RegionFile(b.resolve("r.0.0.mca"), b, false)) {
             for (int i = 0; i < tags.size(); i++) {
                 ChunkPos pos = new ChunkPos(i % 32, (i / 32) % 32);
                 try (DataOutputStream out = va.getChunkDataOutputStream(pos)) {

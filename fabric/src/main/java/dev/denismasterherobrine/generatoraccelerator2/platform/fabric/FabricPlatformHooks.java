@@ -13,7 +13,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.feature.MonsterRoomFeature;
@@ -25,7 +24,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 public final class FabricPlatformHooks implements PlatformHooks.Service {
     /** Vanilla's {@code findBlockLightSources} filter. */
     @Override
-    public boolean mayEmitLight(BlockState state) {
+    public boolean mayEmitLight(BlockState state, BlockGetter chunk) {
         return state.getLightEmission() != 0;
     }
 
@@ -57,16 +56,6 @@ public final class FabricPlatformHooks implements PlatformHooks.Service {
     @Override
     public EntityType<?> randomMonsterRoomMob(RandomSource random) {
         return Util.getRandom(MonsterRoomFeature.MOBS, random);
-    }
-
-    /**
-     * Vanilla counts a state as empty by {@code isAir()}. Fabric API, which every Fabric game has, replaces that test in
-     * {@code setBlockState} with a check for the three air blocks. The replacement is Fabric API's {@code ChunkSectionMixin}.
-     * Both tests select the same states for every vanilla block.
-     */
-    @Override
-    public boolean isEmpty(BlockState state) {
-        return state.is(Blocks.AIR) || state.is(Blocks.VOID_AIR) || state.is(Blocks.CAVE_AIR);
     }
 
     @Override

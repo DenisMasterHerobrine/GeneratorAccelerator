@@ -36,8 +36,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.storage.ChunkIOErrorReporter;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import net.minecraft.world.level.entity.ChunkEntities;
 import net.minecraft.world.level.entity.EntityAccess;
 import net.minecraft.world.level.entity.EntityInLevelCallback;
@@ -58,7 +56,7 @@ class ChunkLoadTest {
     @Test
     void targetsLoad() throws ClassNotFoundException {
         ClassLoader loader = getClass().getClassLoader();
-        for (String name : List.of("net.minecraft.world.level.chunk.storage.ChunkSerializer", "net.minecraft.server.network.PlayerChunkSender",
+        for (String name : List.of("net.minecraft.world.level.chunk.storage.ChunkSerializer",
             "net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData", "net.minecraft.server.level.ServerLevel",
             "net.minecraft.server.level.ServerChunkCache$MainThreadExecutor", "net.minecraft.server.level.DistanceManager$PlayerTicketTracker",
             "net.minecraft.server.level.DistanceManager", "net.minecraft.world.level.chunk.storage.SectionStorage", "net.minecraft.server.level.ChunkMap",
@@ -203,37 +201,25 @@ class ChunkLoadTest {
     @Test
     void poiColumnTakesTheReadMadeAhead() throws Exception {
         Path dir = Files.createTempDirectory("ga2-poi");
-        RegionStorageInfo info = new RegionStorageInfo("test", Level.OVERWORLD, "poi");
         LevelHeightAccessor heights = LevelHeightAccessor.create(-64, 384);
         RegistryAccess access = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
-        ChunkIOErrorReporter errors = new ChunkIOErrorReporter() {
-            @Override
-            public void reportChunkLoadFailure(Throwable t, RegionStorageInfo i, ChunkPos p) {
-                throw new AssertionError(t);
-            }
-
-            @Override
-            public void reportChunkSaveFailure(Throwable t, RegionStorageInfo i, ChunkPos p) {
-                throw new AssertionError(t);
-            }
-        };
         BlockPos bed = new BlockPos(5, 70, 7);
         ChunkPos pos = new ChunkPos(bed);
         Holder<PoiType> home = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.HOME);
-        try (PoiManager first = new PoiManager(info, dir, DataFixers.getDataFixer(), false, access, errors, heights)) {
+        try (PoiManager first = new PoiManager(dir, DataFixers.getDataFixer(), false, access, heights)) {
             first.add(bed, home);
             first.flush(pos);
         }
-        try (PoiManager second = new PoiManager(info, dir, DataFixers.getDataFixer(), false, access, errors, heights)) {
+        try (PoiManager second = new PoiManager(dir, DataFixers.getDataFixer(), false, access, heights)) {
             CompoundTag chunkTag = new CompoundTag();
             long used = ChunkLoadStats.POI_PREFETCH_USED.sum();
             long reads = ChunkLoadStats.POI_READS.sum();
             long waits = ChunkLoadStats.POI_WAIT.count();
-            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$simpleRegionStorage(), pos, chunkTag).join();
+            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$worker(), pos, chunkTag).join();
             // another tag's load does not get the read
             PoiPrefetch.enter(second, pos, new CompoundTag());
             PoiPrefetch.exit();
-            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$simpleRegionStorage(), pos, chunkTag).join();
+            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$worker(), pos, chunkTag).join();
             PoiPrefetch.enter(second, pos, chunkTag);
             Optional<Holder<PoiType>> type;
             try {

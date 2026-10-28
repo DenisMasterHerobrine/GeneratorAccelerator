@@ -1,7 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.noise;
 
 /**
- * Fused, bit-exact re-implementation of the vanilla 1.21.1 Perlin kernel
+ * Fused, bit-exact re-implementation of the vanilla 1.20.1 Perlin kernel
  * ({@code ImprovedNoise.noise} + {@code sampleAndLerp}).
  *
  * Every floating point operation is performed in the same order and with the same

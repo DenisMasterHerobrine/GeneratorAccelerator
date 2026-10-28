@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.features;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.denismasterherobrine.generatoraccelerator2.testutil.Fuzz;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.junit.jupiter.api.Test;
  * the same.
  */
 public class CaveFeaturesFuzzTest {
-    private static final int TRIALS = 40;
+    private static final int TRIALS = Fuzz.size(40, 8);
 
     @Test
     void sculkAndGeodesMatchVanilla() {
@@ -47,7 +48,7 @@ public class CaveFeaturesFuzzTest {
         int placed = 0;
         long sculkBefore = fast("SculkPatchFeature");
         long geodeBefore = fast("GeodeFeature");
-        for (long terrainSeed : new long[] { 20261002L, 777L }) {
+        for (long terrainSeed : Fuzz.seeds(20261002L, 777L)) {
             for (FeatureRun.ConfiguredCase c : cases) {
                 for (int t = 0; t < TRIALS; t++) {
                     FeatureRun.Result ref = run(r, c, terrainSeed, t, true);

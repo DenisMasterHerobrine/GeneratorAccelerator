@@ -59,7 +59,7 @@ import org.slf4j.Logger;
  * <p>Vanilla runs a chunk's unload task in the same tick it is queued. A task whose sections are still in encoding therefore
  * waits for the next tick ({@code mixin.storage.ChunkMapSavePrepMixin}). It waits at most {@link #MAX_DEFERRALS} times and
  * only while the chunk map ticks. The saves at shutdown and on {@code /save-all flush} never wait. Everything else in the
- * task runs on the server thread in vanilla's order: the unload event, the rest of the tag, NeoForge's save event, and the
+ * task runs on the server thread in vanilla's order: the unload event, the rest of the tag, Forge's save event, and the
  * light and POI updates.
  *
  * <p>{@code -Dgeneratoraccelerator2.savePrep=false} turns it off. {@code -Dgeneratoraccelerator2.verify.savePrep=N} also
@@ -233,13 +233,23 @@ public final class SavePrep {
     }
 
     /**
+     * The chunk {@code holder}'s unload saves, or null while work on the chunk is still pending. The unload saves what the
+     * holder's save future holds once it is done.
+     */
+    @Nullable
+    private static ChunkAccess chunkToSave(ChunkHolder holder) {
+        CompletableFuture<ChunkAccess> future = holder.getChunkToSave();
+        return future.isDone() && !future.isCompletedExceptionally() ? future.getNow(null) : null;
+    }
+
+    /**
      * Starts encoding the sections of the chunk in {@code holder}. That chunk is about to be saved and unloaded. Returns null
      * when there is nothing to encode or too much is in flight.
      */
     @Nullable
     public static CompletableFuture<Void> start(ServerLevel level, ChunkHolder holder) {
-        ChunkAccess chunk = holder.getLatestChunk();
-        if (chunk == null || !chunk.isUnsaved() || !holder.isReadyForSaving()) {
+        ChunkAccess chunk = chunkToSave(holder);
+        if (chunk == null || !chunk.isUnsaved()) {
             return null;
         }
         if (QUEUED.incrementAndGet() > (MemoryPressure.high() ? MAX_QUEUED_PRESSURE : MAX_QUEUED)) {
@@ -465,7 +475,7 @@ public final class SavePrep {
                 task.run();
             } finally {
                 QUEUED.decrementAndGet();
-                ChunkAccess chunk = holder.getLatestChunk();
+                ChunkAccess chunk = chunkToSave(holder);
                 if (chunk != null) {
                     discard(chunk);
                 }

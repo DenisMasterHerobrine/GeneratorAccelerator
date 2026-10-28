@@ -10,10 +10,7 @@ import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateLeaf;
 import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateTree;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedFunctions;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
-import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader;
@@ -28,7 +25,6 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.SelfTest;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.GpuBiomeSourceInspectMixin;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
-import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
@@ -38,39 +34,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
-import dev.worldgen.lithostitched.impl.LithostitchedInternalHooks;
-import dev.worldgen.lithostitched.impl.worldgen.biomeinjector.internal.InjectorBiomeSource;
-import dev.worldgen.lithostitched.impl.worldgen.densityfunction.CellularDensityFunction;
-import dev.worldgen.lithostitched.impl.worldgen.densityfunction.MixDensityFunction;
-import dev.worldgen.lithostitched.impl.worldgen.densityfunction.SelectDensityFunction;
-import dev.worldgen.lithostitched.impl.worldgen.densityfunction.ShiftDensityFunction;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.util.InclusiveRange;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
-import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
-import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.levelgen.Beardifier;
-import net.minecraft.world.level.levelgen.DensityFunction;
-import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseChunk;
-import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
-import net.minecraft.world.level.levelgen.NoiseRouter;
-import net.minecraft.world.level.levelgen.Noises;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
@@ -200,7 +177,10 @@ public class GpuRuntimeTest {
             EnhancedBeard.Kind.INTEGRATED, 20, kernel(20, 5.0, r), 0, 0, true, true, false, 0, null);
         var integratedUp = new EnhancedBeard.Adaptation(
             EnhancedBeard.Kind.INTEGRATED, 12, kernel(12, 3.0, r), 0, 0, true, false, true, 0, null);
-        var kinds = new EnhancedBeard.Adaptation[] { yung, yungCarve, integrated, integratedUp, null };
+        // YUNG's API 4.0 and Integrated API 1.5 take Mth.invSqrt (1 / sqrt)
+        var integratedExact = new EnhancedBeard.Adaptation(
+            EnhancedBeard.Kind.INTEGRATED, 18, kernel(18, 4.5, r), 0, 0, true, true, false, 0, null, true);
+        var kinds = new EnhancedBeard.Adaptation[] { yung, yungCarve, integrated, integratedUp, integratedExact, null };
         List<EnhancedBeard.Piece> pieces = new ArrayList<>();
         List<EnhancedBeard.Junction> junctions = new ArrayList<>();
         int[][] origins = { { -2, -2 }, { 5, 6 }, { -1953, 771 }, { 117187, -117187 }, { 1048574, 1048574 } };
@@ -416,111 +396,6 @@ public class GpuRuntimeTest {
             exactness(wg, precision);
         }
         throughput(wg, 20000);
-    }
-
-    /**
-     * Lithostitched's functions on the GPU ({@code compat.lithostitched.LithostitchedFunctions}), on stand-ins with the mod's class
-     * names and code. As in a pack, the aquifer's floodedness is read at a shifted position, and the terrain adds a mix of a shifted
-     * noise and a select. The program must compile them all, and its chunks must be GA2's CPU chunks.
-     */
-    @Test
-    void lithostitchedFunctions() throws Exception {
-        LithostitchedFunctions.register();
-        var reg = HarnessWorld.registries();
-        var noises = reg.lookup.lookupOrThrow(Registries.NOISE);
-        var base = reg.lookup.lookupOrThrow(Registries.NOISE_SETTINGS)
-            .getOrThrow(NoiseGeneratorSettings.OVERWORLD).value();
-        var r = base.noiseRouter();
-        var t = DensityFunctions.noise(noises.getOrThrow(Noises.TEMPERATURE), 1.0, 1.0);
-        var e = DensityFunctions.noise(noises.getOrThrow(Noises.EROSION), 0.5, 0.0);
-        var c = DensityFunctions.noise(noises.getOrThrow(Noises.CONTINENTALNESS), 0.25, 0.0);
-        DoubleFunction<DensityFunction> k = DensityFunctions::constant;
-        var flood = new ShiftDensityFunction(r.fluidLevelFloodednessNoise(),
-            DensityFunctions.mul(k.apply(64.0), e), DensityFunctions.zero(),
-            DensityFunctions.mul(k.apply(64.0), c));
-        var shifted = new ShiftDensityFunction(t, DensityFunctions.mul(k.apply(40.0), c),
-            k.apply(-3.0), DensityFunctions.zero());
-        var select = SelectDensityFunction.create(c, t, List.of(
-            new SelectDensityFunction.Selection(new InclusiveRange<>(-0.2, 0.1), e)));
-        var mix = new MixDensityFunction(
-            DensityFunctions.add(k.apply(0.5), e), shifted, select);
-        LithostitchedInternalHooks.WORLD_SEED = 1234567L;
-        var cellular = new CellularDensityFunction(Optional.empty(),
-            new CellularDensityFunction.GridDimensions(48, 0), 0.75f,
-            CellularDensityFunction.ReturnType.DISTANCE_2_SUB, 17);
-        var terrain = DensityFunctions.add(r.finalDensity(), DensityFunctions.add(
-            DensityFunctions.mul(k.apply(0.15), mix), DensityFunctions.mul(k.apply(-0.004), cellular)));
-        var router = new NoiseRouter(r.barrierNoise(), flood, r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(),
-            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), terrain, r.veinToggle(), r.veinRidged(), r.veinGap());
-        var settings = new NoiseGeneratorSettings(base.noiseSettings(), base.defaultBlock(), base.defaultFluid(), router,
-            base.surfaceRule(), base.spawnTarget(), base.seaLevel(), base.disableMobGeneration(), base.aquifersEnabled(), base.oreVeinsEnabled(),
-            base.useLegacyRandomSource());
-        var dim = reg.lookup.lookupOrThrow(Registries.DIMENSION_TYPE)
-            .getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
-        var source = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
-            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-                reg.biomes.asLookup())));
-        var world = new TerrainHarness.World(reg, Holder.direct(settings), source, noises, dim,
-            1234567L);
-        GpuProbe.Setup s = new GpuProbe.Setup(world);
-        String precision = System.getProperty("generatoraccelerator2.gpu.precision", "auto");
-        GpuWorldgen wg = open(s, "test-lithostitched-" + precision, precision, "");
-        if (!wg.ready()) {
-            throw new AssertionError("the GPU program did not build: " + wg.status());
-        }
-        exactness(s, wg, "lithostitched");
-    }
-
-    /**
-     * Lithostitched's biome injectors over the GPU's biomes ({@code compat.lithostitched.LithostitchedGpuBiomes}), on a stand-in of
-     * the injector source. The GPU gives each quart's base biome and climate point. The stand-in's own code then replaces target
-     * biomes by the point. The chunks must be GA2's CPU chunks, where the stand-in samples and searches by itself.
-     */
-    @Test
-    void lithostitchedInjectors() throws Exception {
-        var reg = HarnessWorld.registries();
-        var noises = reg.lookup.lookupOrThrow(Registries.NOISE);
-        var settings = reg.lookup.lookupOrThrow(Registries.NOISE_SETTINGS)
-            .getOrThrow(NoiseGeneratorSettings.OVERWORLD);
-        var dim = reg.lookup.lookupOrThrow(Registries.DIMENSION_TYPE)
-            .getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
-        var multi = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
-            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-                reg.biomes.asLookup())));
-        var targets = Set.<Holder<Biome>>of(
-            reg.biomes.getHolderOrThrow(Biomes.PLAINS), reg.biomes.getHolderOrThrow(Biomes.FOREST),
-            reg.biomes.getHolderOrThrow(Biomes.OCEAN), reg.biomes.getHolderOrThrow(Biomes.TAIGA),
-            reg.biomes.getHolderOrThrow(Biomes.DEEP_OCEAN));
-        var injector = new InjectorBiomeSource(multi, targets,
-            reg.biomes.getHolderOrThrow(Biomes.CHERRY_GROVE));
-        var world = new TerrainHarness.World(reg, settings, injector, noises, dim, 1234567L);
-        GpuProbe.Setup s = new GpuProbe.Setup(world);
-        GpuWorldgen wg = open(s, "test-injectors", "auto", "");
-        if (!wg.decidesBiomes() || wg.biomeInjector() != injector) {
-            throw new AssertionError("the injectors are not over the GPU's biomes: " + wg.status());
-        }
-        long handed = LithostitchedGpuBiomes.HANDED_POINTS.sum();
-        exactness(s, wg, "injectors");
-        handed = LithostitchedGpuBiomes.HANDED_POINTS.sum() - handed;
-        // the replacement must happen somewhere, or the test proves nothing about the handed points
-        int replaced = 0;
-        var cherry = reg.biomes.getHolderOrThrow(Biomes.CHERRY_GROVE);
-        for (int cx = 0; cx < 8; cx++) {
-            for (int cz = 0; cz < 8; cz++) {
-                ProtoChunk c = s.world.emptyChunk(cx * 37, cz * 37);
-                GpuWorldgen.BiomeResult b = wg.biomes(c.getPos()).get(120, TimeUnit.SECONDS);
-                Apply.biomes(wg, c, b, tieSampler(s, c, Structures.none(cx * 37, cz * 37, 1, 1).beardifierFor(cx * 37, cz * 37)));
-                for (var section : c.getSections()) {
-                    for (int q = 0; q < 64; q++) {
-                        replaced += section.getNoiseBiome(q & 3, q >> 4, (q >> 2) & 3) == cherry ? 1 : 0;
-                    }
-                }
-            }
-        }
-        log("injectors: %d climate points handed from the GPU, %d replaced quarts in 64 more chunks", handed, replaced);
-        if (handed == 0 || replaced == 0) {
-            throw new AssertionError("the injectors were not exercised");
-        }
     }
 
     /** Vanilla's {@code RTree.Node.distance}, which is protected: the squared distances of the seven parameters. */

@@ -251,13 +251,18 @@ public final class Emitter {
                 }
                 if (columnKernelCandidate(n)) {
                     boolean blendedKind = n instanceof Node.Blended;
-                    int spec = switch (n) {
-                        case Node.Noise x -> x.spec();
-                        case Node.ShiftedNoise x -> x.spec();
-                        case Node.NoiseAt x -> x.spec();
-                        case Node.Blended x -> x.spec();
-                        default -> throw new IllegalStateException();
-                    };
+                    int spec;
+                    if (n instanceof Node.Noise x) {
+                        spec = x.spec();
+                    } else if (n instanceof Node.ShiftedNoise x) {
+                        spec = x.spec();
+                    } else if (n instanceof Node.NoiseAt x) {
+                        spec = x.spec();
+                    } else if (n instanceof Node.Blended x) {
+                        spec = x.spec();
+                    } else {
+                        throw new IllegalStateException();
+                    }
                     stateIndex.put(n, states.size());
                     states.add(new StateDesc(blendedKind, spec, slotCount++));
                 }
@@ -367,31 +372,39 @@ public final class Emitter {
         if (known != null) {
             return known;
         }
-        boolean worth = switch (n) {
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise x -> true;
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.NoiseAt x -> true;
-            case Node.EndIslands x -> true;
-            case Node.Spline x -> true;
-            case Node.StaticCall c when !c.owner().equals("$op") -> true;
-            case Node.Marker m -> switch (m.type()) {
-                case FLAT_CACHE -> true;
-                case CACHE_ONCE -> columnWorth(m.child());
-                case CACHE_2D, INTERPOLATED, CACHE_ALL_IN_CELL -> false;
-            };
-            default -> {
-                boolean any = false;
-                for (Node c : RefCount.children(n)) {
-                    if (columnWorth(c)) {
-                        any = true;
-                        break;
-                    }
-                }
-                yield any;
-            }
+        boolean worth;
+        if (n instanceof Node.Noise x) {
+            worth = true;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            worth = true;
+        } else if (n instanceof Node.ShiftA x) {
+            worth = true;
+        } else if (n instanceof Node.ShiftB x) {
+            worth = true;
+        } else if (n instanceof Node.NoiseAt x) {
+            worth = true;
+        } else if (n instanceof Node.EndIslands x) {
+            worth = true;
+        } else if (n instanceof Node.Spline x) {
+            worth = true;
+        } else if (n instanceof Node.StaticCall c && !c.owner().equals("$op")) {
+            worth = true;
+        } else if (n instanceof Node.Marker m) {
+            worth = switch (m.type()) {
+            case FLAT_CACHE -> true;
+            case CACHE_ONCE -> columnWorth(m.child());
+            case CACHE_2D, INTERPOLATED, CACHE_ALL_IN_CELL -> false;
         };
+        } else {
+            boolean any = false;
+            for (Node c : RefCount.children(n)) {
+                if (columnWorth(c)) {
+                    any = true;
+                    break;
+                }
+            }
+            worth = any;
+        }
         columnWorthMemo.put(n, worth);
         return worth;
     }
@@ -408,33 +421,52 @@ public final class Emitter {
         if (known != null) {
             return known;
         }
-        boolean safe = switch (n) {
-            case Node.Marker m -> switch (m.type()) {
-                case FLAT_CACHE -> true;   // an array read of the chunk's flat cache inside the chunk
-                case CACHE_2D -> m.child() instanceof Node.Const || columnCaches.containsKey(m);
-                case CACHE_ONCE, INTERPOLATED, CACHE_ALL_IN_CELL -> false;
-            };
-            // pure arithmetic, samplers and lifted calls: safe when everything below is
-            case Node.Const x -> true;
-            case Node.Ap2 x -> childrenSafe(n);
-            case Node.MulOrAdd x -> childrenSafe(n);
-            case Node.Mapped x -> childrenSafe(n);
-            case Node.Clamp x -> childrenSafe(n);
-            case Node.RangeChoice x -> childrenSafe(n);
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise x -> childrenSafe(n);
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.Spline x -> childrenSafe(n);
-            case Node.EndIslands x -> true;
-            case Node.Select x -> childrenSafe(n);
-            case Node.StaticCall x -> childrenSafe(n);
-            case Node.NoiseAt x -> childrenSafe(n);
-            case Node.IntToDouble x -> childrenSafe(n);
-            case Node.RoundFloat x -> childrenSafe(n);
-            // anything else (externs, the beardifier, blending, y readers, node types added later) stays per block
-            default -> false;
+        boolean safe;
+        if (n instanceof Node.Marker m) {
+            safe = switch (m.type()) {
+            case FLAT_CACHE -> true;   // an array read of the chunk's flat cache inside the chunk
+            case CACHE_2D -> m.child() instanceof Node.Const || columnCaches.containsKey(m);
+            case CACHE_ONCE, INTERPOLATED, CACHE_ALL_IN_CELL -> false;
         };
+        } else if (n instanceof Node.Const x) {
+            // pure arithmetic, samplers and lifted calls: safe when everything below is
+            safe = true;
+        } else if (n instanceof Node.Ap2 x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.MulOrAdd x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.Mapped x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.Clamp x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.RangeChoice x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.Noise x) {
+            safe = true;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.ShiftA x) {
+            safe = true;
+        } else if (n instanceof Node.ShiftB x) {
+            safe = true;
+        } else if (n instanceof Node.Spline x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.EndIslands x) {
+            safe = true;
+        } else if (n instanceof Node.Select x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.StaticCall x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.NoiseAt x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.IntToDouble x) {
+            safe = childrenSafe(n);
+        } else if (n instanceof Node.RoundFloat x) {
+            safe = childrenSafe(n);
+        } else {
+            // anything else (externs, the beardifier, blending, y readers, node types added later) stays per block
+            safe = false;
+        }
         columnSafeMemo.put(n, safe);
         return safe;
     }
@@ -450,13 +482,17 @@ public final class Emitter {
 
     /** 3D noise leaves whose x and z inputs depend on (x,z) only can use the column kernel. */
     private boolean columnKernelCandidate(Node n) {
-        return switch (n) {
-            case Node.Noise x -> x.yScale() != 0.0;
-            case Node.ShiftedNoise x -> deps.of(x.shiftX()).isXzOrConst() && deps.of(x.shiftZ()).isXzOrConst() && !deps.of(n).isXzOrConst();
-            case Node.NoiseAt x -> deps.of(x.x()).isXzOrConst() && deps.of(x.z()).isXzOrConst() && !deps.of(n).isXzOrConst();
-            case Node.Blended x -> true;
-            default -> false;
-        };
+        if (n instanceof Node.Noise x) {
+            return x.yScale() != 0.0;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            return deps.of(x.shiftX()).isXzOrConst() && deps.of(x.shiftZ()).isXzOrConst() && !deps.of(n).isXzOrConst();
+        } else if (n instanceof Node.NoiseAt x) {
+            return deps.of(x.x()).isXzOrConst() && deps.of(x.z()).isXzOrConst() && !deps.of(n).isXzOrConst();
+        } else if (n instanceof Node.Blended x) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -475,34 +511,31 @@ public final class Emitter {
             visiting.remove(n);
             return;
         }
-        switch (n) {
-            case Node.Ap2 a -> {
-                markUnconditional(a.a(), out, visiting);
-                if (a.type() == Node.Ap2Type.ADD) {
-                    markUnconditional(a.b(), out, visiting);
-                } else if (mode != Mode.POINT && (a.type() == Node.Ap2Type.MUL) && (a.a() instanceof Node.Const || a.b() instanceof Node.Const)) {
-                    markUnconditional(a.b(), out, visiting); // folded MulOrAdd form has no short-circuit
-                }
+        if (n instanceof Node.Ap2 a) {
+            markUnconditional(a.a(), out, visiting);
+            if (a.type() == Node.Ap2Type.ADD) {
+                markUnconditional(a.b(), out, visiting);
+            } else if (mode != Mode.POINT && (a.type() == Node.Ap2Type.MUL) && (a.a() instanceof Node.Const || a.b() instanceof Node.Const)) {
+                markUnconditional(a.b(), out, visiting); // folded MulOrAdd form has no short-circuit
             }
-            case Node.RangeChoice r -> markUnconditional(r.input(), out, visiting);
-            case Node.Select s -> {
-                if (s.cond().kind() != Node.CmpKind.ICMP) {
-                    markUnconditional(s.cond().a(), out, visiting);
-                    markUnconditional(s.cond().b(), out, visiting);
-                }
+        } else if (n instanceof Node.RangeChoice r) {
+            markUnconditional(r.input(), out, visiting);
+        } else if (n instanceof Node.Select s) {
+            if (s.cond().kind() != Node.CmpKind.ICMP) {
+                markUnconditional(s.cond().a(), out, visiting);
+                markUnconditional(s.cond().b(), out, visiting);
             }
-            case Node.Marker m -> {
-                boolean transparent = mode == Mode.POINT || m.type() == Node.MarkerType.CACHE_ONCE
-                    || (m.type() == Node.MarkerType.CACHE_2D && deps.of(m.child()).isXzOrConst() && mode == Mode.COLUMN);
-                if (transparent) {
-                    markUnconditional(m.child(), out, visiting);
-                }
+        } else if (n instanceof Node.Marker m) {
+            boolean transparent = mode == Mode.POINT || m.type() == Node.MarkerType.CACHE_ONCE
+                || (m.type() == Node.MarkerType.CACHE_2D && deps.of(m.child()).isXzOrConst() && mode == Mode.COLUMN);
+            if (transparent) {
+                markUnconditional(m.child(), out, visiting);
             }
-            case Node.Spline s -> markSplineCoords(s.spline(), out, visiting);
-            default -> {
-                for (Node c : RefCount.children(n)) {
-                    markUnconditional(c, out, visiting);
-                }
+        } else if (n instanceof Node.Spline s) {
+            markSplineCoords(s.spline(), out, visiting);
+        } else {
+            for (Node c : RefCount.children(n)) {
+                markUnconditional(c, out, visiting);
             }
         }
         visiting.remove(n);
@@ -550,31 +583,46 @@ public final class Emitter {
         if (m != null) {
             return m;
         }
-        boolean e = switch (n) {
-            case Node.Noise x -> true;
-            case Node.ShiftedNoise x -> true;
-            case Node.ShiftA x -> true;
-            case Node.ShiftB x -> true;
-            case Node.Shift x -> true;
-            case Node.Weird x -> true;
-            case Node.Spline x -> true;
-            case Node.Blended x -> true;
-            case Node.BlendDensity x -> true;
-            case Node.BlendAlpha x -> true;
-            case Node.BlendOffset x -> true;
-            case Node.Beardifier x -> true;
-            case Node.EndIslands x -> true;
-            case Node.Unsupported x -> true;
-            case Node.NoiseAt x -> true;
-            case Node.Marker x -> mode != Mode.POINT && x.type() != Node.MarkerType.CACHE_ONCE || expensive(x.child());
-            default -> {
-                boolean any = false;
-                for (Node c : RefCount.children(n)) {
-                    any |= expensive(c);
-                }
-                yield any;
+        boolean e;
+        if (n instanceof Node.Noise x) {
+            e = true;
+        } else if (n instanceof Node.ShiftedNoise x) {
+            e = true;
+        } else if (n instanceof Node.ShiftA x) {
+            e = true;
+        } else if (n instanceof Node.ShiftB x) {
+            e = true;
+        } else if (n instanceof Node.Shift x) {
+            e = true;
+        } else if (n instanceof Node.Weird x) {
+            e = true;
+        } else if (n instanceof Node.Spline x) {
+            e = true;
+        } else if (n instanceof Node.Blended x) {
+            e = true;
+        } else if (n instanceof Node.BlendDensity x) {
+            e = true;
+        } else if (n instanceof Node.BlendAlpha x) {
+            e = true;
+        } else if (n instanceof Node.BlendOffset x) {
+            e = true;
+        } else if (n instanceof Node.Beardifier x) {
+            e = true;
+        } else if (n instanceof Node.EndIslands x) {
+            e = true;
+        } else if (n instanceof Node.Unsupported x) {
+            e = true;
+        } else if (n instanceof Node.NoiseAt x) {
+            e = true;
+        } else if (n instanceof Node.Marker x) {
+            e = mode != Mode.POINT && x.type() != Node.MarkerType.CACHE_ONCE || expensive(x.child());
+        } else {
+            boolean any = false;
+            for (Node c : RefCount.children(n)) {
+                any |= expensive(c);
             }
-        };
+            e = any;
+        }
         expensiveMemo.put(n, e);
         return e;
     }
@@ -641,35 +689,63 @@ public final class Emitter {
     }
 
     private int ownSize(Node n) {
-        return switch (n) {
-            case Node.Const c -> 3;
-            case Node.Ap2 a -> a.type() == Node.Ap2Type.ADD ? 1 : 20;
-            case Node.MulOrAdd m -> 4;
-            case Node.Mapped m -> 4;
-            case Node.Clamp c -> 10;
-            case Node.RangeChoice r -> 30;
-            case Node.YGradient y -> 24;
-            case Node.Noise no -> 30;
-            case Node.ShiftedNoise s -> 36;
-            case Node.ShiftA s -> 24;
-            case Node.ShiftB s -> 24;
-            case Node.Shift s -> 28;
-            case Node.Weird w -> 50;
-            case Node.Spline s -> 14 + 6 * splineCoordCount(s.spline());
-            case Node.Blended b -> 14;
-            case Node.BlendDensity b -> 12;
-            case Node.BlendAlpha a -> 3;
-            case Node.BlendOffset o -> 3;
-            case Node.Beardifier b -> 12;
-            case Node.EndIslands e -> 12;
-            case Node.Marker m -> columnCaches.containsKey(m) ? 40 : 0;
-            case Node.Unsupported u -> 12;
-            case Node.Select s -> 20;
-            case Node.StaticCall c -> 6 + 4 * c.args().size();
-            case Node.NoiseAt na -> 14;
-            case Node.IntToDouble i -> 6;
-            case Node.RoundFloat r -> 2;
-        };
+        if (n instanceof Node.Const c) {
+            return 3;
+        } else if (n instanceof Node.Ap2 a) {
+            return a.type() == Node.Ap2Type.ADD ? 1 : 20;
+        } else if (n instanceof Node.MulOrAdd m) {
+            return 4;
+        } else if (n instanceof Node.Mapped m) {
+            return 4;
+        } else if (n instanceof Node.Clamp c) {
+            return 10;
+        } else if (n instanceof Node.RangeChoice r) {
+            return 30;
+        } else if (n instanceof Node.YGradient y) {
+            return 24;
+        } else if (n instanceof Node.Noise no) {
+            return 30;
+        } else if (n instanceof Node.ShiftedNoise s) {
+            return 36;
+        } else if (n instanceof Node.ShiftA s) {
+            return 24;
+        } else if (n instanceof Node.ShiftB s) {
+            return 24;
+        } else if (n instanceof Node.Shift s) {
+            return 28;
+        } else if (n instanceof Node.Weird w) {
+            return 50;
+        } else if (n instanceof Node.Spline s) {
+            return 14 + 6 * splineCoordCount(s.spline());
+        } else if (n instanceof Node.Blended b) {
+            return 14;
+        } else if (n instanceof Node.BlendDensity b) {
+            return 12;
+        } else if (n instanceof Node.BlendAlpha a) {
+            return 3;
+        } else if (n instanceof Node.BlendOffset o) {
+            return 3;
+        } else if (n instanceof Node.Beardifier b) {
+            return 12;
+        } else if (n instanceof Node.EndIslands e) {
+            return 12;
+        } else if (n instanceof Node.Marker m) {
+            return columnCaches.containsKey(m) ? 40 : 0;
+        } else if (n instanceof Node.Unsupported u) {
+            return 12;
+        } else if (n instanceof Node.Select s) {
+            return 20;
+        } else if (n instanceof Node.StaticCall c) {
+            return 6 + 4 * c.args().size();
+        } else if (n instanceof Node.NoiseAt na) {
+            return 14;
+        } else if (n instanceof Node.IntToDouble i) {
+            return 6;
+        } else if (n instanceof Node.RoundFloat r) {
+            return 2;
+        } else {
+            throw new IllegalStateException(String.valueOf(n));
+        }
     }
 
     private int splineCoordCount(Node.SplineSpec s) {
@@ -898,193 +974,183 @@ public final class Emitter {
     }
 
     private void emitInline(MethodVisitor mv, Locals l, Node n) {
-        switch (n) {
-            case Node.Const c -> mv.visitLdcInsn(c.value());
-            case Node.Ap2 a -> emitAp2(mv, l, a);
-            case Node.MulOrAdd m -> {
-                emit(mv, l, m.input());
-                mv.visitLdcInsn(m.argument());
-                mv.visitInsn(m.mul() ? Opcodes.DMUL : Opcodes.DADD);
+        if (n instanceof Node.Const c) {
+            mv.visitLdcInsn(c.value());
+        } else if (n instanceof Node.Ap2 a) {
+            emitAp2(mv, l, a);
+        } else if (n instanceof Node.MulOrAdd m) {
+            emit(mv, l, m.input());
+            mv.visitLdcInsn(m.argument());
+            mv.visitInsn(m.mul() ? Opcodes.DMUL : Opcodes.DADD);
+        } else if (n instanceof Node.Mapped m) {
+            emit(mv, l, m.input());
+            String name = switch (m.type()) {
+                case ABS -> "abs";
+                case SQUARE -> "square";
+                case CUBE -> "cube";
+                case HALF_NEGATIVE -> "halfNegative";
+                case QUARTER_NEGATIVE -> "quarterNegative";
+                case SQUEEZE -> "squeeze";
+            };
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, name, "(D)D", false);
+        } else if (n instanceof Node.Clamp c) {
+            emit(mv, l, c.input());
+            mv.visitLdcInsn(c.lo());
+            mv.visitLdcInsn(c.hi());
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, "clamp", "(DDD)D", false);
+        } else if (n instanceof Node.RangeChoice r) {
+            emitRangeChoice(mv, l, r);
+        } else if (n instanceof Node.YGradient y) {
+            mv.visitVarInsn(Opcodes.ILOAD, l.y());
+            mv.visitInsn(Opcodes.I2D);
+            mv.visitLdcInsn((double) y.fromY());
+            mv.visitLdcInsn((double) y.toY());
+            mv.visitLdcInsn(y.fromValue());
+            mv.visitLdcInsn(y.toValue());
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, "clampedMap", "(DDDDD)D", false);
+        } else if (n instanceof Node.Noise no) {
+            Integer st = stateIndex.get(no);
+            if (st != null) {
+                emitColumnState(mv, l, states.get(st), st,
+                    () -> coord(mv, l.x(), no.xzScale()), () -> coord(mv, l.z(), no.xzScale()), () -> coord(mv, l.y(), no.yScale()));
+                return;
             }
-            case Node.Mapped m -> {
-                emit(mv, l, m.input());
-                String name = switch (m.type()) {
-                    case ABS -> "abs";
-                    case SQUARE -> "square";
-                    case CUBE -> "cube";
-                    case HALF_NEGATIVE -> "halfNegative";
-                    case QUARTER_NEGATIVE -> "quarterNegative";
-                    case SQUEEZE -> "squeeze";
-                };
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, name, "(D)D", false);
+            loadSpec(mv, no.spec());
+            coord(mv, l.x(), no.xzScale());
+            coord(mv, l.y(), no.yScale());
+            coord(mv, l.z(), no.xzScale());
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+        } else if (n instanceof Node.ShiftedNoise s) {
+            Integer st = stateIndex.get(s);
+            if (st != null) {
+                emitColumnState(mv, l, states.get(st), st,
+                    () -> { coord(mv, l.x(), s.xzScale()); emit(mv, l, s.shiftX()); mv.visitInsn(Opcodes.DADD); },
+                    () -> { coord(mv, l.z(), s.xzScale()); emit(mv, l, s.shiftZ()); mv.visitInsn(Opcodes.DADD); },
+                    () -> { coord(mv, l.y(), s.yScale()); emit(mv, l, s.shiftY()); mv.visitInsn(Opcodes.DADD); });
+                return;
             }
-            case Node.Clamp c -> {
-                emit(mv, l, c.input());
-                mv.visitLdcInsn(c.lo());
-                mv.visitLdcInsn(c.hi());
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, "clamp", "(DDD)D", false);
+            loadSpec(mv, s.spec());
+            coord(mv, l.x(), s.xzScale());
+            emit(mv, l, s.shiftX());
+            mv.visitInsn(Opcodes.DADD);
+            coord(mv, l.y(), s.yScale());
+            emit(mv, l, s.shiftY());
+            mv.visitInsn(Opcodes.DADD);
+            coord(mv, l.z(), s.xzScale());
+            emit(mv, l, s.shiftZ());
+            mv.visitInsn(Opcodes.DADD);
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+        } else if (n instanceof Node.ShiftA s) {
+            loadSpec(mv, s.spec());
+            coord(mv, l.x(), 0.25);
+            mv.visitLdcInsn(0.0);
+            coord(mv, l.z(), 0.25);
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+            mv.visitLdcInsn(4.0);
+            mv.visitInsn(Opcodes.DMUL);
+        } else if (n instanceof Node.ShiftB s) {
+            loadSpec(mv, s.spec());
+            coord(mv, l.z(), 0.25);
+            coord(mv, l.x(), 0.25);
+            mv.visitLdcInsn(0.0);
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+            mv.visitLdcInsn(4.0);
+            mv.visitInsn(Opcodes.DMUL);
+        } else if (n instanceof Node.Shift s) {
+            loadSpec(mv, s.spec());
+            coord(mv, l.x(), 0.25);
+            coord(mv, l.y(), 0.25);
+            coord(mv, l.z(), 0.25);
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+            mv.visitLdcInsn(4.0);
+            mv.visitInsn(Opcodes.DMUL);
+        } else if (n instanceof Node.Weird w) {
+            emitWeird(mv, l, w);
+        } else if (n instanceof Node.Spline s) {
+            emitSpline(mv, l, s);
+        } else if (n instanceof Node.Blended b) {
+            Integer st = stateIndex.get(b);
+            if (st != null) {
+                emitBlendedState(mv, l, states.get(st), st);
+                return;
             }
-            case Node.RangeChoice r -> emitRangeChoice(mv, l, r);
-            case Node.YGradient y -> {
-                mv.visitVarInsn(Opcodes.ILOAD, l.y());
-                mv.visitInsn(Opcodes.I2D);
-                mv.visitLdcInsn((double) y.fromY());
-                mv.visitLdcInsn((double) y.toY());
-                mv.visitLdcInsn(y.fromValue());
-                mv.visitLdcInsn(y.toValue());
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, Ops.INTERNAL, "clampedMap", "(DDDDD)D", false);
+            mv.visitVarInsn(Opcodes.ALOAD, 0);
+            mv.visitFieldInsn(Opcodes.GETFIELD, CompiledProgram.INTERNAL, "blended", "[L" + BLENDED_SPEC + ";");
+            pushInt(mv, b.spec());
+            mv.visitInsn(Opcodes.AALOAD);
+            mv.visitVarInsn(Opcodes.ILOAD, l.x());
+            mv.visitVarInsn(Opcodes.ILOAD, l.y());
+            mv.visitVarInsn(Opcodes.ILOAD, l.z());
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BLENDED_SPEC, "compute", "(III)D", false);
+        } else if (n instanceof Node.BlendDensity b) {
+            mv.visitVarInsn(Opcodes.ALOAD, l.ctx());
+            mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, FUNCTION_CONTEXT, GET_BLENDER, "()L" + BLENDER + ";", true);
+            mv.visitVarInsn(Opcodes.ALOAD, l.ctx());
+            emit(mv, l, b.input());
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BLENDER, BLEND_DENSITY, "(L" + FUNCTION_CONTEXT + ";D)D", false);
+        } else if (n instanceof Node.BlendAlpha a) {
+            if (mode == Mode.COLUMN) {
+                emitExtern(mv, l, DensityFunctions.BlendAlpha.INSTANCE); // the chunk's blend alpha cache, or 1.0
+            } else {
+                mv.visitLdcInsn(1.0);
             }
-            case Node.Noise no -> {
-                Integer st = stateIndex.get(no);
-                if (st != null) {
-                    emitColumnState(mv, l, states.get(st), st,
-                        () -> coord(mv, l.x(), no.xzScale()), () -> coord(mv, l.z(), no.xzScale()), () -> coord(mv, l.y(), no.yScale()));
-                    return;
-                }
-                loadSpec(mv, no.spec());
-                coord(mv, l.x(), no.xzScale());
-                coord(mv, l.y(), no.yScale());
-                coord(mv, l.z(), no.xzScale());
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
-            }
-            case Node.ShiftedNoise s -> {
-                Integer st = stateIndex.get(s);
-                if (st != null) {
-                    emitColumnState(mv, l, states.get(st), st,
-                        () -> { coord(mv, l.x(), s.xzScale()); emit(mv, l, s.shiftX()); mv.visitInsn(Opcodes.DADD); },
-                        () -> { coord(mv, l.z(), s.xzScale()); emit(mv, l, s.shiftZ()); mv.visitInsn(Opcodes.DADD); },
-                        () -> { coord(mv, l.y(), s.yScale()); emit(mv, l, s.shiftY()); mv.visitInsn(Opcodes.DADD); });
-                    return;
-                }
-                loadSpec(mv, s.spec());
-                coord(mv, l.x(), s.xzScale());
-                emit(mv, l, s.shiftX());
-                mv.visitInsn(Opcodes.DADD);
-                coord(mv, l.y(), s.yScale());
-                emit(mv, l, s.shiftY());
-                mv.visitInsn(Opcodes.DADD);
-                coord(mv, l.z(), s.xzScale());
-                emit(mv, l, s.shiftZ());
-                mv.visitInsn(Opcodes.DADD);
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
-            }
-            case Node.ShiftA s -> {
-                loadSpec(mv, s.spec());
-                coord(mv, l.x(), 0.25);
+        } else if (n instanceof Node.BlendOffset o) {
+            if (mode == Mode.COLUMN) {
+                emitExtern(mv, l, DensityFunctions.BlendOffset.INSTANCE);
+            } else {
                 mv.visitLdcInsn(0.0);
-                coord(mv, l.z(), 0.25);
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
-                mv.visitLdcInsn(4.0);
-                mv.visitInsn(Opcodes.DMUL);
             }
-            case Node.ShiftB s -> {
-                loadSpec(mv, s.spec());
-                coord(mv, l.z(), 0.25);
-                coord(mv, l.x(), 0.25);
-                mv.visitLdcInsn(0.0);
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
-                mv.visitLdcInsn(4.0);
-                mv.visitInsn(Opcodes.DMUL);
-            }
-            case Node.Shift s -> {
-                loadSpec(mv, s.spec());
-                coord(mv, l.x(), 0.25);
-                coord(mv, l.y(), 0.25);
-                coord(mv, l.z(), 0.25);
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
-                mv.visitLdcInsn(4.0);
-                mv.visitInsn(Opcodes.DMUL);
-            }
-            case Node.Weird w -> emitWeird(mv, l, w);
-            case Node.Spline s -> emitSpline(mv, l, s);
-            case Node.Blended b -> {
-                Integer st = stateIndex.get(b);
-                if (st != null) {
-                    emitBlendedState(mv, l, states.get(st), st);
-                    return;
-                }
-                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitFieldInsn(Opcodes.GETFIELD, CompiledProgram.INTERNAL, "blended", "[L" + BLENDED_SPEC + ";");
-                pushInt(mv, b.spec());
-                mv.visitInsn(Opcodes.AALOAD);
-                mv.visitVarInsn(Opcodes.ILOAD, l.x());
-                mv.visitVarInsn(Opcodes.ILOAD, l.y());
-                mv.visitVarInsn(Opcodes.ILOAD, l.z());
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BLENDED_SPEC, "compute", "(III)D", false);
-            }
-            case Node.BlendDensity b -> {
-                mv.visitVarInsn(Opcodes.ALOAD, l.ctx());
-                mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, FUNCTION_CONTEXT, GET_BLENDER, "()L" + BLENDER + ";", true);
-                mv.visitVarInsn(Opcodes.ALOAD, l.ctx());
-                emit(mv, l, b.input());
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BLENDER, BLEND_DENSITY, "(L" + FUNCTION_CONTEXT + ";D)D", false);
-            }
-            case Node.BlendAlpha a -> {
-                if (mode == Mode.COLUMN) {
-                    emitExtern(mv, l, DensityFunctions.BlendAlpha.INSTANCE); // the chunk's blend alpha cache, or 1.0
-                } else {
-                    mv.visitLdcInsn(1.0);
-                }
-            }
-            case Node.BlendOffset o -> {
-                if (mode == Mode.COLUMN) {
-                    emitExtern(mv, l, DensityFunctions.BlendOffset.INSTANCE);
-                } else {
-                    mv.visitLdcInsn(0.0);
-                }
-            }
-            case Node.Beardifier b -> {
-                if (mode == Mode.CELL) {
-                    // Every contribution is exactly 0.0 when no piece is in range of the cell, so the
-                    // vanilla loop would sum nothing. Skip the call and use 0.0, the loop's start value.
-                    Label call = new Label();
-                    Label end = new Label();
-                    mv.visitVarInsn(Opcodes.ILOAD, l.beard());
-                    mv.visitJumpInsn(Opcodes.IFNE, call);
-                    mv.visitLdcInsn(0.0);
-                    mv.visitJumpInsn(Opcodes.GOTO, end);
-                    mv.visitLabel(call);
-                    emitExtern(mv, l, b.vanilla());
-                    mv.visitLabel(end);
-                } else {
-                    emitExtern(mv, l, b.vanilla());
-                }
-            }
-            case Node.EndIslands e -> emitExtern(mv, l, e.vanilla());
-            case Node.Marker m -> emitMarker(mv, l, m);
-            case Node.Unsupported u -> emitExtern(mv, l, u.vanilla());
-            case Node.Select s -> {
-                Label jump = new Label();
+        } else if (n instanceof Node.Beardifier b) {
+            if (mode == Mode.CELL) {
+                // Every contribution is exactly 0.0 when no piece is in range of the cell, so the
+                // vanilla loop would sum nothing. Skip the call and use 0.0, the loop's start value.
+                Label call = new Label();
                 Label end = new Label();
-                emitCond(mv, l, s.cond(), jump);
-                emit(mv, l, s.whenFall());
+                mv.visitVarInsn(Opcodes.ILOAD, l.beard());
+                mv.visitJumpInsn(Opcodes.IFNE, call);
+                mv.visitLdcInsn(0.0);
                 mv.visitJumpInsn(Opcodes.GOTO, end);
-                mv.visitLabel(jump);
-                emit(mv, l, s.whenJump());
+                mv.visitLabel(call);
+                emitExtern(mv, l, b.vanilla());
                 mv.visitLabel(end);
+            } else {
+                emitExtern(mv, l, b.vanilla());
             }
-            case Node.StaticCall c -> emitStaticCall(mv, l, c.owner(), c.name(), c.desc(), c.args());
-            case Node.NoiseAt na -> {
-                Integer st = stateIndex.get(na);
-                if (st != null) {
-                    emitColumnState(mv, l, states.get(st), st, () -> emit(mv, l, na.x()), () -> emit(mv, l, na.z()), () -> emit(mv, l, na.y()));
-                    return;
-                }
-                loadSpec(mv, na.spec());
-                emit(mv, l, na.x());
-                emit(mv, l, na.y());
-                emit(mv, l, na.z());
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+        } else if (n instanceof Node.EndIslands e) {
+            emitExtern(mv, l, e.vanilla());
+        } else if (n instanceof Node.Marker m) {
+            emitMarker(mv, l, m);
+        } else if (n instanceof Node.Unsupported u) {
+            emitExtern(mv, l, u.vanilla());
+        } else if (n instanceof Node.Select s) {
+            Label jump = new Label();
+            Label end = new Label();
+            emitCond(mv, l, s.cond(), jump);
+            emit(mv, l, s.whenFall());
+            mv.visitJumpInsn(Opcodes.GOTO, end);
+            mv.visitLabel(jump);
+            emit(mv, l, s.whenJump());
+            mv.visitLabel(end);
+        } else if (n instanceof Node.StaticCall c) {
+            emitStaticCall(mv, l, c.owner(), c.name(), c.desc(), c.args());
+        } else if (n instanceof Node.NoiseAt na) {
+            Integer st = stateIndex.get(na);
+            if (st != null) {
+                emitColumnState(mv, l, states.get(st), st, () -> emit(mv, l, na.x()), () -> emit(mv, l, na.z()), () -> emit(mv, l, na.y()));
+                return;
             }
-            case Node.IntToDouble i -> {
-                emitInt(mv, l, i.value());
-                mv.visitInsn(Opcodes.I2D);
-            }
-            case Node.RoundFloat r -> {
-                emit(mv, l, r.value());
-                mv.visitInsn(Opcodes.D2F);
-                mv.visitInsn(Opcodes.F2D);
-            }
+            loadSpec(mv, na.spec());
+            emit(mv, l, na.x());
+            emit(mv, l, na.y());
+            emit(mv, l, na.z());
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, NOISE_SPEC, "getValue", "(DDD)D", false);
+        } else if (n instanceof Node.IntToDouble i) {
+            emitInt(mv, l, i.value());
+            mv.visitInsn(Opcodes.I2D);
+        } else if (n instanceof Node.RoundFloat r) {
+            emit(mv, l, r.value());
+            mv.visitInsn(Opcodes.D2F);
+            mv.visitInsn(Opcodes.F2D);
         }
     }
 
@@ -1146,59 +1212,55 @@ public final class Emitter {
 
     /** Leaves an int on the operand stack. Integer expressions are never shared or spilled. */
     private void emitInt(MethodVisitor mv, Locals l, INode n) {
-        switch (n) {
-            case INode.IntConst c -> pushInt(mv, c.value());
-            case INode.IntCoord c -> mv.visitVarInsn(Opcodes.ILOAD, c.axis() == 0 ? l.x() : c.axis() == 1 ? l.y() : l.z());
-            case INode.IntBin b -> {
-                emitInt(mv, l, b.a());
-                emitInt(mv, l, b.b());
-                mv.visitInsn(switch (b.op()) {
-                    case ADD -> Opcodes.IADD;
-                    case SUB -> Opcodes.ISUB;
-                    case MUL -> Opcodes.IMUL;
-                    case DIV -> Opcodes.IDIV;
-                    case REM -> Opcodes.IREM;
-                    case SHL -> Opcodes.ISHL;
-                    case SHR -> Opcodes.ISHR;
-                    case USHR -> Opcodes.IUSHR;
-                    case AND -> Opcodes.IAND;
-                    case OR -> Opcodes.IOR;
-                    case XOR -> Opcodes.IXOR;
-                });
-            }
-            case INode.IntNeg g -> {
-                emitInt(mv, l, g.a());
-                mv.visitInsn(Opcodes.INEG);
-            }
-            case INode.DoubleToInt d -> {
-                emit(mv, l, d.value());
-                mv.visitInsn(Opcodes.D2I);
-            }
-            case INode.IntStaticCall c -> {
-                char[] sorts = StaticCalls.argSorts(c.desc());
-                for (int i = 0; i < c.args().size(); i++) {
-                    Object a = c.args().get(i);
-                    if (a instanceof Node nn) {
-                        emit(mv, l, nn);
-                        if (sorts[i] == 'F') {
-                            mv.visitInsn(Opcodes.D2F);
-                        }
-                    } else {
-                        emitInt(mv, l, (INode) a);
+        if (n instanceof INode.IntConst c) {
+            pushInt(mv, c.value());
+        } else if (n instanceof INode.IntCoord c) {
+            mv.visitVarInsn(Opcodes.ILOAD, c.axis() == 0 ? l.x() : c.axis() == 1 ? l.y() : l.z());
+        } else if (n instanceof INode.IntBin b) {
+            emitInt(mv, l, b.a());
+            emitInt(mv, l, b.b());
+            mv.visitInsn(switch (b.op()) {
+                case ADD -> Opcodes.IADD;
+                case SUB -> Opcodes.ISUB;
+                case MUL -> Opcodes.IMUL;
+                case DIV -> Opcodes.IDIV;
+                case REM -> Opcodes.IREM;
+                case SHL -> Opcodes.ISHL;
+                case SHR -> Opcodes.ISHR;
+                case USHR -> Opcodes.IUSHR;
+                case AND -> Opcodes.IAND;
+                case OR -> Opcodes.IOR;
+                case XOR -> Opcodes.IXOR;
+            });
+        } else if (n instanceof INode.IntNeg g) {
+            emitInt(mv, l, g.a());
+            mv.visitInsn(Opcodes.INEG);
+        } else if (n instanceof INode.DoubleToInt d) {
+            emit(mv, l, d.value());
+            mv.visitInsn(Opcodes.D2I);
+        } else if (n instanceof INode.IntStaticCall c) {
+            char[] sorts = StaticCalls.argSorts(c.desc());
+            for (int i = 0; i < c.args().size(); i++) {
+                Object a = c.args().get(i);
+                if (a instanceof Node nn) {
+                    emit(mv, l, nn);
+                    if (sorts[i] == 'F') {
+                        mv.visitInsn(Opcodes.D2F);
                     }
+                } else {
+                    emitInt(mv, l, (INode) a);
                 }
-                mv.visitMethodInsn(Opcodes.INVOKESTATIC, c.owner(), c.name(), c.desc(), false);
             }
-            case INode.SelectInt s -> {
-                Label jump = new Label();
-                Label end = new Label();
-                emitCond(mv, l, s.cond(), jump);
-                emitInt(mv, l, s.whenFall());
-                mv.visitJumpInsn(Opcodes.GOTO, end);
-                mv.visitLabel(jump);
-                emitInt(mv, l, s.whenJump());
-                mv.visitLabel(end);
-            }
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, c.owner(), c.name(), c.desc(), false);
+        } else if (n instanceof INode.SelectInt s) {
+            Label jump = new Label();
+            Label end = new Label();
+            emitCond(mv, l, s.cond(), jump);
+            emitInt(mv, l, s.whenFall());
+            mv.visitJumpInsn(Opcodes.GOTO, end);
+            mv.visitLabel(jump);
+            emitInt(mv, l, s.whenJump());
+            mv.visitLabel(end);
         }
     }
 

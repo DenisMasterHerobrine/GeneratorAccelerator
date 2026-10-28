@@ -10,13 +10,13 @@ import org.slf4j.Logger;
  * Where GA2's config files live: {@code config/generatoraccelerator2/<part>.toml}. Older versions wrote
  * {@code config/fastestnoisereworked-<part>.toml}. The first start that finds such a file moves it into the folder before the
  * configs load, so its settings stay. A modpack's {@code defaultconfigs/fastestnoisereworked-<part>.toml} still gives the
- * defaults of a new install, as NeoForge's own copy from {@code defaultconfigs} would.
+ * defaults of a new install, as Forge's own copy from {@code defaultconfigs} would.
  */
 public final class ConfigFiles {
     private ConfigFiles() {}
 
     public static final String FOLDER = "generatoraccelerator2";
-    /** The files, by part name. {@code common} was NeoForge's default name for the first config ({@code fastestnoisereworked-common.toml}). */
+    /** The files, by part name. {@code common} was the loaders' default name for the first config ({@code fastestnoisereworked-common.toml}). */
     static final String[] PARTS = {"common", "features", "scheduling", "surface", "carvers", "biomes", "compat", "storage", "light", "join",
         "parallel-light", "gpu"};
 

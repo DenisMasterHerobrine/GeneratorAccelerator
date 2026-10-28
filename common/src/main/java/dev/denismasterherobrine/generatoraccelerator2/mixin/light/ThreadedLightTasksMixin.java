@@ -134,9 +134,4 @@ public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
     private void ga2$kindLightChunk(CallbackInfoReturnable<?> cir) {
         LightTasks.kind(LightTasks.LIGHT_CHUNK);
     }
-
-    @Inject(method = "waitForPendingTasks", at = @At("HEAD"))
-    private void ga2$kindPending(CallbackInfoReturnable<?> cir) {
-        LightTasks.kind(LightTasks.PENDING);
-    }
 }

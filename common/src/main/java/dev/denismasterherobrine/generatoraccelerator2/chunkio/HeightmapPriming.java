@@ -141,7 +141,7 @@ public final class HeightmapPriming {
                 }
                 view.setRawData(chunk, order[i], vanillaRaw);
                 Ga2Log.get("Verify").warn("heightmap prime mismatch: chunk {} ({}) heightmap {} vs vanilla scan:{}",
-                    chunk.getPos(), chunk.getPersistedStatus().getName(), order[i], sb);
+                    chunk.getPos(), chunk.getStatus().toString(), order[i], sb);
             }
         }
     }

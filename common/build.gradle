@@ -8,8 +8,19 @@ configurations {
     gpuBundle
 }
 def gpuLibsDir = layout.buildDirectory.dir('generated/gpuLibs')
+// the bundled jars' LWJGL version, which ClLoader reads to name them
+def gpuVersionFile = layout.buildDirectory.file('generated/gpuVersion/lwjgl.version')
+def gpuLibsVersion = tasks.register('gpuLibsVersion') {
+    def version = rootProject.lwjgl_version
+    inputs.property('version', version)
+    outputs.file(gpuVersionFile)
+    doLast {
+        gpuVersionFile.get().asFile.text = version
+    }
+}
 def bundleGpuLibs = tasks.register('bundleGpuLibs', Sync) {
     from(configurations.gpuBundle)
+    from(gpuLibsVersion)
     into(gpuLibsDir.map { it.dir('META-INF/ga2-gpu') })
 }
 sourceSets.main.resources.srcDir(files(gpuLibsDir).builtBy(bundleGpuLibs))
@@ -20,7 +31,7 @@ dependencies {
     // Do NOT use other classes from Fabric Loader.
     modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
 
-    // @Nullable and friends (NeoForge has them on its classpath; annotations only, not needed at run time)
+    // @Nullable and friends (Forge has them on its classpath; annotations only, not needed at run time)
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"
 
     // Both loaders ship MixinExtras; MixinSquared is bundled by each platform jar.

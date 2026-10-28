@@ -2,16 +2,18 @@ package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
 import java.util.function.Supplier;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs;
+import javax.annotation.Nullable;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.world.level.levelgen.blending.Blender;
 
 /**
  * Thread markers for the chunk step hooks.
  *
- * <p>The mailbox marker is set on the thread running vanilla's chunk generation task loop
- * ({@code ChunkGenerationTask.runUntilWait}, always on the single worldgen mailbox). Steps only move to the
- * worker pool from there. Under another chunk system (Moonrise, a C2ME scheduler), the step is already on
- * that system's own thread, so it runs inline.
+ * <p>The mailbox marker is set while vanilla's chunk map runs a step on its single worldgen mailbox (the step lambda of
+ * {@code ChunkMap.scheduleChunkGeneration}), along with the step's chunk holder. Steps only move to the worker pool from
+ * there. Under another chunk system (C2ME's scheduler), the step is already on that system's own thread, so it runs
+ * inline.
  *
  * <p>The vanilla marker is set while a worker runs the original step method that a hook handed to the
  * pool. The hook lets that call through.
@@ -20,6 +22,7 @@ public final class StepThreads {
     private StepThreads() {}
 
     private static final ThreadLocal<int[]> DEPTH = ThreadLocal.withInitial(() -> new int[1]);
+    private static final ThreadLocal<ChunkHolder[]> HOLDER = ThreadLocal.withInitial(() -> new ChunkHolder[1]);
     private static final ThreadLocal<int[]> VANILLA = ThreadLocal.withInitial(() -> new int[1]);
     /** The blender a parallel surface step computed on the worldgen thread (see {@code SurfaceBlenderMixin}). */
     private static final ThreadLocal<Blender[]> BLENDER =
@@ -52,20 +55,29 @@ public final class StepThreads {
     }
 
     /**
-     * Runs vanilla's generation task loop. Steps that run inline (on this thread) also use the fast paths' reused objects. Those
-     * objects let go of their region when the loop returns
-     * ({@link RegionRefs}).
+     * Runs one of vanilla's steps for {@code holder}'s chunk on the worldgen mailbox. Steps that run inline (on this thread) also use the
+     * fast paths' reused objects. Those objects let go of their region when the step returns ({@link RegionRefs}).
      */
-    public static <T> T runOnMailbox(Supplier<T> body) {
+    public static <T> T runOnMailbox(ChunkHolder holder, Supplier<T> body) {
         int[] depth = DEPTH.get();
+        ChunkHolder[] slot = HOLDER.get();
+        ChunkHolder previous = slot[0];
         depth[0]++;
+        slot[0] = holder;
         try {
             return body.get();
         } finally {
+            slot[0] = previous;
             if (--depth[0] == 0) {
                 RegionRefs.release();
             }
         }
+    }
+
+    /** The holder of the chunk whose step runs on the mailbox on this thread, or null. */
+    @Nullable
+    public static ChunkHolder mailboxHolder() {
+        return HOLDER.get()[0];
     }
 
     /** True while the original step method runs on behalf of a hook. */

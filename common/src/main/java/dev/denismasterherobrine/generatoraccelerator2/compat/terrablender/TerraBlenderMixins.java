@@ -33,18 +33,13 @@ public final class TerraBlenderMixins {
     public static final String REGION_SEARCH_MIXIN = "dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.mixin.ParameterListRegionSearchMixin";
     /** TerraBlender's {@code getNoiseBiome}: the region's tree instead of the list's ({@code TerraBlenderBiomes}). */
     public static final String BIOME_SOURCE = "terrablender.mixin.MixinMultiNoiseBiomeSource";
-    /** TerraBlender's biome step: a copy of the biome source with a fresh region noise cache for every chunk. */
-    public static final String BIOME_STEP = "terrablender.mixin.MixinNoiseBasedChunkGenerator";
-
     /**
      * The GPU searches each quart's region tree as TerraBlender does ({@code TerraBlenderBiomes}). The regions come from
-     * TerraBlender's own noise. The copy per chunk only renews the noise's cache, so the GPU's answers stay the same.
+     * TerraBlender's own noise.
      */
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.GPU_BIOMES, BIOME_SOURCE, Set.of("getNoiseBiome"),
             "TerraBlender's biome regions still work. The GPU places each region's biomes the same way."),
-        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_BIOMES, BIOME_STEP, Set.of("modifyBiomeSource"),
-            "TerraBlender's biome regions still work. The GPU uses TerraBlender's own region map."),
         // its lookup searches the region's tree. The regions come from its noise of the world's seed
         new KnownMixins.Entry(MOD_ID, HookTargets.BIOME_ANSWERS, BIOME_SOURCE, Set.of("getNoiseBiome"),
             "TerraBlender's biome regions still work. A biome that other mods ask for outside the chunks being decorated is looked "

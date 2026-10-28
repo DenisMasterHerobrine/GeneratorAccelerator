@@ -19,7 +19,7 @@ import net.minecraft.server.level.ThreadedLevelLightEngine;
 import net.minecraft.util.thread.ProcessorHandle;
 import net.minecraft.util.thread.ProcessorMailbox;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -89,7 +89,7 @@ public class LightLayersBench {
             List<CompletableFuture<?>> steps = new ArrayList<>();
             for (ProtoChunk c : order) {
                 steps.add(CompletableFuture.supplyAsync(() -> {
-                    c.setPersistedStatus(ChunkStatus.INITIALIZE_LIGHT);
+                    c.setStatus(ChunkStatus.INITIALIZE_LIGHT);
                     c.initializeLightSources();
                     return engine.initializeLight(c, false);
                 }, workers).thenCompose(f -> f));

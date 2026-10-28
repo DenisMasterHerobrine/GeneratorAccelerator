@@ -52,7 +52,7 @@ public final class SectionCursor {
     /**
      * The thread's cursors, held weakly. A cursor is strongly reachable only from the placement that uses it. Between placements
      * only this slot points at it. So the region it last read, and that region's whole grid of chunks, can be collected as soon as
-     * the step is over, whether or not anything calls {@link #releaseMine}. Under another chunk system (Moonrise, C2ME) nothing does,
+     * the step is over, whether or not anything calls {@link #releaseMine}. Under another chunk system (C2ME) nothing does,
      * and a strong slot kept the last region of every kind on every thread until that kind's next placement there. Between two
      * placements of a kind in one step the cursor is nearly always still there and is reused as before.
      */

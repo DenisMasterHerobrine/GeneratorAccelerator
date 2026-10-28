@@ -27,7 +27,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.ticks.ProtoChunkTicks;
 
 /**
@@ -68,7 +68,7 @@ public final class RegionChunks {
                 }
                 byte[] data = new byte[length - 1];
                 raf.readFully(data);
-                out.add(NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.unlimitedHeap()));
+                out.add(NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.UNLIMITED));
             }
         }
         return out;
@@ -105,7 +105,7 @@ public final class RegionChunks {
                     }
                     byte[] data = new byte[length - 1];
                     raf.readFully(data);
-                    CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.unlimitedHeap());
+                    CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.UNLIMITED);
                     if (!"minecraft:full".equals(tag.getString("Status"))) {
                         return null;
                     }
@@ -114,7 +114,7 @@ public final class RegionChunks {
                         CompoundTag s = (CompoundTag) t;
                         int index = s.getByte("Y") - world.heights.getMinSection();
                         if (index >= 0 && index < sections.length && s.contains("block_states", Tag.TAG_COMPOUND)) {
-                            PalettedContainer<BlockState> states = STATES.parse(NbtOps.INSTANCE, s.getCompound("block_states")).getOrThrow();
+                            PalettedContainer<BlockState> states = STATES.parse(NbtOps.INSTANCE, s.getCompound("block_states")).getOrThrow(false, error -> {});
                             sections[index] = new LevelChunkSection(states,
                                 new PalettedContainer<>(world.registries.biomes.asHolderIdMap(), plains, PalettedContainer.Strategy.SECTION_BIOMES));
                         }
@@ -127,7 +127,7 @@ public final class RegionChunks {
                     ChunkPos pos = new ChunkPos(origin.x + rx + dx, origin.z + rz + dz);
                     ProtoChunk chunk = new ProtoChunk(pos, UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(), world.heights,
                         world.registries.biomes, null);
-                    chunk.setPersistedStatus(ChunkStatus.FEATURES);
+                    chunk.setStatus(ChunkStatus.FEATURES);
                     out[dx + dz * side] = chunk;
                 }
             }

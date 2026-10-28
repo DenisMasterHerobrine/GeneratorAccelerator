@@ -92,7 +92,7 @@ public final class ProgramCompiler {
                                                       int compact) {
         String name = HiddenClassLoader.GENERATED_PREFIX + "Point" + COUNTER.incrementAndGet();
         SafeClassWriter cw = new SafeClassWriter();
-        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, PointProgram.INTERNAL, null);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, PointProgram.INTERNAL, null);
 
         Emitter emitter = new Emitter(cw, name, specs, blended, mode, new CoordDeps(mode != Emitter.Mode.POINT), compact);
         emitter.plan(roots);
@@ -177,7 +177,7 @@ public final class ProgramCompiler {
     private static ColumnTemplate compileColumn(String debugName, List<Node.Marker> rootMarkers, List<NoiseSpec> specs, List<BlendedSpec> blended, int compact) {
         String name = HiddenClassLoader.GENERATED_PREFIX + "Column" + COUNTER.incrementAndGet();
         SafeClassWriter cw = new SafeClassWriter();
-        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, ColumnProgram.INTERNAL, null);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, ColumnProgram.INTERNAL, null);
 
         List<Node> roots = new ArrayList<>(rootMarkers.size());
         for (Node.Marker m : rootMarkers) {
@@ -277,7 +277,7 @@ public final class ProgramCompiler {
                                             List<NoiseSpec> specs, List<BlendedSpec> blended, int compact) {
         String name = HiddenClassLoader.GENERATED_PREFIX + "Cell" + COUNTER.incrementAndGet();
         SafeClassWriter cw = new SafeClassWriter();
-        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, CellProgram.INTERNAL, null);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, CellProgram.INTERNAL, null);
 
         Emitter emitter = new Emitter(cw, name, specs, blended, Emitter.Mode.CELL, new CoordDeps(true), compact);
         emitter.setLerpIndex(lerpIndex);

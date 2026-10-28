@@ -79,6 +79,12 @@ public final class SurfaceExtern {
 
         /** OpenCL for {@code noise.getValue(x, y, z)}, the coordinates OpenCL double expressions. */
         String noise(NormalNoise noise, String x, String y, String z);
+
+        /**
+         * Adds OpenCL functions the code calls, once per {@code name} whatever the number of externs asking. They come before the
+         * rules, after the surface's own helpers ({@code jd2i}, {@code jd2i_floor}).
+         */
+        void helper(String name, String code);
     }
 
     /** What a lowering may use. */

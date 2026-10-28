@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.modernfix;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import java.util.List;
 import java.util.Set;
 
@@ -16,6 +17,9 @@ public final class ModernFixMixins {
      * vanilla's computation for the same placement, biome source and ring seed, which form ModernFix's cache key. Either way
      * the positions are vanilla's. The ring bound depends only on the placement's distance and vanilla's geometry, so the
      * bound holds. Nothing to set up.
+     *
+     * <p>ModernFix before 5.27 splits the cache into two callbacks: one at the head answers with the positions the level saved,
+     * one at the return saves vanilla's computed positions ({@code useCachedDataIfAvailable}, {@code saveCachedData}).
      */
     public static final String STRONGHOLD_CACHE = "org.embeddedt.modernfix.common.mixin.perf.cache_strongholds.ChunkGeneratorMixin";
 
@@ -27,8 +31,9 @@ public final class ModernFixMixins {
     public static final String BIOME_TEMPERATURE = "org.embeddedt.modernfix.common.mixin.perf.remove_biome_temperature_cache.BiomeMixin";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
-        new KnownMixins.Entry(MOD_ID, HookTargets.STRUCTURE_RING_BOUND, STRONGHOLD_CACHE, Set.of("cacheRingPositions", "useDedicatedService"),
+        new KnownMixins.Entry(MOD_ID, HookTargets.STRUCTURE_RING_BOUND, STRONGHOLD_CACHE,
+            Set.of("cacheRingPositions", "useDedicatedService", "useCachedDataIfAvailable", "saveCachedData"),
             "ModernFix's stronghold cache still works. Stronghold positions stay the same as in vanilla."),
-        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, BIOME_TEMPERATURE, Set.of(KnownMixins.overwrite("getTemperature")),
+        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, BIOME_TEMPERATURE, LithiumMixins.GET_TEMPERATURE,
             "ModernFix's biome temperature change still works. It gives the same values, so GA2's GPU surface stays exact."));
 }

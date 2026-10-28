@@ -5,7 +5,7 @@ build/
 
 # Run directories
 /fabric/run/
-/neoforge/run/
+/forge/run/
 
 # IDE
 .idea/
@@ -26,4 +26,4 @@ build/
 # Backups
 *.bak
 /fabric/.ga2
-/neoforge/.ga2
+/forge/.ga2

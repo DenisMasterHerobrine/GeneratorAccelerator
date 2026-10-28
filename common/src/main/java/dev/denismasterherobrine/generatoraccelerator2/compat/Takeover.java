@@ -2,12 +2,14 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.ConfigFiles;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 
 /**
@@ -28,8 +30,15 @@ public final class Takeover {
 
     private static final Logger LOGGER = Ga2Log.get("Compat");
 
-    /** A cancelled mixin (exact class name, or a package prefix ending in '.') and why GA2 replaces it. */
-    private record Rule(String mod, String mixin, String reason) {
+    /**
+     * A cancelled mixin (exact class name, or a package prefix ending in '.') and why GA2 replaces it. {@code when} holds once GA2's
+     * replacement is set up, for a mixin whose work GA2 does in its place: until then the mixin applies.
+     */
+    private record Rule(String mod, String mixin, String reason, BooleanSupplier when) {
+        Rule(String mod, String mixin, String reason) {
+            this(mod, mixin, reason, () -> true);
+        }
+
         boolean matches(String className) {
             return mixin.endsWith(".") ? className.startsWith(mixin) : className.equals(mixin);
         }
@@ -76,11 +85,15 @@ public final class Takeover {
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.ClimateParameterListMixin",
             "Replaced by GA2's exact biome search, which uses the biome tree this tweak delays."),
         // Lithium: only Lithium's section packing goes. The packing reuses the order of a hash palette, so the saved bytes
-        // are not vanilla's. Lithium's lock removal, palettes and the rest stay
-        new Rule("lithium", "net.caffeinemc.mods.lithium.mixin.chunk.serialization.PalettedContainerMixin",
+        // are not vanilla's. Lithium's lock removal, palettes and the rest stay. Radium keeps Lithium's classes, Canary has its own copy
+        new Rule("lithium", "me.jellysquid.mods.lithium.mixin.chunk.serialization.PalettedContainerMixin",
             "Replaced by GA2's exact chunk saving, which keeps saved data identical to vanilla."),
-        // Moonrise (not tested): only the biome zoom. GA2 keeps Moonrise's chunk system
-        new Rule("moonrise", "ca.spottedleaf.moonrise.mixin.random_ticking.BiomeManagerMixin", "Replaced by GA2's faster biome lookup."),
+        new Rule("canary", "com.abdelaziz.canary.mixin.chunk.serialization.PalettedContainerMixin",
+            "Replaced by GA2's exact chunk saving, which keeps saved data identical to vanilla."),
+        // Lithium's generation region keeps its chunks in an array of its own and overwrites the region's chunk and block lookups.
+        // GA2's region cache and in-place reads do that work, and they stand down for any overwrite of those lookups
+        new Rule("lithium", "me.jellysquid.mods.lithium.mixin.gen.chunk_region.", "Replaced by GA2's faster generation region lookups."),
+        new Rule("canary", "com.abdelaziz.canary.mixin.gen.chunk_region.", "Replaced by GA2's faster generation region lookups."),
         // zfastnoise: zfastnoise's noise fill replaces the generator's fill task with its own loop over the NoiseChunk. GA2's
         // fill (FastFill with its section writes and compiled cells) therefore never ran. zfastnoise's biome fill touches
         // nothing of GA2's and stays as is.
@@ -88,12 +101,31 @@ public final class Takeover {
         // Noisium (NoisiumForked): Noisium's generator mixin replaces the fill's section writes, and GA2's fill and GPU noise hooks
         // stood down for it. The results are vanilla's either way. Noisium's material rule, biome section fill and cell size caches
         // also give vanilla's results. All of Noisium's mixins go
-        new Rule("noisium", "io.github.steveplays28.noisium.mixin.", "Replaced by GA2's faster terrain fill and GPU terrain."));
+        new Rule("noisium", "io.github.steveplays28.noisium.mixin.", "Replaced by GA2's faster terrain fill and GPU terrain."),
+        // GA2 does the same step itself (compat.yungscavebiomes.FrostedCaves)
+        new Rule("yungscavebiomes", YungsCaveBiomesMixins.AQUIFER,
+            "Replaced by GA2's own Frosted Caves water, so the faster underground water and lava keep running.", YungsCaveBiomesMixins::frostedReplaced));
 
     private static final Map<String, String> CANCELLED = new ConcurrentHashMap<>();
     private static volatile Boolean enabled;
 
     /** Called by MixinSquared for every mixin of every config. */
+    /**
+     * Whether GA2 cancels {@code mixinClassName} when its target class loads. Mixin asks {@link #shouldCancel} only then, often well
+     * into worldgen, so code that replaces a cancelled mixin's work asks this at mod construction instead.
+     */
+    public static boolean willCancel(String mixinClassName) {
+        if (!enabled()) {
+            return false;
+        }
+        for (Rule rule : RULES) {
+            if (rule.matches(mixinClassName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean shouldCancel(List<String> targets, String mixinClassName) {
         if (mixinClassName.startsWith("dev.denismasterherobrine.generatoraccelerator2.")) {
             return false;
@@ -102,7 +134,7 @@ public final class Takeover {
             return false;
         }
         for (Rule rule : RULES) {
-            if (rule.matches(mixinClassName)) {
+            if (rule.matches(mixinClassName) && rule.when().getAsBoolean()) {
                 if (CANCELLED.putIfAbsent(mixinClassName, rule.mod + ": " + rule.reason) == null) {
                     LOGGER.info("takeover {}: cancelled {} on {} ({})", rule.mod, mixinClassName, targets, rule.reason);
                 }

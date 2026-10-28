@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.storage.Ga2RegionStorage;
 import dev.denismasterherobrine.generatoraccelerator2.storage.ParallelRead;
 import dev.denismasterherobrine.generatoraccelerator2.storage.Precompress;
 import dev.denismasterherobrine.generatoraccelerator2.storage.RegionScan;
+import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import javax.annotation.Nullable;
 
@@ -49,6 +51,15 @@ public abstract class IOWorkerMixin {
     @Shadow @Final private Map<ChunkPos, IOWorker.PendingStore> pendingWrites;
     @Shadow @Final private RegionFileStorage storage;
     @Shadow @Final private ProcessorMailbox<StrictQueue.IntRunnable> mailbox;
+
+    /** The storage's kind as its owner names it: chunk, poi or entities. */
+    @Unique
+    private String ga2$type;
+
+    @Inject(method = "<init>", at = @At("TAIL"))
+    private void ga2$recordType(Path folder, boolean sync, String name, CallbackInfo ci) {
+        this.ga2$type = name;
+    }
 
     @Shadow
     private <T> CompletableFuture<T> submitTask(Supplier<Either<T, Exception>> task) {
@@ -112,7 +123,7 @@ public abstract class IOWorkerMixin {
      */
     @Inject(method = "loadAsync", at = @At("HEAD"), cancellable = true)
     private void ga2$parallelRead(ChunkPos pos, CallbackInfoReturnable<CompletableFuture<Optional<CompoundTag>>> cir) {
-        if (this.mailbox == null || !ParallelRead.appliesTo(this.storage.info().type()) || !ParallelRead.enabled()) {
+        if (this.mailbox == null || !ParallelRead.appliesTo(this.ga2$type) || !ParallelRead.enabled()) {
             return;
         }
         CompletableFuture<Object> read = this.submitTask(() -> {
@@ -146,7 +157,7 @@ public abstract class IOWorkerMixin {
 
     @Inject(method = "store", at = @At("HEAD"))
     private void ga2$precompress(ChunkPos pos, @Nullable CompoundTag tag, CallbackInfoReturnable<CompletableFuture<Void>> cir) {
-        if (tag != null && this.mailbox != null && Precompress.enabled() && "chunk".equals(this.storage.info().type())) {
+        if (tag != null && this.mailbox != null && Precompress.enabled() && "chunk".equals(this.ga2$type)) {
             ((Ga2RegionStorage) (Object) this.storage).ga2$precompress().submit(pos, tag);
         }
     }

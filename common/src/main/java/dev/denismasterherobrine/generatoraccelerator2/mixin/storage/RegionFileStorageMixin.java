@@ -13,7 +13,6 @@ import java.util.Optional;
 import javax.annotation.Nullable;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.util.profiling.jfr.JvmProfiler;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileStorage;
@@ -76,14 +75,13 @@ public abstract class RegionFileStorageMixin implements Ga2RegionStorage {
         if (buffer == null) {
             buffer = FastRegionWrite.encode(tag, RegionFileVersion.VERSION_DEFLATE.getId());
         }
-        JvmProfiler.INSTANCE.onRegionFileWrite(access.ga2$info(), pos, access.ga2$version(), buffer.getInt(0));
         access.ga2$write(pos, buffer);
         ci.cancel();
     }
 
     /** A storage that would sync every write opens its files without DSYNC and syncs them in batches ({@link RegionSync}). */
     @ModifyArg(method = "getRegionFile", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/chunk/storage/RegionFile;<init>("
-        + "Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Ljava/nio/file/Path;Z)V"), index = 3)
+        + "Ljava/nio/file/Path;Ljava/nio/file/Path;Z)V"), index = 2)
     private boolean ga2$batchedSync(boolean sync) {
         return RegionSync.openUnsynced(sync, this.folder);
     }

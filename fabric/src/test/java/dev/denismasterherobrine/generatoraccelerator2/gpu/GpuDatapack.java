@@ -9,20 +9,16 @@ import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.RegistryDataLoader;
-import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
-import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
@@ -67,8 +63,8 @@ public final class GpuDatapack {
             }
         }
         Path vanillaRoot = Path.of(uri).getParent().getParent().getParent().getParent().getParent();
-        PackResources vanilla = new PathPackResources(new PackLocationInfo("vanilla", Component.literal("vanilla"), PackSource.BUILT_IN, Optional.empty()), vanillaRoot);
-        PackResources pack = new PathPackResources(new PackLocationInfo("datapack", Component.literal("datapack"), PackSource.WORLD, Optional.empty()), dataRoot);
+        PackResources vanilla = new PathPackResources("vanilla", vanillaRoot, true);
+        PackResources pack = new PathPackResources("datapack", dataRoot, false);
         RegistryAccess.Frozen loaded;
         BiomeSource dimensionSource = null;
         try (MultiPackResourceManager rm = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanilla, pack))) {

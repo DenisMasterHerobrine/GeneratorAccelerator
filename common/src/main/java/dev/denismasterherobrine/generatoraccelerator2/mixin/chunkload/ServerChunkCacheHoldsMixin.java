@@ -3,12 +3,12 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHoldTickets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
 import java.util.function.BooleanSupplier;
-import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -68,7 +68,7 @@ public abstract class ServerChunkCacheHoldsMixin implements ChunkyHolds.Owner {
     private ChunkyHolds ga2$holds() {
         ChunkyHolds holds = this.ga2$holds;
         if (holds == null) {
-            holds = new ChunkyHolds(new ChunkyHoldTickets(this.distanceManager, this.chunkMap), ChunkLevel.RADIUS_AROUND_FULL_CHUNK, ChunkyHolds.cap());
+            holds = new ChunkyHolds(new ChunkyHoldTickets(this.distanceManager, this.chunkMap), ChunkStatus.maxDistance(), ChunkyHolds.cap());
             this.ga2$holds = holds;
         }
         return holds;

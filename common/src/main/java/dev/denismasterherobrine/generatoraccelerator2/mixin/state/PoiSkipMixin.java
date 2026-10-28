@@ -23,6 +23,8 @@ public abstract class PoiSkipMixin {
     private void ga2$skipWithoutPoi(ServerLevel level, BlockPos pos, BlockState oldState, BlockState newState, Operation<Void> original) {
         if (!PoiStates.skip(level, oldState, newState)) {
             original.call(level, pos, oldState, newState);
+        } else {
+            PoiStates.skipped(level, pos, oldState, newState);
         }
     }
 }

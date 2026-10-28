@@ -37,7 +37,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.GenerationStep;
@@ -133,13 +133,13 @@ public class DecorationGridTest {
         runAll(pool, chunks.length, i -> {
             ProtoChunk c = chunks[i];
             w.generator.buildSurface(c, w.generationContext(), w.randomState, null, manager, w.registries.biomes, Blender.empty());
-            c.setPersistedStatus(ChunkStatus.SURFACE);
+            c.setStatus(ChunkStatus.SURFACE);
         });
         Map<Long, ProtoChunk> standIns = new ConcurrentHashMap<>();
         runAll(pool, chunks.length, i -> {
             ProtoChunk c = chunks[i];
             TerrainHarness.vanillaCarvers(w, c, TerrainHarness.carverNeighbourhood(w, c, standIns));
-            c.setPersistedStatus(ChunkStatus.CARVERS);
+            c.setStatus(ChunkStatus.CARVERS);
         });
         return g;
     }
@@ -178,10 +178,10 @@ public class DecorationGridTest {
         void place(PlacedFeature pf, int step, Runnable place);
     }
 
-    /** {@code ChunkStatusTasks.generateFeatures} without structures: the final heightmaps primed, then {@code applyBiomeDecoration}'s loop. */
+    /** The FEATURES task without structures: the final heightmaps primed, then {@code applyBiomeDecoration}'s loop. */
     static void decorate(Grid g, HarnessLevel level, ProtoChunk chunk, Each each) {
         TerrainHarness.World w = g.w;
-        HeightmapPriming.prime(chunk, ChunkStatus.FINAL_HEIGHTMAPS, Heightmap::primeHeightmaps);
+        HeightmapPriming.prime(chunk, ChunkStatus.POST_FEATURES, Heightmap::primeHeightmaps);
         ChunkPos cp = chunk.getPos();
         BlockPos origin = new BlockPos(cp.getMinBlockX(), level.getMinBuildHeight(), cp.getMinBlockZ());
         Set<Holder<Biome>> set = new ObjectArraySet<>();
@@ -222,7 +222,7 @@ public class DecorationGridTest {
                 });
             }
         }
-        chunk.setPersistedStatus(ChunkStatus.FEATURES);
+        chunk.setStatus(ChunkStatus.FEATURES);
     }
 
     /** Decorates the square in wave order, each placement through {@code each}. */
@@ -242,7 +242,7 @@ public class DecorationGridTest {
         if (d != null) {
             return d;
         }
-        for (Heightmap.Types type : ChunkStatus.FINAL_HEIGHTMAPS) {
+        for (Heightmap.Types type : ChunkStatus.POST_FEATURES) {
             if (a.hasPrimedHeightmap(type) != b.hasPrimedHeightmap(type)) {
                 return "heightmap presence " + type + ": " + a.hasPrimedHeightmap(type) + " vs " + b.hasPrimedHeightmap(type);
             }
@@ -262,8 +262,8 @@ public class DecorationGridTest {
             return "block entities";
         }
         for (Map.Entry<BlockPos, BlockEntity> e : a.getBlockEntities().entrySet()) {
-            String x = e.getValue().saveWithFullMetadata(w.registries.access).toString();
-            String y = b.getBlockEntities().get(e.getKey()).saveWithFullMetadata(w.registries.access).toString();
+            String x = e.getValue().saveWithFullMetadata().toString();
+            String y = b.getBlockEntities().get(e.getKey()).saveWithFullMetadata().toString();
             if (!x.equals(y)) {
                 return "block entity at " + e.getKey() + ": " + x + " vs " + y;
             }
@@ -455,7 +455,7 @@ public class DecorationGridTest {
             for (Map.Entry<Heightmap.Types, Heightmap> e : src.getHeightmaps()) {
                 c.setHeightmap(e.getKey(), e.getValue().getRawData().clone());
             }
-            c.setPersistedStatus(src.getPersistedStatus());
+            c.setStatus(src.getStatus());
             out[i] = c;
         });
         return new Grid(g.w, g.ox, g.oz, g.side, out);

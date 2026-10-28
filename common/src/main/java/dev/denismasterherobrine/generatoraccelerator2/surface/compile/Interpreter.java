@@ -21,31 +21,26 @@ public final class Interpreter implements SurfaceProgram.Evaluator {
     }
 
     static BlockState rule(Ir.Rule rule, SurfaceEval s) {
-        switch (rule) {
-            case Ir.Seq seq -> {
-                for (Ir.Rule r : seq.rules()) {
-                    BlockState state = rule(r, s);
-                    if (state != null) {
-                        return state;
-                    }
+        if (rule instanceof Ir.Seq seq) {
+            for (Ir.Rule r : seq.rules()) {
+                BlockState state = rule(r, s);
+                if (state != null) {
+                    return state;
                 }
-                return null;
             }
-            case Ir.Test test -> {
-                return cond(test.cond(), s) ? rule(test.then(), s) : null;
-            }
-            case Ir.State state -> {
-                return state.state();
-            }
-            case Ir.Bands bands -> {
-                return s.bands();
-            }
-            case Ir.OpaqueRule opaque -> {
-                return s.opaqueRule(opaque.index());
-            }
-            case Ir.ExternRule extern -> {
-                return s.externRule(extern.index());
-            }
+            return null;
+        } else if (rule instanceof Ir.Test test) {
+            return cond(test.cond(), s) ? rule(test.then(), s) : null;
+        } else if (rule instanceof Ir.State state) {
+            return state.state();
+        } else if (rule instanceof Ir.Bands bands) {
+            return s.bands();
+        } else if (rule instanceof Ir.OpaqueRule opaque) {
+            return s.opaqueRule(opaque.index());
+        } else if (rule instanceof Ir.ExternRule extern) {
+            return s.externRule(extern.index());
+        } else {
+            throw new IllegalStateException(String.valueOf(rule));
         }
     }
 
@@ -88,24 +83,42 @@ public final class Interpreter implements SurfaceProgram.Evaluator {
     }
 
     static boolean compute(Ir.Cond cond, SurfaceEval s) {
-        return switch (cond) {
-            case Ir.Biome b -> s.biome(b.slot());
-            case Ir.Noise n -> s.noise(n.slot(), n.min(), n.max());
-            case Ir.Gradient g -> s.gradient(g.slot());
-            case Ir.YCheck y -> s.yCheck(y.anchor(), y.mult(), y.addStone());
-            case Ir.Water w -> s.water(w.offset(), w.mult(), w.addStone());
-            case Ir.StoneDepth d -> s.stoneDepth(d.offset(), d.addSurface(), d.secondaryRange(), d.ceiling());
-            case Ir.Steep st -> s.steep();
-            case Ir.Slope sl -> s.slope(sl.min(), sl.max());
-            case Ir.Hole h -> s.hole();
-            case Ir.AboveSurface a -> s.aboveSurface();
-            case Ir.Temperature t -> s.temperature();
-            case Ir.Not n -> !cond(n.target(), s);
-            case Ir.All a -> cond(a, s);
-            case Ir.Any a -> cond(a, s);
-            case Ir.OpaqueCond o -> s.opaqueCond(o.index());
-            case Ir.ExternCond e -> s.externCond(e.index());
-            case Ir.Const c -> c.value();
-        };
+        if (cond instanceof Ir.Biome b) {
+            return s.biome(b.slot());
+        } else if (cond instanceof Ir.Noise n) {
+            return s.noise(n.slot(), n.min(), n.max());
+        } else if (cond instanceof Ir.Gradient g) {
+            return s.gradient(g.slot());
+        } else if (cond instanceof Ir.YCheck y) {
+            return s.yCheck(y.anchor(), y.mult(), y.addStone());
+        } else if (cond instanceof Ir.Water w) {
+            return s.water(w.offset(), w.mult(), w.addStone());
+        } else if (cond instanceof Ir.StoneDepth d) {
+            return s.stoneDepth(d.offset(), d.addSurface(), d.secondaryRange(), d.ceiling());
+        } else if (cond instanceof Ir.Steep st) {
+            return s.steep();
+        } else if (cond instanceof Ir.Slope sl) {
+            return s.slope(sl.min(), sl.max());
+        } else if (cond instanceof Ir.Hole h) {
+            return s.hole();
+        } else if (cond instanceof Ir.AboveSurface a) {
+            return s.aboveSurface();
+        } else if (cond instanceof Ir.Temperature t) {
+            return s.temperature();
+        } else if (cond instanceof Ir.Not n) {
+            return !cond(n.target(), s);
+        } else if (cond instanceof Ir.All a) {
+            return cond(a, s);
+        } else if (cond instanceof Ir.Any a) {
+            return cond(a, s);
+        } else if (cond instanceof Ir.OpaqueCond o) {
+            return s.opaqueCond(o.index());
+        } else if (cond instanceof Ir.ExternCond e) {
+            return s.externCond(e.index());
+        } else if (cond instanceof Ir.Const c) {
+            return c.value();
+        } else {
+            throw new IllegalStateException(String.valueOf(cond));
+        }
     }
 }

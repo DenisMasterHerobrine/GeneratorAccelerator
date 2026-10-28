@@ -1,7 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
-import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
@@ -43,17 +41,6 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (active && mixinClassName.equals(LithostitchedMixins.INJECTOR_LIST_MIXIN)
-            && !LithostitchedMixins.injectorListShapeOk()) {
-            Ga2Log.get("Compat").info(
-                "Lithostitched injector source: unknown shape -> partial replacements walked as-is");
-            return false;
-        }
-        if (active && mixinClassName.equals(LithostitchedMixins.INJECTOR_VERIFY_MIXIN)) {
-            // the check of the noted biome, only for a verification run
-            return Boolean.getBoolean("generatoraccelerator2.verify.injectors")
-                && LithostitchedMixins.injectorListShapeOk();
-        }
         if (active && mixinClassName.equals(SpelunkeryMixins.STRIPES_MIXIN)) {
             // the fused noise relies on the FastNoiseLite code it was written against
             return SpelunkeryMixins.codeKnown();

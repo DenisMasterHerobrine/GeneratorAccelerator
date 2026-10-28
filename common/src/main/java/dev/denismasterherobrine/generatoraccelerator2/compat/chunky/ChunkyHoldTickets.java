@@ -25,7 +25,7 @@ public final class ChunkyHoldTickets implements ChunkyHolds.Tickets {
     @Override
     public boolean keep(long pos) {
         ChunkHolder holder = ((ChunkMapUpdatingInvoker) this.chunkMap).ga2$updatingChunk(pos);
-        if (holder == null || holder.getLatestChunk() == null) {
+        if (holder == null || holder.getLastAvailable() == null) {
             return false;
         }
         ChunkPos at = new ChunkPos(pos);

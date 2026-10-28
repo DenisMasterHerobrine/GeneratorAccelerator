@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.structure;
 
+import dev.denismasterherobrine.generatoraccelerator2.logging.HolderNames;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,7 +31,7 @@ public class FossilProbeTest {
         Predicate<Holder<Biome>> own = structure.biomes()::contains;
         Predicate<Holder<Biome>> any = holder -> true;
         // about half of all biomes, so that skipped and probed chunks both occur
-        Predicate<Holder<Biome>> some = holder -> (holder.getRegisteredName().hashCode() & 1) == 0;
+        Predicate<Holder<Biome>> some = holder -> (HolderNames.name(holder).hashCode() & 1) == 0;
         int skipped = 0;
         int probed = 0;
         int present = 0;

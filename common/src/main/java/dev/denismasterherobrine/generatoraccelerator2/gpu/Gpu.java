@@ -2,7 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.GeneratorAccelerator;
-import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
@@ -382,13 +382,13 @@ public final class Gpu {
         }
         out.add(String.format(Locale.ROOT, "  region buffers: %,d MB on the GPU now; %,d regions let go after going unused",
             GpuWorldgen.REGION_BYTES.sum() >> 20, GpuWorldgen.REGIONS_IDLE.sum()));
-        long handed = LithostitchedGpuBiomes.HANDED_POINTS.sum();
-        if (handed > 0) {
-            out.add(String.format(Locale.ROOT, "  Lithostitched's biome injectors: %,d climate points from the GPU (not sampled on the CPU)", handed));
-        }
         if (GpuWorldgen.C2D_CPU.sum() > 0) {
             out.add(String.format(Locale.ROOT, "  given back to the CPU: %,d chunks whose aquifer cells' order decides a cache_2d value",
                 GpuWorldgen.C2D_CPU.sum()));
+        }
+        if (FrostedCaves.GPU_KEPT.sum() + FrostedCaves.GPU_BACK.sum() > 0) {
+            out.add(String.format(Locale.ROOT, "  YUNG's Frosted Caves water: %,d GPU answers kept, %,d given back to the CPU (a cell to turn to water, or a biome tie)",
+                FrostedCaves.GPU_KEPT.sum(), FrostedCaves.GPU_BACK.sum()));
         }
         if (GpuSteps.ENHANCED_CHUNKS.sum() > 0) {
             out.add(String.format(Locale.ROOT, "  other mods' structure pieces (YUNG's API, Integrated API) filled on the GPU: %,d chunks", GpuSteps.ENHANCED_CHUNKS.sum()));
