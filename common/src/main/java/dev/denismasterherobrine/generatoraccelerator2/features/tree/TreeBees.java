@@ -4,7 +4,6 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.features.BeehiveDecoratorAccessor;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -16,7 +15,8 @@ import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.LevelSimulatedReader;
+import net.minecraft.util.Util;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.BeehiveBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
@@ -28,7 +28,7 @@ import net.minecraft.world.level.levelgen.feature.treedecorators.TreeDecorator;
 /**
  * Trees whose only decorators are vanilla's beehive decorator (forests, birch forests, flower forests, plains, meadows, cherry
  * groves). Vanilla makes the decorators' context for every such tree, which copies the logs, leaves and roots into lists and
- * sorts them, and the decorator then draws its chance before it reads anything: 0.2% in forests. So such a tree keeps its leaves
+ * sorts them, and the decorator then draws its chance before it reads anything but whether the tree has logs: 0.2% in forests. So such a tree keeps its leaves
  * packed, as a tree without decorators does, and each decorator's draw comes first. Only when one succeeds is the context made,
  * with the leaves unpacked, and the rest of the decorator runs as vanilla's code. That rest reads the leaves only for the lowest
  * one's height, which their order does not change. Hook {@code treeBees}: another mod's change to the decorator keeps vanilla's
@@ -61,10 +61,14 @@ public final class TreeBees {
      * The decorators in order, as vanilla runs them on one context made from these sets. The context's lists are the sets as
      * they are after the trunk and foliage, which the decorators do not change, so making it at the first success is the same.
      */
-    public static void place(List<TreeDecorator> decorators, LevelSimulatedReader level, BiConsumer<BlockPos, BlockState> setter, RandomSource random,
+    public static void place(List<TreeDecorator> decorators, WorldGenLevel level, BiConsumer<BlockPos, BlockState> setter, RandomSource random,
                              Set<BlockPos> logs, LongOpenHashSet leaves, Set<BlockPos> roots) {
         TREES.increment();
         TreeDecorator.Context context = null;
+        if (logs.isEmpty()) {
+            // vanilla's decorator draws nothing for a tree without logs
+            return;
+        }
         for (TreeDecorator d : decorators) {
             if (!(random.nextFloat() >= ((BeehiveDecoratorAccessor) d).ga2$probability())) {
                 if (context == null) {
@@ -95,8 +99,7 @@ public final class TreeBees {
         Direction facing = BeehiveDecoratorAccessor.ga2$worldgenFacing();
         List<BlockPos> candidates = logs.stream().filter(p -> p.getY() == y).flatMap(p -> Stream.of(spawn).map(p::relative)).collect(Collectors.toList());
         if (!candidates.isEmpty()) {
-            // the JDK's shared random, as vanilla's decorator shuffles them
-            Collections.shuffle(candidates);
+            Util.shuffle(candidates, random);
             Optional<BlockPos> nest = candidates.stream().filter(p -> context.isAir(p) && context.isAir(p.relative(facing))).findFirst();
             if (nest.isPresent()) {
                 context.setBlock(nest.get(), Blocks.BEE_NEST.defaultBlockState().setValue(BeehiveBlock.FACING, facing));

@@ -15,11 +15,13 @@ import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatConfig;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
+import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.logging.RepeatedWarnings;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatModules;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.Takeover;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedInjectors;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedRegions;
@@ -44,7 +46,6 @@ import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLigh
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.PregenBench;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.SchedulingConfig;
 import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
-import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import dev.denismasterherobrine.generatoraccelerator2.storage.StorageConfig;
 import dev.denismasterherobrine.generatoraccelerator2.structure.StructureLocks;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder;
@@ -143,6 +144,10 @@ public final class GeneratorAccelerator {
         Gpu.prewarm(level);
     }
 
+    /**
+     * The server's tags were (re)bound. The loaders call this only for the server's own data load. In singleplayer the client then
+     * receives the same tags. Bumping the epoch for that copy would make every program built at level load stale for nothing.
+     */
     public static void onTagsUpdated() {
         TagEpoch.bump();
         // a datapack reload: Biolith's requests from data may have changed, and the biomes kept with them
@@ -153,6 +158,10 @@ public final class GeneratorAccelerator {
     public static void onServerStarting(MinecraftServer starting) {
         server = starting;
         PoiStates.serverStarting();
+        Takeover.checkConsulted();
+        if (Compat.isLoaded(ChunkyRequests.MOD_ID)) {
+            ChunkyRequests.serverStarting(starting);
+        }
     }
 
     /** Caches of a world's worldgen objects are dropped with it. A singleplayer client opens many worlds per session. */
@@ -162,7 +171,6 @@ public final class GeneratorAccelerator {
         // The device goes too. A singleplayer client back at the title screen then holds no VRAM for it.
         Gpu.release("the server stopped");
         // These would otherwise keep the stopped server's registries or levels until the next world replaces them.
-        SavePrep.onServerStopped();
         PregenBench.onServerStopped();
         RepeatedWarnings.serverStopped();
         ChunkLoadStats.serverStopped();

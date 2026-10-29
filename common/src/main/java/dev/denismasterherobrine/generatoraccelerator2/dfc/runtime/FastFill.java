@@ -86,6 +86,9 @@ public final class FastFill {
 
         /** {@code rule}'s allocation-free transcription ({@link VeinRule}) when it is the vein rule the constructor built, else {@code rule}. */
         NoiseChunk.BlockStateFiller ga2$fastVeinRule(NoiseChunk.BlockStateFiller rule);
+
+        /** Whether {@code rule} is the vein rule the constructor built and that rule never places a vein ({@code GtceuVeins}). */
+        boolean ga2$placesNoVein(Object rule);
     }
 
     /** @return the vein rule (or {@code this} marker when there is none), or {@code null} when the chunk does not qualify */
@@ -101,12 +104,15 @@ public final class FastFill {
         if (!(rules.ga2$blockStateRule() instanceof MaterialRuleList list)) {
             return null;
         }
-        List<NoiseChunk.BlockStateFiller> fillers = list.materialRuleList();
+        NoiseChunk.BlockStateFiller[] fillers = list.materialRuleList();
         int expected = made[1] == null ? 1 : 2;
-        if (fillers.size() != expected || fillers.get(0) != made[0] || (expected == 2 && fillers.get(1) != made[1])) {
+        if (fillers.length != expected || fillers[0] != made[0] || (expected == 2 && fillers[1] != made[1])) {
             return null;
         }
-        return expected == 2 ? made[1] : NO_VEINS;
+        if (expected == 1 || rules.ga2$placesNoVein(made[1])) {
+            return NO_VEINS;
+        }
+        return made[1];
     }
 
     private static final Object NO_VEINS = new Object();

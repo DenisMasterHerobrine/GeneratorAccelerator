@@ -20,18 +20,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntSupplier;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ChunkMap;
-import net.minecraft.server.level.ChunkTaskPriorityQueueSorter;
+import net.minecraft.server.level.ChunkTaskDispatcher;
 import net.minecraft.server.level.ThreadedLevelLightEngine;
-import net.minecraft.util.thread.ProcessorHandle;
-import net.minecraft.util.thread.ProcessorMailbox;
+import net.minecraft.util.thread.ConsecutiveExecutor;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -93,7 +94,7 @@ public class DirectLightTasksTest {
         for (int r = 0; r < 600 / ROUND; r++) {
             List<Map.Entry<BlockPos, BlockState>> round = new ArrayList<>();
             for (int k = 0; k < ROUND; k++) {
-                BlockPos pos = new BlockPos(minX + random.nextInt(16 * side), heights.getMinBuildHeight() + random.nextInt(heights.getHeight()),
+                BlockPos pos = new BlockPos(minX + random.nextInt(16 * side), heights.getMinY() + random.nextInt(heights.getHeight()),
                     minZ + random.nextInt(16 * side));
                 round.add(Map.entry(pos, palette[random.nextInt(palette.length)]));
             }
@@ -101,7 +102,7 @@ public class DirectLightTasksTest {
         }
         ProtoChunk middle = chunks[side / 2 + side / 2 * side];
         List<Map.Entry<BlockPos, BlockState>> emptied = new ArrayList<>();
-        int y0 = middle.getMinBuildHeight() + 16 * 3;
+        int y0 = middle.getMinY() + 16 * 3;
         for (int y = 0; y < 16; y++) {
             for (int z = 0; z < 16; z++) {
                 for (int x = 0; x < 16; x++) {
@@ -111,7 +112,7 @@ public class DirectLightTasksTest {
         }
         rounds.add(emptied);
         List<Map.Entry<BlockPos, BlockState>> filled = new ArrayList<>();
-        int top = middle.getMaxBuildHeight() - 24;
+        int top = middle.getMaxY() + 1 - 24;
         for (int z = 0; z < 16; z++) {
             for (int x = 0; x < 16; x++) {
                 filled.add(Map.entry(new BlockPos(middle.getPos().getMinBlockX() + x, top, middle.getPos().getMinBlockZ() + z), Blocks.STONE.defaultBlockState()));
@@ -124,11 +125,11 @@ public class DirectLightTasksTest {
     private static void apply(ProtoChunk[] chunks, List<Map.Entry<BlockPos, BlockState>> round) {
         Map<Long, ProtoChunk> byPos = new HashMap<>();
         for (ProtoChunk c : chunks) {
-            byPos.put(c.getPos().toLong(), c);
+            byPos.put(c.getPos().pack(), c);
         }
         for (Map.Entry<BlockPos, BlockState> change : round) {
             BlockPos pos = change.getKey();
-            byPos.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4)).setBlockState(pos, change.getValue(), false);
+            byPos.get(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4)).setBlockState(pos, change.getValue(), Block.UPDATE_ALL);
         }
     }
 
@@ -179,12 +180,19 @@ public class DirectLightTasksTest {
     private static Map<String, byte[]> direct(TerrainHarness.World world, ProtoChunk[] base, int round) throws Exception {
         ProtoChunk[] chunks = HarnessWorld.clone(world.registries, base, world.heights);
         AtomicInteger sorterUses = new AtomicInteger();
-        ProcessorHandle<ChunkTaskPriorityQueueSorter.Message<Runnable>> sorter = ProcessorHandle.of("sorter", m -> sorterUses.incrementAndGet());
         ExecutorService lightThread = Executors.newSingleThreadExecutor();
+        ConsecutiveExecutor light = new ConsecutiveExecutor(lightThread, "light");
+        // counts what reaches the chunk priority queue, and drops it
+        ChunkTaskDispatcher sorter = new ChunkTaskDispatcher(light, lightThread) {
+            @Override
+            public void submit(Runnable task, long pos, IntSupplier level) {
+                sorterUses.incrementAndGet();
+            }
+        };
         ExecutorService workers = Executors.newFixedThreadPool(4);
         try {
             ThreadedLevelLightEngine engine = new ThreadedLevelLightEngine(getter(chunks, world.heights), chunkMap(), true,
-                ProcessorMailbox.create(lightThread, "light"), sorter);
+                light, sorter);
             List<ProtoChunk> order = new ArrayList<>(List.of(chunks));
             Collections.shuffle(order, new Random(round));
             List<CompletableFuture<?>> steps = new ArrayList<>();
@@ -233,7 +241,7 @@ public class DirectLightTasksTest {
     static LightChunkGetter getter(ProtoChunk[] chunks, LevelHeightAccessor heights) {
         Map<Long, ProtoChunk> byPos = new HashMap<>();
         for (ProtoChunk c : chunks) {
-            byPos.put(c.getPos().toLong(), c);
+            byPos.put(c.getPos().pack(), c);
         }
         BlockGetter level = new BlockGetter() {
             @Nullable
@@ -244,7 +252,7 @@ public class DirectLightTasksTest {
 
             @Override
             public BlockState getBlockState(BlockPos pos) {
-                ProtoChunk c = byPos.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4));
+                ProtoChunk c = byPos.get(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4));
                 return c == null ? Blocks.AIR.defaultBlockState() : c.getBlockState(pos);
             }
 
@@ -259,15 +267,15 @@ public class DirectLightTasksTest {
             }
 
             @Override
-            public int getMinBuildHeight() {
-                return heights.getMinBuildHeight();
+            public int getMinY() {
+                return heights.getMinY();
             }
         };
         return new LightChunkGetter() {
             @Nullable
             @Override
             public LightChunk getChunkForLighting(int x, int z) {
-                return byPos.get(ChunkPos.asLong(x, z));
+                return byPos.get(ChunkPos.pack(x, z));
             }
 
             @Override
@@ -281,8 +289,8 @@ public class DirectLightTasksTest {
     private static Map<String, byte[]> read(LevelLightEngine engine, ProtoChunk[] chunks) {
         Map<String, byte[]> layers = new LinkedHashMap<>();
         int side = (int) Math.round(Math.sqrt(chunks.length));
-        int cx0 = chunks[0].getPos().x;
-        int cz0 = chunks[0].getPos().z;
+        int cx0 = chunks[0].getPos().x();
+        int cz0 = chunks[0].getPos().z();
         for (int cz = cz0 - 1; cz <= cz0 + side; cz++) {
             for (int cx = cx0 - 1; cx <= cx0 + side; cx++) {
                 for (int sy = engine.getMinLightSection(); sy < engine.getMaxLightSection(); sy++) {

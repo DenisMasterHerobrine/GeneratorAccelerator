@@ -18,7 +18,7 @@ public class ClimateTreeStatsProbe {
     void stats() {
         Assumptions.assumeTrue(Boolean.getBoolean("ga2.bench"));
         for (var preset : List.of(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, MultiNoiseBiomeSourceParameterList.Preset.NETHER)) {
-            List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(preset, HarnessWorld.registries().biomes.asLookup()).parameters().values();
+            List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(preset, HarnessWorld.registries().biomes).parameters().values();
             Map<String, Integer> depths = new HashMap<>();
             Map<Long, Integer> offsets = new HashMap<>();
             Map<String, Integer> depthOffsets = new HashMap<>();

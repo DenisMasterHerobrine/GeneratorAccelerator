@@ -10,7 +10,7 @@ import net.minecraft.world.level.biome.Biome;
 /**
  * Biomes too warm to freeze or snow anywhere in a level's height. {@code Biome.shouldFreeze} and {@code shouldSnow} return false
  * at once when {@code warmEnoughToRain} holds, and that reads only the height-adjusted temperature. Without a temperature
- * modifier that temperature is the base temperature up to y 80. Above it the temperature falls with height and with the
+ * modifier that temperature is the base temperature up to the snow line, 17 above sea level. Above it the temperature falls with height and with the
  * temperature noise, whose 2D simplex value stays within 1 (2 is the bound used here). So a biome whose lowest possible
  * temperature at the level's top is still 0.15 or more never freezes or snows. Its columns skip both tests and the
  * temperature cache they fill.
@@ -28,7 +28,7 @@ final class WarmBiomes {
      * True when every biome the region's lookups can answer for the 16x16 columns from {@code x0, z0} is {@link #alwaysWarm}: the
      * biomes stored around the centre chunk, a superset of the zoom's answers inside its box ({@code Ga2Region.ga2$zoomBiomes}).
      */
-    static boolean everyBiome(Ga2Region region, int x0, int z0, int minY, int maxY) {
+    static boolean everyBiome(Ga2Region region, int x0, int z0, int minY, int maxY, int seaLevel) {
         BiomeZoom zoom = region.ga2$zoom();
         if (zoom == null || !zoom.covers(x0, minY, z0) || !zoom.covers(x0 + 15, maxY, z0 + 15)) {
             return false;
@@ -38,15 +38,18 @@ final class WarmBiomes {
             return false;
         }
         for (Holder<Biome> b : biomes) {
-            if (!alwaysWarm(b.value(), maxY)) {
+            if (!alwaysWarm(b.value(), maxY, seaLevel)) {
                 return false;
             }
         }
         return true;
     }
 
-    /** True when nothing changed the climate code and {@code biome} cannot freeze or snow below {@code maxY}. */
-    static boolean alwaysWarm(Biome biome, int maxY) {
+    /**
+     * True when nothing changed the climate code and {@code biome} cannot freeze or snow below {@code maxY} in a level with sea level
+     * {@code seaLevel}.
+     */
+    static boolean alwaysWarm(Biome biome, int maxY, int seaLevel) {
         if (!CLIMATE.allowed()) {
             return false;
         }
@@ -55,7 +58,9 @@ final class WarmBiomes {
             return false;
         }
         float t = biome.getBaseTemperature();
-        float coldest = maxY > 80 ? t - (NOISE_BOUND + maxY - 80.0F) * 0.05F / 40.0F : t;
+        // getHeightAdjustedTemperature's snow line
+        int snowLevel = seaLevel + 17;
+        float coldest = maxY > snowLevel ? t - (NOISE_BOUND + maxY - snowLevel) * 0.05F / 40.0F : t;
         return coldest >= 0.15F + MARGIN;
     }
 }

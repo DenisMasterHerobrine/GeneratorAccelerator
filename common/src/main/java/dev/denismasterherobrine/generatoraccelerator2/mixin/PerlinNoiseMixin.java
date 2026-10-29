@@ -95,9 +95,9 @@ public abstract class PerlinNoiseMixin {
         return sum;
     }
 
-    /** The body of {@code getValue(x, y, z, yScale, yMax, useOrigin)}. Fused octave loop, including the legacy y-clamp and origin-y options. Bit-exact. */
+    /** The body of {@code getValue(x, y, z, yScale, yMax)}. Fused octave loop, including the legacy y-clamp. Bit-exact. */
     @Unique
-    private double ga2$getValue(double x, double y, double z, double yScale, double yMax, boolean useOrigin) {
+    private double ga2$getValue(double x, double y, double z, double yScale, double yMax) {
         double sum = 0.0;
         int[][] perm = this.ga2$perm;
         double[] xo = this.ga2$xo;
@@ -108,8 +108,7 @@ public abstract class PerlinNoiseMixin {
         double[] valueFactor = this.ga2$valueFactor;
         for (int i = 0, n = this.ga2$count; i < n; i++) {
             double f = inputFactor[i];
-            double yIn = useOrigin ? -yo[i] : FusedNoise.wrap(y * f);
-            double v = FusedNoise.noiseY(perm[i], xo[i], yo[i], zo[i], FusedNoise.wrap(x * f), yIn, FusedNoise.wrap(z * f), yScale * f, yMax * f);
+            double v = FusedNoise.noiseY(perm[i], xo[i], yo[i], zo[i], FusedNoise.wrap(x * f), FusedNoise.wrap(y * f), FusedNoise.wrap(z * f), yScale * f, yMax * f);
             sum += amp[i] * v * valueFactor[i];
         }
         return sum;

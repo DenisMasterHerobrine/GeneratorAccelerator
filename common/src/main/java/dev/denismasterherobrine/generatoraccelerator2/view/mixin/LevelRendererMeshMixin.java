@@ -3,7 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.view.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.view.RenderThreads;
-import java.util.concurrent.ExecutorService;
+import net.minecraft.TracingExecutor;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -15,8 +15,8 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMeshMixin {
     @WrapOperation(method = "allChanged", require = 0, at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/Util;backgroundExecutor()Ljava/util/concurrent/ExecutorService;"))
-    private ExecutorService ga2$meshExecutor(Operation<ExecutorService> original) {
+        target = "Lnet/minecraft/util/Util;backgroundExecutor()Lnet/minecraft/TracingExecutor;"))
+    private TracingExecutor ga2$meshExecutor(Operation<TracingExecutor> original) {
         return RenderThreads.mesh(original.call());
     }
 }

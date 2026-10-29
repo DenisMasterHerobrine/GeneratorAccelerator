@@ -47,8 +47,9 @@ import org.slf4j.Logger;
  *
  * <p>The mixin plugins hand each class that a GA2 mixin targets to {@link #inspect}, before any mixin is applied to the
  * class. The class is as the transformers left it. Every method is compared with the game jar's own bytes, ignoring
- * labels, line numbers and frames. NeoForge's own coremods are applied to the jar's copy first, so the platform's changes
- * are not counted. Those coremods replace field reads with getters and redirect {@code finalizeSpawn}. Calls to a class's
+ * labels, line numbers and frames. A method equal to the jar's copy with or without NeoForge's own coremods counts as
+ * unchanged, so the platform's changes are not counted. Those coremods replace field reads with getters and redirect
+ * {@code finalizeSpawn}. NeoForge 26.1 runs them after Mixin, so the class usually comes without them. Calls to a class's
  * own methods compare equal through either invoke opcode, because access transformers that open a private method switch
  * the opcode. Any other difference counts as a change by a foreign "mixin", for every hook that inspects the method. The
  * "mixin" is named after the class that the inserted code calls ({@code "coremod <owner>"}). Its merged names are
@@ -81,12 +82,15 @@ public final class Coremods {
 
     /** NeoForge's {@code MethodRedirector}: the classes whose {@code finalizeSpawn} calls go to {@code EventHooks.finalizeMobSpawn}. */
     private static final Set<String> NEOFORGE_FINALIZE_SPAWN = Set.of(
-        "net/minecraft/server/commands/RaidCommand", "net/minecraft/server/commands/SummonCommand", "net/minecraft/world/entity/EntityType",
-        "net/minecraft/world/entity/ai/village/VillageSiege", "net/minecraft/world/entity/animal/frog/Tadpole",
-        "net/minecraft/world/entity/animal/horse/SkeletonTrapGoal", "net/minecraft/world/entity/monster/Evoker$EvokerSummonSpellGoal",
-        "net/minecraft/world/entity/monster/Spider", "net/minecraft/world/entity/monster/Strider", "net/minecraft/world/entity/monster/Zombie",
-        "net/minecraft/world/entity/monster/ZombieVillager", "net/minecraft/world/entity/npc/CatSpawner", "net/minecraft/world/entity/npc/Villager",
-        "net/minecraft/world/entity/raid/Raid", "net/minecraft/world/level/NaturalSpawner", "net/minecraft/world/level/levelgen/PatrolSpawner",
+        "net/minecraft/gametest/framework/GameTestHelper", "net/minecraft/server/commands/RaidCommand", "net/minecraft/server/commands/SummonCommand",
+        "net/minecraft/world/entity/EntityType", "net/minecraft/world/entity/ai/village/VillageSiege",
+        "net/minecraft/world/entity/animal/equine/SkeletonTrapGoal", "net/minecraft/world/entity/animal/equine/ZombieHorse",
+        "net/minecraft/world/entity/animal/frog/Tadpole", "net/minecraft/world/entity/monster/Strider",
+        "net/minecraft/world/entity/monster/illager/Evoker$EvokerSummonSpellGoal", "net/minecraft/world/entity/monster/spider/Spider",
+        "net/minecraft/world/entity/monster/zombie/Drowned", "net/minecraft/world/entity/monster/zombie/Husk",
+        "net/minecraft/world/entity/monster/zombie/Zombie", "net/minecraft/world/entity/monster/zombie/ZombieVillager",
+        "net/minecraft/world/entity/npc/CatSpawner", "net/minecraft/world/entity/npc/villager/Villager", "net/minecraft/world/entity/raid/Raid",
+        "net/minecraft/world/level/NaturalSpawner", "net/minecraft/world/level/levelgen/PatrolSpawner",
         "net/minecraft/world/level/levelgen/PhantomSpawner",
         "net/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces$OceanMonumentPiece",
         "net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces$OceanRuinPiece",
@@ -94,7 +98,7 @@ public final class Coremods {
         "net/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece",
         "net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate");
     private static final String FINALIZE_SPAWN_DESC = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
-        + "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
+        + "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
 
     /** Packages whose calls are the game's or the platform's own (never another mod's coremod). */
     private static final String[] OWN_OWNERS = { "net/minecraft/", "com/mojang/", "java/", "javax/", "jdk/", "sun/", "it/unimi/dsi/",
@@ -111,13 +115,19 @@ public final class Coremods {
         }
         Map<String, Change> changed = new HashMap<>();
         try {
-            ClassNode original = original(internal);
-            if (original == null) {
+            ClassNode[] originals = originals(internal);
+            if (originals == null) {
                 LOGGER.debug("{}: no jar bytes -> coremod check skipped", className);
             } else {
                 Map<String, MethodNode> byKey = new HashMap<>();
-                for (MethodNode m : original.methods) {
+                for (MethodNode m : originals[0].methods) {
                     byKey.put(m.name + m.desc, m);
+                }
+                Map<String, MethodNode> patchedByKey = new HashMap<>();
+                if (originals.length > 1) {
+                    for (MethodNode m : originals[1].methods) {
+                        patchedByKey.put(m.name + m.desc, m);
+                    }
                 }
                 for (MethodNode m : current.methods) {
                     MethodNode o = byKey.get(m.name + m.desc);
@@ -125,6 +135,10 @@ public final class Coremods {
                         continue; // a method some transformer added. Nothing of vanilla's to compare, and no hook inspects it
                     }
                     Change c = compare(internal, o, m);
+                    MethodNode patched = patchedByKey.get(m.name + m.desc);
+                    if (c != null && patched != null && compare(internal, patched, m) == null) {
+                        c = null; // NeoForge's own coremods made the difference
+                    }
                     if (c != null) {
                         // keyed by Mojang name, as the hooks ask ({@link Names})
                         changed.put(Names.mojangMethodKey(m.name, m.desc), c);
@@ -198,7 +212,12 @@ public final class Coremods {
         return CHANGES.containsKey(internalName);
     }
 
-    private static ClassNode original(String internal) throws IOException {
+    /**
+     * The jar's copy of the class, and on NeoForge a second copy with NeoForge's own coremods applied. The class can come to
+     * {@link #inspect} before or after those coremods ran (NeoForge 26.1 applies mixins first), so a method equal to either copy
+     * is unchanged. Null when the jar's bytes cannot be read.
+     */
+    private static ClassNode[] originals(String internal) throws IOException {
         byte[] bytes = null;
         for (ClassLoader loader : new ClassLoader[] { Coremods.class.getClassLoader(), Thread.currentThread().getContextClassLoader() }) {
             if (loader == null) {
@@ -216,10 +235,13 @@ public final class Coremods {
         }
         ClassNode node = new ClassNode();
         new ClassReader(bytes).accept(node, ClassReader.SKIP_FRAMES);
-        if (NEOFORGE) {
-            applyNeoForge(node);
+        if (!NEOFORGE) {
+            return new ClassNode[] { node };
         }
-        return node;
+        ClassNode patched = new ClassNode();
+        new ClassReader(bytes).accept(patched, ClassReader.SKIP_FRAMES);
+        applyNeoForge(patched);
+        return new ClassNode[] { node, patched };
     }
 
     /** NeoForge's own coremods, applied to the jar's copy the way NeoForge applies them to the loaded class. */
@@ -281,6 +303,7 @@ public final class Coremods {
             }
         }
         String foreignOwner = null;
+        boolean loaderPatch = false;
         Set<String> merged = new LinkedHashSet<>();
         Map<LabelNode, Integer> currentLabels = labelOrdinals(current);
         for (AbstractInsnNode insn = current.instructions.getFirst(); insn != null; insn = insn.getNext()) {
@@ -295,6 +318,10 @@ public final class Coremods {
             }
             String refOwner = insn instanceof MethodInsnNode mi ? mi.owner : ((FieldInsnNode) insn).owner;
             String refName = insn instanceof MethodInsnNode mi ? mi.name : ((FieldInsnNode) insn).name;
+            if (refOwner.equals(FABRIC_LOADER_HOOKS)) {
+                loaderPatch = true;
+                continue;
+            }
             if (refOwner.equals(owner) || isOwn(refOwner)) {
                 continue; // a field of the class (added by the coremod) or a vanilla call. No other mod is named here
             }
@@ -306,10 +333,18 @@ public final class Coremods {
             }
         }
         if (foreignOwner == null) {
-            return new Change(UNKNOWN, List.of("coremod$unknown"));
+            if (loaderPatch) {
+                // Fabric Loader's own patch (the branding in getClientModName and getServerModName), the platform's as NeoForge's are
+                return null;
+            }
+            // the method's name, so a log line says where to look
+            return new Change(UNKNOWN + " in " + current.name, List.of("coremod$unknown"));
         }
         return new Change("coremod " + foreignOwner, List.copyOf(merged.isEmpty() ? Set.of("coremod$unknown") : merged));
     }
+
+    /** The class Fabric Loader's game patches call (branding, entrypoints). */
+    private static final String FABRIC_LOADER_HOOKS = "net/fabricmc/loader/impl/game/minecraft/Hooks";
 
     private static boolean isOwn(String owner) {
         for (String p : OWN_OWNERS) {

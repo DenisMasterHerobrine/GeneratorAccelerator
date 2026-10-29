@@ -24,12 +24,12 @@ import org.junit.jupiter.api.Test;
 public class ClimateSearchTest {
     @Test
     void overworldMatchesVanilla() {
-        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, HarnessWorld.registries().biomes.asLookup()).parameters(), 600_000);
+        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, HarnessWorld.registries().biomes).parameters(), 600_000);
     }
 
     @Test
     void netherMatchesVanilla() {
-        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER, HarnessWorld.registries().biomes.asLookup()).parameters(), 200_000);
+        compare(new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER, HarnessWorld.registries().biomes).parameters(), 200_000);
     }
 
     @Test
@@ -48,7 +48,7 @@ public class ClimateSearchTest {
     @Test
     void aloneMatchesLeafCount() {
         Climate.ParameterList<Holder<Biome>> list = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters();
+            HarnessWorld.registries().biomes).parameters();
         Climate.RTree<Holder<Biome>> tree = list.index;
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) tree).ga2$flat();
         List<Climate.RTree.Leaf<Holder<Biome>>> leaves = new ArrayList<>();
@@ -104,7 +104,7 @@ public class ClimateSearchTest {
     @Test
     void secondAloneMatchesLeafCount() {
         Climate.ParameterList<Holder<Biome>> list = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters();
+            HarnessWorld.registries().biomes).parameters();
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) list.index).ga2$flat();
         int nodes = flat.nodes();
         int[] keys = new int[nodes + 1];
@@ -152,6 +152,29 @@ public class ClimateSearchTest {
             p[d] = Climate.Parameter.span(a, b);
         }
         return new Climate.ParameterPoint(p[0], p[1], p[2], p[3], p[4], p[5], r.nextInt(3) == 0 ? Climate.quantizeCoord(r.nextFloat() * 0.5f) : 0L);
+    }
+
+    /** A quiet search ({@link ClimateSearch#quietly}) answers as a plain one and leaves the thread's last result where it was. */
+    @Test
+    void quietSearchKeepsLastResult() {
+        Climate.ParameterList<Holder<Biome>> list = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
+            HarnessWorld.registries().biomes).parameters();
+        Climate.RTree<Holder<Biome>> tree = list.index;
+        List<Climate.RTree.Leaf<Holder<Biome>>> leaves = new ArrayList<>();
+        collect(tree.root, leaves);
+        Random r = new Random(77);
+        for (int it = 0; it < 2_000; it++) {
+            Climate.TargetPoint target = new Climate.TargetPoint((r.nextInt(9) - 4) * 2500L, (r.nextInt(9) - 4) * 2500L, (r.nextInt(9) - 4) * 2500L,
+                (r.nextInt(9) - 4) * 2500L, (r.nextInt(9) - 4) * 2500L, (r.nextInt(9) - 4) * 2500L);
+            Climate.RTree.Leaf<Holder<Biome>> start = leaves.get(r.nextInt(leaves.size()));
+            tree.lastResult.set(start);
+            Holder<Biome> plain = list.findValue(target);
+            tree.lastResult.set(start);
+            Holder<Biome> quiet = ClimateSearch.quietly(() -> list.findValue(target));
+            assertSame(plain, quiet, "value of query " + it);
+            assertSame(start, tree.lastResult.get(), "last result after quiet query " + it);
+        }
+        Assertions.assertFalse(ClimateSearch.quiet(), "the quiet flag was left on");
     }
 
     private static <T> void compare(Climate.ParameterList<T> list, int perMode) {

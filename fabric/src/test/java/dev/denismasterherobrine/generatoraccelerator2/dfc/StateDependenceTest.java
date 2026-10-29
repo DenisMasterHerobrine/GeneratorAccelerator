@@ -8,6 +8,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.IrBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.CoverageReport;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.HolderLookup;
@@ -31,8 +32,8 @@ public class StateDependenceTest {
             NoiseGeneratorSettings settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(preset).value();
             RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 1L);
             Map<String, Node> roots = ((Ga2RandomState) (Object) state).ga2$programs().routerRoots();
-            assertEquals(true, StateDependence.orderIndependent(roots, AquiferFastPath.STATUS_FIELDS), preset.location() + " order");
-            assertEquals(true, StateDependence.chunkIndependent(roots, "initial_density_without_jaggedness"), preset.location() + " chunk");
+            assertEquals(true, StateDependence.orderIndependent(roots, AquiferFastPath.statusFields(roots)), preset.identifier() + " order");
+            assertEquals(true, StateDependence.chunkIndependent(roots, SurfaceLevels.fields(roots)), preset.identifier() + " chunk");
         }
     }
 

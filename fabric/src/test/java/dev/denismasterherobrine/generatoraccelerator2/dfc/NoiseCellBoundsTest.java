@@ -46,7 +46,7 @@ public class NoiseCellBoundsTest {
         NoiseGeneratorSettings settings = withPerBlockNoise(overworld, noises);
         DimensionType dim = lookup.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
         var biomeSource = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
-            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes.asLookup())));
+            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes)));
         long wonBefore = CellBounds.TIGHT_WON.sum();
         long triedBefore = CellBounds.TIGHT_TRIED.sum();
         int compared = 0;
@@ -83,7 +83,7 @@ public class NoiseCellBoundsTest {
         DensityFunction column = DensityFunctions.mul(DensityFunctions.constant(0.2), DensityFunctions.cache2d(DensityFunctions.noise(noises.getOrThrow(Noises.SURFACE), 1.0, 0.0)));
         DensityFunction fin = DensityFunctions.add(r.finalDensity(), DensityFunctions.add(plain, DensityFunctions.add(shifted, column)));
         NoiseRouter router = new NoiseRouter(r.barrierNoise(), r.fluidLevelFloodednessNoise(), r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(),
-            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), fin, r.veinToggle(), r.veinRidged(), r.veinGap());
+            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.preliminarySurfaceLevel(), fin, r.veinToggle(), r.veinRidged(), r.veinGap());
         return new NoiseGeneratorSettings(s.noiseSettings(), s.defaultBlock(), s.defaultFluid(), router, s.surfaceRule(), s.spawnTarget(), s.seaLevel(),
             s.disableMobGeneration(), s.aquifersEnabled(), s.oreVeinsEnabled(), s.useLegacyRandomSource());
     }

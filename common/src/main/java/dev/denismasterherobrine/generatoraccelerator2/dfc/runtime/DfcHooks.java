@@ -16,7 +16,6 @@ public final class DfcHooks {
     private static final AtomicInteger OVERRIDES = new AtomicInteger();
 
     /** {@code MaterialRuleList.calculate} walked by index (asked for every block of the noise fill). */
-    public static final HookTargets.Hook MATERIAL_RULES = HookTargets.hook(HookTargets.NOISE_MATERIAL_RULES);
 
     public static boolean enabled() {
         return OVERRIDES.get() == 0 || !DISABLED.get();

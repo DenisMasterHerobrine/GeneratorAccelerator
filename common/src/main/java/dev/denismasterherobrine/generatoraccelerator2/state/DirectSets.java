@@ -49,7 +49,7 @@ public final class DirectSets {
     /** Reference holders compare by identity (vanilla). */
     public static final int IDENTITY = 2;
 
-    /** Fingerprints ({@link CodeShape}) of NeoForge 21.1's {@code Holder.Reference} methods. */
+    /** Fingerprints ({@link CodeShape}) of NeoForge's {@code Holder.Reference} methods. */
     private static final String NEOFORGE_EQUALS = "7d62267ee3bcc958";
     private static final String NEOFORGE_HASH_CODE = "144768d8c639ceb3";
     private static final String NEOFORGE_GET_KEY = "5d553308fad1de30";

@@ -106,7 +106,7 @@ public class OreFastFuzzTest {
         int x0 = FeatureRun.CENTER_X * 16 + (t * 7) % 16, z0 = FeatureRun.CENTER_Z * 16 + (t * 11 + 3) % 16;
         long h = 0;
         for (ProtoChunk c : r.chunks()) {
-            if (Math.abs(c.getPos().x * 16 + 8 - x0) > 24 || Math.abs(c.getPos().z * 16 + 8 - z0) > 24) {
+            if (Math.abs(c.getPos().x() * 16 + 8 - x0) > 24 || Math.abs(c.getPos().z() * 16 + 8 - z0) > 24) {
                 continue;
             }
             for (LevelChunkSection s : c.getSections()) {
@@ -122,7 +122,7 @@ public class OreFastFuzzTest {
     private static FeatureRun.Result run(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, long terrainSeed, int t, boolean vanilla) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
+        Holder<Biome> biome = r.biomes.getOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
             : Biomes.PLAINS);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
@@ -134,7 +134,7 @@ public class OreFastFuzzTest {
         random.setSeed(terrainSeed * 31 + t * 0x9E3779B97F4A7C15L + c.name().hashCode());
         int x = FeatureRun.CENTER_X * 16 + (t * 7) % 16;
         int z = FeatureRun.CENTER_Z * 16 + (t * 11 + 3) % 16;
-        int minY = heights.getMinBuildHeight();
+        int minY = heights.getMinY();
         int y = minY + 2 + (int) ((long) (t * 37) % (heights.getHeight() - 4));
         BlockPos origin = new BlockPos(x, y, z);
         boolean[] placed = new boolean[1];

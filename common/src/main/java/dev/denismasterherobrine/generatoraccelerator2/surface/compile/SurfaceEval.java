@@ -316,7 +316,7 @@ public final class SurfaceEval {
     }
 
     public boolean temperature() {
-        return biome().value().coldEnoughToSnow(pos.set(blockX, blockY, blockZ));
+        return biome().value().coldEnoughToSnow(pos.set(blockX, blockY, blockZ), ((SurfaceSystem) (Object) system).getSeaLevel());
     }
 
     public BlockState bands() {

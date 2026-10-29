@@ -1,16 +1,19 @@
 package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import net.minecraft.core.Holder;
+import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
+import net.minecraft.core.WritableRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.repository.ServerPacksSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
@@ -40,20 +43,39 @@ public final class VanillaTags {
         bound = true;
     }
 
+    @SuppressWarnings("unchecked")
     private static <T> void bind(MultiPackResourceManager manager, Registry<T> registry, ResourceKey<? extends Registry<T>> key) {
-        TagLoader<Holder<T>> loader = new TagLoader<>(id -> registry.getHolder(ResourceKey.create(key, id)).map(h -> (Holder<T>) h),
-            Registries.tagsDirPath(key));
-        Map<ResourceLocation, Collection<Holder<T>>> loaded = loader.loadAndBuild(manager);
-        Map<TagKey<T>, List<Holder<T>>> tags = new HashMap<>();
-        for (Map.Entry<ResourceLocation, Collection<Holder<T>>> e : loaded.entrySet()) {
-            tags.put(TagKey.create(key, e.getKey()), List.copyOf(e.getValue()));
+        TagLoader.ElementLookup<Holder<T>> lookup = (TagLoader.ElementLookup<Holder<T>>) TagLoader.ElementLookup.fromFrozenRegistry(registry);
+        Map<TagKey<T>, List<Holder<T>>> tags = TagLoader.loadTagsForRegistry(manager, key, lookup);
+        if (!(registry instanceof WritableRegistry<T> open) || !isOpen(registry)) {
+            registry.prepareTagReload(new TagLoader.LoadResult<>(key, tags)).apply();
+            return;
         }
-        registry.bindTags(tags);
+        // Fabric API keeps the built-in registries open in the test runtime. An open registry gives its holders their tags when it
+        // is frozen, so they are given here.
+        open.bindTags(tags);
+        Map<Holder.Reference<T>, List<TagKey<T>>> byHolder = new IdentityHashMap<>();
+        registry.listElements().forEach(h -> byHolder.put(h, new ArrayList<>()));
+        tags.forEach((tag, holders) -> holders.forEach(h -> byHolder.get((Holder.Reference<T>) h).add(tag)));
+        try {
+            Method bindTags = Holder.Reference.class.getDeclaredMethod("bindTags", Collection.class);
+            bindTags.setAccessible(true);
+            for (Map.Entry<Holder.Reference<T>, List<TagKey<T>>> e : byHolder.entrySet()) {
+                bindTags.invoke(e.getKey(), e.getValue());
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("binding tags to the holders of " + key, e);
+        }
     }
 
-    /** Null when a holder is absent, so the loader reports a missing entry instead of failing. */
-    @SuppressWarnings("unused")
-    private static <T> Optional<Holder<T>> holder(Registry<T> registry, ResourceKey<? extends Registry<T>> key, ResourceLocation id) {
-        return registry.getHolder(ResourceKey.create(key, id)).map(h -> h);
+    /** Whether the registry still takes writes (not frozen). */
+    private static boolean isOpen(Registry<?> registry) {
+        try {
+            Field frozen = MappedRegistry.class.getDeclaredField("frozen");
+            frozen.setAccessible(true);
+            return registry instanceof MappedRegistry<?> && !frozen.getBoolean(registry);
+        } catch (ReflectiveOperationException e) {
+            return false;
+        }
     }
 }

@@ -23,7 +23,7 @@ public final class GeneratorAcceleratorFabricClient implements ClientModInitiali
             List<String> notices = Notices.take();
             if (!notices.isEmpty()) {
                 // After the title screen's init is done, not inside it
-                client.tell(() -> client.setScreen(chain(client, notices, 0, screen)));
+                client.schedule(() -> client.setScreen(chain(client, notices, 0, screen)));
             }
         });
     }

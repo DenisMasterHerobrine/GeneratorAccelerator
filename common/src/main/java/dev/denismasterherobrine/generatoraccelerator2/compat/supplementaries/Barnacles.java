@@ -17,6 +17,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.MultifaceBlock;
+import net.minecraft.world.level.block.MultifaceSpreadeableBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import org.slf4j.Logger;
@@ -104,8 +105,8 @@ public final class Barnacles {
         PLACEMENTS.increment();
         MultifaceBlock placeBlock = (MultifaceBlock) Handles.PLACE_BLOCK.invokeExact(config);
         BlockState state = level.getBlockState(origin);
-        if (state.is(placeBlock)) {
-            placeBlock.getSpreader().spreadFromRandomFaceTowardRandomDirection(state, level, origin, random);
+        if (state.is(placeBlock) && placeBlock instanceof MultifaceSpreadeableBlock spreading) {
+            spreading.getSpreader().spreadFromRandomFaceTowardRandomDirection(state, level, origin, random);
             return true;
         }
         if (!isAirOrWater(state)) {

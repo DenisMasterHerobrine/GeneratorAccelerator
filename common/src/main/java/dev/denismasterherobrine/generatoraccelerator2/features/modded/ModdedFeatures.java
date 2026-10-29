@@ -31,9 +31,13 @@ public final class ModdedFeatures {
 
     private static final Logger LOGGER = Ga2Log.get("Features");
 
-    /** A feature class: its mod (module), why its placements would share state (null if not), and the lock they take then. */
+    /**
+     * A feature class: its mod (module), why its placements would share state (null if not), and the lock they take then. With
+     * {@code copies}, the state is the feature's own per-placement fields, and each thread places on its own copy instead
+     * ({@link FeatureCopies}).
+     */
     public record Profile(String type, String module, @Nullable String sharedState, @Nullable Object lock, @Nullable SeededStatics.Init init,
-                          LongAdder placements) {}
+                          boolean copies, LongAdder placements) {}
 
     /**
      * One lock for every feature that shares state. Such state may be shared between a mod's feature classes. With one
@@ -79,12 +83,23 @@ public final class ModdedFeatures {
                 init = null;
             }
         }
+        // state only in its own fields, assigned anew in every placement: a copy per thread
+        boolean copies = false;
+        if (shared != null && init == null && FeaturesConfig.scanModdedFeatures()) {
+            try {
+                copies = FeatureSafetyScan.perPlacementState(type);
+            } catch (Throwable t) {
+                copies = false;
+            }
+        }
         Object lock = shared == null ? null : SHARED_LOCK;
-        Profile p = new Profile(type.getName(), module, shared, lock, init, PLACEMENTS.computeIfAbsent(type.getName(), k -> new LongAdder()));
+        Profile p = new Profile(type.getName(), module, shared, lock, init, copies, PLACEMENTS.computeIfAbsent(type.getName(), k -> new LongAdder()));
         SEEN.put(type.getName(), p);
         if (shared != null && init != null) {
             LOGGER.info("feature {} ({}): {} (seeded) -> serialized until initialized",
                 type.getName(), module, shared);
+        } else if (copies) {
+            LOGGER.info("feature {} ({}): {}, assigned anew in every placement -> parallel on per-thread copies", type.getName(), module, shared);
         } else if (shared != null) {
             LOGGER.info("feature {} ({}): {} -> serialized", type.getName(), module, shared);
         } else {
@@ -171,13 +186,15 @@ public final class ModdedFeatures {
         List<String> out = new ArrayList<>();
         List<Profile> profiles = new ArrayList<>(SEEN.values());
         profiles.sort(Comparator.comparing(Profile::module).thenComparing(Profile::type));
-        long shared = profiles.stream().filter(p -> p.sharedState() != null).count();
-        out.add("modded features placed: " + profiles.size() + " classes, " + shared + " of them one placement at a time"
+        long shared = profiles.stream().filter(p -> p.sharedState() != null && !p.copies()).count();
+        long copied = profiles.stream().filter(Profile::copies).count();
+        out.add("modded features placed: " + profiles.size() + " classes, " + shared + " of them one placement at a time, " + copied
+            + " on per-thread copies (" + FeatureCopies.MADE.sum() + " copies)"
             + (FeaturesConfig.scanModdedFeatures() ? "" : " (scan off in config)"));
         for (Profile p : profiles) {
             LongAdder n = PLACEMENTS.get(p.type());
             out.add("  " + p.module() + " " + p.type().substring(p.type().lastIndexOf('.') + 1) + ": " + (n == null ? 0 : n.sum()) + " placements, "
-                + (p.sharedState() == null ? "parallel" : "one at a time: " + p.sharedState()));
+                + (p.sharedState() == null ? "parallel" : p.copies() ? "parallel on per-thread copies: " + p.sharedState() : "one at a time: " + p.sharedState()));
         }
         return out;
     }

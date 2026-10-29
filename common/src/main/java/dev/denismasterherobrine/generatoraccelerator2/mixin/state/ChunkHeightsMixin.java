@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * {@code ChunkAccess.getMinBuildHeight} and {@code getHeight} ask the chunk's height accessor on every call. For a level, the
+ * {@code ChunkAccess.getMinY} and {@code getHeight} ask the chunk's height accessor on every call. For a level, the
  * accessor reads its dimension type through the type's holder. Every section index, build height check and biome read of a
  * chunk calls these methods, some several times. The accessor is final and its build height is fixed for its life. So both
  * values are read once per chunk and kept in one {@code long}, written whole. Put in place once the class is complete, when no
@@ -28,15 +28,15 @@ public abstract class ChunkHeightsMixin {
     private long ga2$heights() {
         long h = this.ga2$heights;
         if (h == 0L) {
-            h = (long) this.levelHeightAccessor.getMinBuildHeight() << 32 | this.levelHeightAccessor.getHeight() & 0xFFFFFFFFL;
+            h = (long) this.levelHeightAccessor.getMinY() << 32 | this.levelHeightAccessor.getHeight() & 0xFFFFFFFFL;
             this.ga2$heights = h;
         }
         return h;
     }
 
-    /** The body of {@code getMinBuildHeight()}: the accessor's answer, read once. */
+    /** The body of {@code getMinY()}: the accessor's answer, read once. */
     @Unique
-    public int ga2$getMinBuildHeight() {
+    public int ga2$getMinY() {
         return (int) (ga2$heights() >> 32);
     }
 

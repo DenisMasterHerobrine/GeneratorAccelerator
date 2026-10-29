@@ -7,7 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 
 /**
  * Runs a level's ring position searches beside the chunk work instead of all at once ahead of it. For strongholds these
@@ -83,7 +83,7 @@ public final class RingSearches {
     }
 
     private static int full() {
-        return Util.backgroundExecutor() instanceof ForkJoinPool pool ? Math.max(1, pool.getParallelism()) : Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
+        return Util.backgroundExecutor().service() instanceof ForkJoinPool pool ? Math.max(1, pool.getParallelism()) : Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
     }
 
     private static void drain() {

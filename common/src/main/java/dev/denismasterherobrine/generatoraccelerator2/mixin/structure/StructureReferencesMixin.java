@@ -4,7 +4,6 @@ import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAcce
 import dev.denismasterherobrine.generatoraccelerator2.structure.StructureReferences;
 import java.util.Map;
 import net.minecraft.core.SectionPos;
-import net.minecraft.network.protocol.game.DebugPackets;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
@@ -27,8 +26,8 @@ public abstract class StructureReferencesMixin {
     @Unique
     private void ga2$createReferences(WorldGenLevel level, StructureManager structureManager, ChunkAccess chunk) {
         ChunkPos chunkpos = chunk.getPos();
-        int j = chunkpos.x;
-        int k = chunkpos.z;
+        int j = chunkpos.x();
+        int k = chunkpos.z();
         int l = chunkpos.getMinBlockX();
         int i1 = chunkpos.getMinBlockZ();
         SectionPos sectionpos = SectionPos.bottomOf(chunk);
@@ -40,12 +39,11 @@ public abstract class StructureReferencesMixin {
                 if (starts.isEmpty()) {
                     continue;
                 }
-                long l1 = ChunkPos.asLong(j1, k1);
+                long l1 = ChunkPos.pack(j1, k1);
                 for (StructureStart structurestart : starts.values()) {
                     try {
                         if (structurestart.isValid() && structurestart.getBoundingBox().intersects(l, i1, l + 15, i1 + 15)) {
                             structureManager.addReferenceForStructure(sectionpos, structurestart.getStructure(), l1, chunk);
-                            DebugPackets.sendStructurePacket(level, structurestart);
                         }
                     } catch (Exception exception) {
                         throw StructureReferences.crash(level, structurestart, exception);

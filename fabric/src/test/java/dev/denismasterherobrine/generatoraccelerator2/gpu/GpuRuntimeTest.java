@@ -271,7 +271,7 @@ public class GpuRuntimeTest {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(o[0] + i, o[1] + j);
                     bf.add(wg.decidesBiomes() ? wg.biomes(pos) : CompletableFuture.completedFuture(null));
-                    nf.add(wg.noise(pos, beard(wg, st, pos.x, pos.z)));
+                    nf.add(wg.noise(pos, beard(wg, st, pos.x(), pos.z())));
                 }
             }
             for (int i = 0; i < 4; i++) {
@@ -451,7 +451,7 @@ public class GpuRuntimeTest {
         var terrain = DensityFunctions.add(r.finalDensity(), DensityFunctions.add(
             DensityFunctions.mul(k.apply(0.15), mix), DensityFunctions.mul(k.apply(-0.004), cellular)));
         var router = new NoiseRouter(r.barrierNoise(), flood, r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(),
-            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), terrain, r.veinToggle(), r.veinRidged(), r.veinGap());
+            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.preliminarySurfaceLevel(), terrain, r.veinToggle(), r.veinRidged(), r.veinGap());
         var settings = new NoiseGeneratorSettings(base.noiseSettings(), base.defaultBlock(), base.defaultFluid(), router,
             base.surfaceRule(), base.spawnTarget(), base.seaLevel(), base.disableMobGeneration(), base.aquifersEnabled(), base.oreVeinsEnabled(),
             base.useLegacyRandomSource());
@@ -459,7 +459,7 @@ public class GpuRuntimeTest {
             .getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
         var source = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
             new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-                reg.biomes.asLookup())));
+                reg.biomes)));
         var world = new TerrainHarness.World(reg, Holder.direct(settings), source, noises, dim,
             1234567L);
         GpuProbe.Setup s = new GpuProbe.Setup(world);
@@ -486,13 +486,13 @@ public class GpuRuntimeTest {
             .getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
         var multi = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
             new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-                reg.biomes.asLookup())));
+                reg.biomes)));
         var targets = Set.<Holder<Biome>>of(
-            reg.biomes.getHolderOrThrow(Biomes.PLAINS), reg.biomes.getHolderOrThrow(Biomes.FOREST),
-            reg.biomes.getHolderOrThrow(Biomes.OCEAN), reg.biomes.getHolderOrThrow(Biomes.TAIGA),
-            reg.biomes.getHolderOrThrow(Biomes.DEEP_OCEAN));
+            reg.biomes.getOrThrow(Biomes.PLAINS), reg.biomes.getOrThrow(Biomes.FOREST),
+            reg.biomes.getOrThrow(Biomes.OCEAN), reg.biomes.getOrThrow(Biomes.TAIGA),
+            reg.biomes.getOrThrow(Biomes.DEEP_OCEAN));
         var injector = new InjectorBiomeSource(multi, targets,
-            reg.biomes.getHolderOrThrow(Biomes.CHERRY_GROVE));
+            reg.biomes.getOrThrow(Biomes.CHERRY_GROVE));
         var world = new TerrainHarness.World(reg, settings, injector, noises, dim, 1234567L);
         GpuProbe.Setup s = new GpuProbe.Setup(world);
         GpuWorldgen wg = open(s, "test-injectors", "auto", "");
@@ -504,7 +504,7 @@ public class GpuRuntimeTest {
         handed = LithostitchedGpuBiomes.HANDED_POINTS.sum() - handed;
         // the replacement must happen somewhere, or the test proves nothing about the handed points
         int replaced = 0;
-        var cherry = reg.biomes.getHolderOrThrow(Biomes.CHERRY_GROVE);
+        var cherry = reg.biomes.getOrThrow(Biomes.CHERRY_GROVE);
         for (int cx = 0; cx < 8; cx++) {
             for (int cz = 0; cz < 8; cz++) {
                 ProtoChunk c = s.world.emptyChunk(cx * 37, cz * 37);
@@ -775,7 +775,7 @@ public class GpuRuntimeTest {
             var leaf = flat.leaf(id);
             if (leaf != null) {
                 var h = (Holder<Biome>) leaf.value;
-                keys[id] = numbers.computeIfAbsent(h.unwrapKey().<Object>map(k -> k.location()).orElse(h), k -> numbers.size());
+                keys[id] = numbers.computeIfAbsent(h.unwrapKey().<Object>map(k -> k.identifier()).orElse(h), k -> numbers.size());
                 leafIds.add(id);
             }
         }
@@ -841,7 +841,7 @@ public class GpuRuntimeTest {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(bx + i, bz + j);
-                    fc.add(c.noise(pos, beard(c, st, pos.x, pos.z)));
+                    fc.add(c.noise(pos, beard(c, st, pos.x(), pos.z())));
                 }
             }
             CompletableFuture.allOf(fc.toArray(CompletableFuture[]::new)).get(120, TimeUnit.SECONDS);
@@ -849,7 +849,7 @@ public class GpuRuntimeTest {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     ChunkPos pos = new ChunkPos(bx + i, bz + j);
-                    fd.add(d.noise(pos, beard(d, st, pos.x, pos.z)));
+                    fd.add(d.noise(pos, beard(d, st, pos.x(), pos.z())));
                 }
             }
             CompletableFuture.allOf(fd.toArray(CompletableFuture[]::new)).get(120, TimeUnit.SECONDS);

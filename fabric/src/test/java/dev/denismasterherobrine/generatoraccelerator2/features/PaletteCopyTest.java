@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.GlobalPalette;
 import net.minecraft.world.level.chunk.PalettedContainer;
+import net.minecraft.world.level.chunk.Strategy;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -51,20 +52,20 @@ public class PaletteCopyTest {
     void biomeResizes() {
         Registry<Biome> registry = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L).registries.biomes;
         List<Holder<Biome>> all = new ArrayList<>();
-        registry.holders().forEach(all::add);
+        registry.listElements().forEach(all::add);
         Random random = new Random(23);
         for (int run = 0; run < 8; run++) {
             Collections.shuffle(all, random);
             List<Holder<Biome>> values = new ArrayList<>(all.subList(0, Math.min(all.size(), new int[] { 2, 3, 5, 9, 17, 33, 50, 64 }[run])));
             long seed = random.nextLong();
-            PalettedContainer<Holder<Biome>> fast = new PalettedContainer<>(registry.asHolderIdMap(), registry.getHolderOrThrow(Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES);
-            PalettedContainer<Holder<Biome>> vanilla = new PalettedContainer<>(registry.asHolderIdMap(), registry.getHolderOrThrow(Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES);
+            PalettedContainer<Holder<Biome>> fast = new PalettedContainer<>(registry.getOrThrow(Biomes.PLAINS), Strategy.createForBiomes(registry.asHolderIdMap()));
+            PalettedContainer<Holder<Biome>> vanilla = new PalettedContainer<>(registry.getOrThrow(Biomes.PLAINS), Strategy.createForBiomes(registry.asHolderIdMap()));
             replay(fast, vanilla, values, seed, 4);
         }
     }
 
     private static PalettedContainer<BlockState> states() {
-        return new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(), PalettedContainer.Strategy.SECTION_STATES);
+        return new PalettedContainer<>(Blocks.AIR.defaultBlockState(), Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY));
     }
 
     /** The same random writes on both containers, one copying the GA2 way and one vanilla's. Compared after every resize. */

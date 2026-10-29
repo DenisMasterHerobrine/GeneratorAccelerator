@@ -44,13 +44,13 @@ public final class FeatureRun {
     private static final Map<String, ProtoChunk[]> TERRAIN = new HashMap<>();
 
     public static synchronized ProtoChunk[] terrain(HarnessWorld.Registries2 r, HarnessWorld.Kind kind, long seed) {
-        return TERRAIN.computeIfAbsent(kind + "/" + seed, k -> HarnessWorld.terrain(r, kind, seed, CENTER_X, CENTER_Z, i -> r.biomes.getHolderOrThrow(Biomes.PLAINS)));
+        return TERRAIN.computeIfAbsent(kind + "/" + seed, k -> HarnessWorld.terrain(r, kind, seed, CENTER_X, CENTER_Z, i -> r.biomes.getOrThrow(Biomes.PLAINS)));
     }
 
     /** Every vanilla placed feature that at least one biome uses, with its dimension kind from that biome. */
     public static List<Case> cases(HarnessWorld.Registries2 r) {
         Map<PlacedFeature, List<Holder<Biome>>> users = new HashMap<>();
-        for (Holder.Reference<Biome> biome : r.biomes.holders().toList()) {
+        for (Holder.Reference<Biome> biome : r.biomes.listElements().toList()) {
             for (HolderSet<PlacedFeature> step : biome.value().getGenerationSettings().features()) {
                 for (Holder<PlacedFeature> pf : step) {
                     users.computeIfAbsent(pf.value(), k -> new ArrayList<>()).add(biome);
@@ -65,20 +65,22 @@ public final class FeatureRun {
                 continue;
             }
             Holder<Biome> a = biomes.get(0);
-            Holder<Biome> b = biomes.size() > 1 ? biomes.get(1) : r.biomes.getHolderOrThrow(Biomes.PLAINS);
-            out.add(new Case(pf.key().location().toString(), pf, index++, a, b, kindOf(a)));
+            Holder<Biome> b = biomes.size() > 1 ? biomes.get(1) : r.biomes.getOrThrow(Biomes.PLAINS);
+            out.add(new Case(pf.key().identifier().toString(), pf, index++, a, b, kindOf(a)));
         }
         return out;
     }
 
     /** Trees with a beehive decorator place the nest with the JDK static Random in vanilla. Not deterministic, so excluded. */
     public static boolean hasBeehiveDecorator(ConfiguredFeature<?, ?> cf) {
-        return cf.getFeatures().anyMatch(f -> f.config() instanceof TreeConfiguration tc
-            && tc.decorators.stream().anyMatch(d -> d instanceof BeehiveDecorator));
+        if (cf.config() instanceof TreeConfiguration tc && tc.decorators.stream().anyMatch(d -> d instanceof BeehiveDecorator)) {
+            return true;
+        }
+        return cf.getSubFeatures().anyMatch(f -> hasBeehiveDecorator(f.value()));
     }
 
     public static HarnessWorld.Kind kindOf(Holder<Biome> biome) {
-        String path = biome.unwrapKey().map(k -> k.location().getPath()).orElse("");
+        String path = biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("");
         return switch (path) {
             case "nether_wastes", "soul_sand_valley", "crimson_forest", "warped_forest", "basalt_deltas" -> HarnessWorld.Kind.NETHER;
             case "the_end", "end_highlands", "end_midlands", "small_end_islands", "end_barrens" -> HarnessWorld.Kind.END;
@@ -103,7 +105,7 @@ public final class FeatureRun {
         WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
         long decorationSeed = random.setDecorationSeed(seed, CENTER_X * 16, CENTER_Z * 16);
         random.setFeatureSeed(decorationSeed, c.index(), c.index() % 11);
-        BlockPos origin = new BlockPos(CENTER_X * 16, heights.getMinBuildHeight(), CENTER_Z * 16);
+        BlockPos origin = new BlockPos(CENTER_X * 16, heights.getMinY(), CENTER_Z * 16);
         boolean[] placed = new boolean[1];
         Throwable[] error = new Throwable[1];
         Runnable body = () -> {
@@ -130,12 +132,12 @@ public final class FeatureRun {
         int index = 0;
         for (Holder.Reference<ConfiguredFeature<?, ?>> cf
             : r.lookup.lookupOrThrow(Registries.CONFIGURED_FEATURE).listElements().toList()) {
-            String path = cf.key().location().getPath();
+            String path = cf.key().identifier().getPath();
             HarnessWorld.Kind kind = path.contains("nether") || path.contains("crimson") || path.contains("warped") || path.contains("basalt") || path.contains("delta")
                 || path.contains("glowstone") || path.contains("soul") || path.contains("weeping") || path.contains("twisting") || path.contains("fungus")
                 ? HarnessWorld.Kind.NETHER : path.contains("end") || path.contains("chorus") ? HarnessWorld.Kind.END : HarnessWorld.Kind.OVERWORLD;
             for (int originKind = 0; originKind < 3; originKind++) {
-                out.add(new ConfiguredCase(cf.key().location() + "@" + originKind, cf, index, kind, originKind));
+                out.add(new ConfiguredCase(cf.key().identifier() + "@" + originKind, cf, index, kind, originKind));
             }
             index++;
         }
@@ -145,7 +147,7 @@ public final class FeatureRun {
     public static Result runConfigured(HarnessWorld.Registries2 r, ConfiguredCase c, long seed, boolean vanilla, boolean cacheHeightmaps) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, terrain(r, c.kind(), seed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
+        Holder<Biome> biome = r.biomes.getOrThrow(c.kind() == HarnessWorld.Kind.NETHER ? Biomes.NETHER_WASTES
             : c.kind() == HarnessWorld.Kind.END ? Biomes.THE_END : Biomes.PLAINS);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());

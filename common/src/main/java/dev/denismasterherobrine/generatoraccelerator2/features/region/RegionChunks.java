@@ -29,8 +29,8 @@ public final class RegionChunks {
     private final ChunkDependencies dependencies;
 
     public RegionChunks(ChunkPos center, ChunkDependencies directDependencies) {
-        this.centerX = center.x;
-        this.centerZ = center.z;
+        this.centerX = center.x();
+        this.centerZ = center.z();
         this.radius = Math.max(0, directDependencies.size() - 1);
         this.size = 2 * radius + 1;
         this.dependencies = directDependencies;

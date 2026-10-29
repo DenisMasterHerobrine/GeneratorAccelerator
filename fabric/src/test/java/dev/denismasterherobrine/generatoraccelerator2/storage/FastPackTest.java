@@ -18,6 +18,9 @@ import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.LongArrayTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -30,6 +33,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.Strategy;
 import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 
@@ -39,8 +43,8 @@ import java.nio.file.Path;
  * hash, global), including palettes that still hold values no longer present.
  */
 public class FastPackTest {
-    private static final Codec<PalettedContainer<BlockState>> STATES =
-        PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
+    private static final Strategy<BlockState> STATE_STRATEGY = Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY);
+    private static final Codec<PalettedContainer<BlockState>> STATES = PalettedContainer.codecRW(BlockState.CODEC, STATE_STRATEGY, Blocks.AIR.defaultBlockState());
 
     private static final int[][] CHUNKS = { { 0, 0 }, { 17, -5 }, { -300, 412 } };
 
@@ -81,8 +85,7 @@ public class FastPackTest {
         for (int n : distinct) {
             for (int pattern = 0; pattern < 4; pattern++) {
                 List<BlockState> values = pick(all, n, random);
-                PalettedContainer<BlockState> container = new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(),
-                    PalettedContainer.Strategy.SECTION_STATES);
+                PalettedContainer<BlockState> container = new PalettedContainer<>(Blocks.AIR.defaultBlockState(), Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY));
                 fill(container, values, pattern, random, 16);
                 if (pattern == 3) {
                     // overwrite most of it: the palette keeps values the storage no longer holds
@@ -103,13 +106,12 @@ public class FastPackTest {
         Registry<Biome> registry = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L).registries.biomes;
         Codec<PalettedContainerRO<Holder<Biome>>> codec = biomeCodec(registry);
         List<Holder<Biome>> all = new ArrayList<>();
-        registry.holders().forEach(all::add);
+        registry.listElements().forEach(all::add);
         Random random = new Random(11);
         for (int n : new int[] { 1, 2, 3, 4, 5, 8, 9, 17, 40, 64 }) {
             for (int pattern = 0; pattern < 4; pattern++) {
                 List<Holder<Biome>> values = pick(all, Math.min(n, all.size()), random);
-                PalettedContainer<Holder<Biome>> container = new PalettedContainer<>(registry.asHolderIdMap(), registry.getHolderOrThrow(Biomes.PLAINS),
-                    PalettedContainer.Strategy.SECTION_BIOMES);
+                PalettedContainer<Holder<Biome>> container = new PalettedContainer<>(registry.getOrThrow(Biomes.PLAINS), Strategy.createForBiomes(registry.asHolderIdMap()));
                 fill(container, values, pattern, random, 4);
                 if (pattern == 3) {
                     for (int i = 0; i < 64 - 3; i++) {
@@ -119,6 +121,83 @@ public class FastPackTest {
                 same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(), "biomes n=" + n + " pattern " + pattern);
             }
         }
+    }
+
+    /**
+     * Containers read from saved longs keep whatever the bits past each long's last entry held. Vanilla packs zeros there. Checked for
+     * every local width, with ids in the palette's own order (the longs are copied), in another order (repacked a byte or an id at a
+     * time), and with values the storage no longer holds (narrower longs).
+     */
+    @Test
+    void savedLongsWithDirtyPadding() {
+        List<BlockState> all = new ArrayList<>();
+        Block.BLOCK_STATE_REGISTRY.forEach(all::add);
+        Random random = new Random(19);
+        for (int n : new int[] { 2, 5, 9, 16, 17, 30, 32, 33, 64, 100, 128, 129, 200, 256 }) {
+            for (int order = 0; order < 3; order++) {
+                List<BlockState> values = pick(all, n, random);
+                ListTag palette = new ListTag();
+                for (BlockState s : values) {
+                    palette.add(BlockState.CODEC.encodeStart(NbtOps.INSTANCE, s).getOrThrow());
+                }
+                CompoundTag tag = new CompoundTag();
+                tag.put("palette", palette);
+                tag.put("data", new LongArrayTag(dirtyLongs(n, 4096, Math.max(4, ceilLog2(n)), order, random)));
+                PalettedContainer<BlockState> container = STATES.parse(NbtOps.INSTANCE, tag).getOrThrow();
+                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(), "states n=" + n + " order " + order);
+            }
+        }
+        Registry<Biome> registry = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L).registries.biomes;
+        Codec<PalettedContainerRO<Holder<Biome>>> codec = biomeCodec(registry);
+        List<Holder<Biome>> biomes = new ArrayList<>();
+        registry.listElements().forEach(biomes::add);
+        for (int n : new int[] { 2, 3, 4, 5, 7, 8 }) {
+            for (int order = 0; order < 3; order++) {
+                List<Holder<Biome>> values = pick(biomes, n, random);
+                ListTag palette = new ListTag();
+                for (Holder<Biome> b : values) {
+                    palette.add(StringTag.valueOf(b.unwrapKey().orElseThrow().identifier().toString()));
+                }
+                CompoundTag tag = new CompoundTag();
+                tag.put("palette", palette);
+                tag.put("data", new LongArrayTag(dirtyLongs(n, 64, ceilLog2(n), order, random)));
+                PalettedContainerRO<Holder<Biome>> container = codec.parse(NbtOps.INSTANCE, tag).getOrThrow();
+                same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(), "biomes n=" + n + " order " + order);
+            }
+        }
+    }
+
+    private static int ceilLog2(int n) {
+        return 32 - Integer.numberOfLeadingZeros(n - 1);
+    }
+
+    /**
+     * Saved longs for {@code size} entries of {@code bits} each over a palette of {@code n} values, with random bits past each long's
+     * last entry. Order 0: the first entries are 0, 1, 2 ... (the palette's own order). Order 1: random ids. Order 2: only the lower
+     * half of the palette's ids appear.
+     */
+    private static long[] dirtyLongs(int n, int size, int bits, int order, Random random) {
+        int[] ids = new int[size];
+        for (int i = 0; i < size; i++) {
+            ids[i] = switch (order) {
+                case 0 -> i < n ? i : random.nextInt(n);
+                case 1 -> random.nextInt(n);
+                default -> random.nextInt(Math.max(1, n / 2));
+            };
+        }
+        int perLong = 64 / bits;
+        long[] longs = new long[(size + perLong - 1) / perLong];
+        for (int w = 0; w < longs.length; w++) {
+            long word = random.nextLong();
+            for (int t = 0; t < perLong; t++) {
+                int i = w * perLong + t;
+                long id = i < size ? ids[i] : random.nextInt(1 << bits);
+                word &= ~(((1L << bits) - 1L) << t * bits);
+                word |= id << t * bits;
+            }
+            longs[w] = word;
+        }
+        return longs;
     }
 
     /** {@link SectionCodec} builds the same block state and biome tags as the codecs, for real and synthetic sections. */
@@ -142,26 +221,26 @@ public class FastPackTest {
         Path region = RegionChunks.defaultRegion();
         if (region != null) {
             for (CompoundTag tag : RegionChunks.readTags(region, 64)) {
-                for (Tag t : tag.getList("sections", Tag.TAG_COMPOUND)) {
+                for (Tag t : tag.getListOrEmpty("sections")) {
                     CompoundTag section = (CompoundTag) t;
-                    if (section.contains("block_states", Tag.TAG_COMPOUND)) {
-                        states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow());
+                    if (section.getCompound("block_states").isPresent()) {
+                        states.add(STATES.parse(NbtOps.INSTANCE, section.getCompoundOrEmpty("block_states")).getOrThrow());
                     }
-                    if (section.contains("biomes", Tag.TAG_COMPOUND)) {
-                        biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow());
+                    if (section.getCompound("biomes").isPresent()) {
+                        biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompoundOrEmpty("biomes")).getOrThrow());
                     }
                 }
             }
         }
         for (int i = 0; i < states.size(); i++) {
             Tag vanilla = STATES.encodeStart(NbtOps.INSTANCE, states.get(i)).getOrThrow();
-            Tag fast = SectionCodec.blockStates(states.get(i));
+            Tag fast = SectionCodec.blockStates(states.get(i), STATE_STRATEGY);
             assertEquals(vanilla, fast, "block states " + i);
             assertArrayEquals(bytes(vanilla), bytes(fast), "block states bytes " + i);
         }
         for (int i = 0; i < biomeList.size(); i++) {
             Tag vanilla = biomes.encodeStart(NbtOps.INSTANCE, biomeList.get(i)).getOrThrow();
-            Tag fast = SectionCodec.biomes(biomeList.get(i), world.registries.biomes);
+            Tag fast = SectionCodec.biomes(biomeList.get(i), Strategy.createForBiomes(world.registries.biomes.asHolderIdMap()));
             assertEquals(vanilla, fast, "biomes " + i);
             assertArrayEquals(bytes(vanilla), bytes(fast), "biomes bytes " + i);
         }
@@ -197,8 +276,7 @@ public class FastPackTest {
     }
 
     private static Codec<PalettedContainerRO<Holder<Biome>>> biomeCodec(Registry<Biome> biomes) {
-        return PalettedContainer.codecRO(biomes.asHolderIdMap(), biomes.holderByNameCodec(), PalettedContainer.Strategy.SECTION_BIOMES,
-            biomes.getHolderOrThrow(Biomes.PLAINS));
+        return PalettedContainer.codecRO(biomes.holderByNameCodec(), Strategy.createForBiomes(biomes.asHolderIdMap()), biomes.getOrThrow(Biomes.PLAINS));
     }
 
     private static void same(Supplier<Tag> encode, String where) {

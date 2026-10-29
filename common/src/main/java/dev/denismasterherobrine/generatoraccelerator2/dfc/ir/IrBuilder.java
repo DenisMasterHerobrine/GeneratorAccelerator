@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.lift.LiftException;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.lift.LiftValidator;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.CoverageReport;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.TopSurfaceWalk;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -162,6 +163,7 @@ public final class IrBuilder implements DensityFunctionLowering.Context {
                 case CUBE -> Node.MappedType.CUBE;
                 case HALF_NEGATIVE -> Node.MappedType.HALF_NEGATIVE;
                 case QUARTER_NEGATIVE -> Node.MappedType.QUARTER_NEGATIVE;
+                case INVERT -> Node.MappedType.INVERT;
                 case SQUEEZE -> Node.MappedType.SQUEEZE;
             };
             return new Node.Mapped(type, child(m.type().getSerializedName(), m.input()), min, max);
@@ -231,7 +233,8 @@ public final class IrBuilder implements DensityFunctionLowering.Context {
             return new Node.Blended(blendedSpec(b), max);
         }
         String reason;
-        DensityFunctionLowering lowering = DensityFunctionLowering.find(fn.getClass());
+        // a find_top_surface is a loop, so it gets the checks of a registered lowering
+        DensityFunctionLowering lowering = fn instanceof DensityFunctions.FindTopSurface ? TopSurfaceWalk.LOWERING : DensityFunctionLowering.find(fn.getClass());
         if (lowering != null) {
             // a child's lowering inside this one keeps its own reason
             String outer = declined;

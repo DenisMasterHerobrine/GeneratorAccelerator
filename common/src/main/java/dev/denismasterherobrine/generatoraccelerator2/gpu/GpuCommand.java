@@ -11,7 +11,7 @@ public final class GpuCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("ga2")
-            .requires(source -> source.hasPermission(2))
+            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
             .then(Commands.literal("gpu").executes(ctx -> status(ctx.getSource()))));
     }
 

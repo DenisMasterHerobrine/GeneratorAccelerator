@@ -1,7 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
 import dev.denismasterherobrine.generatoraccelerator2.features.HarnessWorld;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.Holder;
@@ -27,7 +26,6 @@ import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.Beardifier;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
@@ -39,7 +37,6 @@ import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.carver.CarvingContext;
 import net.minecraft.world.level.levelgen.carver.ConfiguredWorldCarver;
-import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
 /**
@@ -85,7 +82,7 @@ public final class TerrainHarness {
             this.preset = preset;
             this.seed = seed;
             this.registries = HarnessWorld.registries();
-            var biomeLookup = registries.biomes.asLookup();
+            var biomeLookup = registries.biomes;
             this.biomeSource = switch (preset) {
                 case NETHER -> MultiNoiseBiomeSource.createFromPreset(Holder.direct(
                     new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER, biomeLookup)));
@@ -121,13 +118,13 @@ public final class TerrainHarness {
         }
 
         public ProtoChunk emptyChunk(int cx, int cz) {
-            return new ProtoChunk(new ChunkPos(cx, cz), UpgradeData.EMPTY, heights, registries.biomes, null);
+            return new ProtoChunk(new ChunkPos(cx, cz), UpgradeData.EMPTY, heights, registries.containers, null);
         }
 
         /** The NoiseChunk the NOISE step would create for this chunk without structures nearby. */
         public NoiseChunk noiseChunk(ChunkAccess chunk) {
             return chunk.getOrCreateNoiseChunk(c -> NoiseChunk.forChunk(c, randomState,
-                new Beardifier(new ObjectArrayList<Beardifier.Rigid>().iterator(), new ObjectArrayList<JigsawJunction>().iterator()),
+                Beardifier.EMPTY,
                 settings, fluidPicker, Blender.empty()));
         }
 
@@ -255,13 +252,13 @@ public final class TerrainHarness {
     public static ChunkLookup carverNeighbourhood(World w, ProtoChunk center, Map<Long, ProtoChunk> chunks) {
         ChunkPos c = center.getPos();
         return (x, z) -> {
-            if (x == c.x && z == c.z) {
+            if (x == c.x() && z == c.z()) {
                 return center;
             }
-            if (Math.abs(x - c.x) > 8 || Math.abs(z - c.z) > 8) {
+            if (Math.abs(x - c.x()) > 8 || Math.abs(z - c.z()) > 8) {
                 throw new IllegalStateException("carver read outside radius 8");
             }
-            return chunks.computeIfAbsent(ChunkPos.asLong(x, z), k -> w.emptyChunk(x, z));
+            return chunks.computeIfAbsent(ChunkPos.pack(x, z), k -> w.emptyChunk(x, z));
         };
     }
 
@@ -278,17 +275,17 @@ public final class TerrainHarness {
         Aquifer aquifer = noiseChunk.aquifer();
         CarvingContext context = new CarvingContext(w.generator, w.registries.access, chunk.getHeightAccessorForGeneration(), noiseChunk, w.randomState,
             w.settings.surfaceRule());
-        var mask = chunk.getOrCreateCarvingMask(GenerationStep.Carving.AIR);
+        var mask = chunk.getOrCreateCarvingMask();
         for (int j = -8; j <= 8; j++) {
             for (int k = -8; k <= 8; k++) {
-                ChunkPos source = new ChunkPos(pos.x + j, pos.z + k);
-                ChunkAccess sourceChunk = region.get(source.x, source.z);
+                ChunkPos source = new ChunkPos(pos.x() + j, pos.z() + k);
+                ChunkAccess sourceChunk = region.get(source.x(), source.z());
                 BiomeGenerationSettings biomeSettings = sourceChunk.carverBiome(() -> w.generator.getBiomeGenerationSettings(
                     w.biomeSource.getNoiseBiome(QuartPos.fromBlock(source.getMinBlockX()), 0, QuartPos.fromBlock(source.getMinBlockZ()), w.randomState.sampler())));
                 int l = 0;
-                for (Holder<ConfiguredWorldCarver<?>> holder : biomeSettings.getCarvers(GenerationStep.Carving.AIR)) {
+                for (Holder<ConfiguredWorldCarver<?>> holder : biomeSettings.getCarvers()) {
                     ConfiguredWorldCarver<?> carver = holder.value();
-                    random.setLargeFeatureSeed(w.seed + (long) l, source.x, source.z);
+                    random.setLargeFeatureSeed(w.seed + (long) l, source.x(), source.z());
                     if (carver.isStartChunk(random)) {
                         carver.carve(context, chunk, biomeManager::getBiome, random, aquifer, source, mask);
                     }

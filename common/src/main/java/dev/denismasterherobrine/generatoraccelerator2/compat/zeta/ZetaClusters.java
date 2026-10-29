@@ -117,8 +117,8 @@ public final class ZetaClusters {
         Object shape = Handles.AROUND.invokeExact(Handles.SHAPE_PROVIDER.invokeExact(self), src);
         Object context = Handles.CREATE_CONTEXT.invokeExact(self, src, generator, random, chunkCorner, world);
         // forEachChunkBlock(world, chunkCorner, lower, upper, ...)
-        int minY = Math.max(world.getMinBuildHeight() + 1, (int) Handles.LOWER.invokeExact(shape));
-        int maxY = Math.min(world.getMaxBuildHeight() - 1, (int) Handles.UPPER.invokeExact(shape));
+        int minY = Math.max(world.getMinY() + 1, (int) Handles.LOWER.invokeExact(shape));
+        int maxY = Math.min(world.getMaxY(), (int) Handles.UPPER.invokeExact(shape));
         int chunkX = chunkCorner.getX();
         int chunkZ = chunkCorner.getZ();
         PARTS.increment();

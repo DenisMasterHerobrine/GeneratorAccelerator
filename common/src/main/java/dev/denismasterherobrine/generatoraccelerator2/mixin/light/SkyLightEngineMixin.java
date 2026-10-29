@@ -85,12 +85,12 @@ public abstract class SkyLightEngineMixin implements Ga2Propagator {
                 BlockState state = same && sourceBlocks != null
                     ? (sourceBlocks.hasOnlyAir() ? Blocks.AIR.defaultBlockState() : sourceBlocks.getBlockState(BlockPos.getX(to) & 15, BlockPos.getY(to) & 15, BlockPos.getZ(to) & 15))
                     : engine.ga2$state(this.mutablePos);
-                int lit = level - engine.ga2$opacity(state, this.mutablePos);
+                int lit = level - engine.ga2$opacity(state);
                 if (lit > stored) {
                     if (from == null) {
                         from = LightEngine.QueueEntry.isFromEmptyShape(entry) ? Blocks.AIR.defaultBlockState() : engine.ga2$state(this.mutablePos.set(pos));
                     }
-                    if (!engine.ga2$occludes(pos, from, to, state, direction)) {
+                    if (!engine.ga2$occludes(from, state, direction)) {
                         engine.ga2$setStoredLevel(to, toSection, lit);
                         if (same) {
                             sourceLayer = null;

@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.features;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.util.valueproviders.IntProvider;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
@@ -34,8 +35,8 @@ public abstract class RandomizedIntStateProviderMixin {
     }
 
     @Inject(method = "getState", at = @At("HEAD"), cancellable = true)
-    private void ga2$readOnce(RandomSource random, BlockPos pos, CallbackInfoReturnable<BlockState> cir) {
-        BlockState state = this.source.getState(random, pos);
+    private void ga2$readOnce(WorldGenLevel level, RandomSource random, BlockPos pos, CallbackInfoReturnable<BlockState> cir) {
+        BlockState state = this.source.getState(level, random, pos);
         IntegerProperty cached = this.property;
         if (cached == null || !state.hasProperty(cached)) {
             IntegerProperty found = findProperty(state, this.propertyName);

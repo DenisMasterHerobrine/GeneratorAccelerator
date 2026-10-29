@@ -6,6 +6,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.TracingExecutor;
 import org.slf4j.Logger;
 
 /**
@@ -25,47 +26,22 @@ public final class RenderThreads {
 
     /** {@code -Dgeneratoraccelerator2.renderThreads=false} keeps vanilla's shared pool. */
     public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.renderThreads"));
-    /**
-     * {@code -Dgeneratoraccelerator2.renderThreads.keepEdge=false} shows a rebuilt graph as vanilla does
-     * ({@code SectionOcclusionGraphMixin}).
-     */
-    public static final boolean KEEP_EDGE = !"false".equals(System.getProperty("generatoraccelerator2.renderThreads.keepEdge"));
-    /**
-     * {@code -Dgeneratoraccelerator2.freeSectionBuffers=false} keeps stale section meshes in VRAM as vanilla does ({@code SectionBuffers}).
-     * Here and not there, because the mixin plugin reads it before the client's classes may load.
-     */
-    public static final boolean FREE_SECTION_BUFFERS = !"false".equals(System.getProperty("generatoraccelerator2.freeSectionBuffers"));
-    /**
-     * {@code -Dgeneratoraccelerator2.evictHiddenSections=N}: a section out of view for N seconds gives its meshes' VRAM back, and is
-     * rebuilt once it is in view again ({@code SectionBuffers#evictHidden}). 0 keeps every mesh as vanilla does. While the player
-     * travels, a section behind them is reused for a place ahead within a few seconds. So the default is short. With 10 s, flight
-     * at 80 blocks/s evicted nothing.
-     */
-    public static final long EVICT_HIDDEN_SECONDS = Long.getLong("generatoraccelerator2.evictHiddenSections", 3L);
-    /** {@code -Dgeneratoraccelerator2.evictHiddenSections.minChunks=N}: sections closer than N chunks to the camera keep their meshes. */
-    public static final int EVICT_MIN_CHUNKS = Integer.getInteger("generatoraccelerator2.evictHiddenSections.minChunks", 8);
-    /**
-     * {@code -Dgeneratoraccelerator2.evictHiddenSections.travelChunks=N}: a section keeps its meshes until the camera is N chunks away
-     * from where it last saw the section. A player who stands and looks around evicts nothing, so turning back rebuilds nothing.
-     * Flight at 80 blocks/s covers 4 chunks in under a second, well inside the hidden time.
-     */
-    public static final int EVICT_TRAVEL_CHUNKS = Integer.getInteger("generatoraccelerator2.evictHiddenSections.travelChunks", 4);
-    private static volatile ExecutorService mesh;
-    private static volatile ExecutorService graph;
+    private static volatile TracingExecutor mesh;
+    private static volatile TracingExecutor graph;
 
     /** The executor for section meshes. */
-    public static ExecutorService mesh(ExecutorService vanilla) {
+    public static TracingExecutor mesh(TracingExecutor vanilla) {
         if (!ENABLED) {
             return vanilla;
         }
-        ExecutorService e = mesh;
+        TracingExecutor e = mesh;
         if (e == null) {
             synchronized (RenderThreads.class) {
                 e = mesh;
                 if (e == null) {
                     int threads = meshThreads();
                     int priority = workerPriority();
-                    e = pool("GA2 Section Mesh", threads, priority);
+                    e = new TracingExecutor(pool("GA2 Section Mesh", threads, priority));
                     mesh = e;
                     LOGGER.info("section meshes: {} own threads at priority {} -> on (-Dgeneratoraccelerator2.renderThreads=false for the shared pool)", threads, priority);
                 }
@@ -79,20 +55,19 @@ public final class RenderThreads {
      * worker pool. A rebuild starts from the camera of its start. The longer it takes, the further the camera has moved when
      * it is shown. It takes at most one processor thread, so the server thread keeps the others.
      */
-    public static ExecutorService graph(ExecutorService vanilla) {
+    public static TracingExecutor graph(TracingExecutor vanilla) {
         if (!ENABLED) {
             return vanilla;
         }
-        ExecutorService e = graph;
+        TracingExecutor e = graph;
         if (e == null) {
             synchronized (RenderThreads.class) {
                 e = graph;
                 if (e == null) {
                     int priority = Math.max(workerPriority(), Thread.NORM_PRIORITY + 1);
-                    e = pool("GA2 Section Graph", 1, priority);
+                    e = new TracingExecutor(pool("GA2 Section Graph", 1, priority));
                     graph = e;
-                    LOGGER.info("visibility graph: own thread at priority {}, sections at the view's edge kept {}", priority,
-                        KEEP_EDGE ? "-> on (-Dgeneratoraccelerator2.renderThreads.keepEdge=false for vanilla)" : "-> off");
+                    LOGGER.info("visibility graph: own thread at priority {} -> on", priority);
                 }
             }
         }

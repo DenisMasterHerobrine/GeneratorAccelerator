@@ -5,7 +5,6 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -26,29 +25,16 @@ import net.minecraft.world.level.material.Fluids;
  * ({@link #tickDoesNothing}). The test reads the world just before the tick. Earlier ticks of the same chunk are seen. Off when
  * another mod changes the call or the fluid's tick (hook {@code fluids.postProcess}), or with
  * {@code -Dgeneratoraccelerator2.fluids.postProcessSkip=false}.
- *
- * <p>Client: {@code LiquidBlockRenderer.tesselate} computes the blended water colour before it checks which faces show. The colour
- * costs a biome lookup per block of the blend square (25 at the default blend). Each Y layer is cached separately. A water block with water blocks on all six
- * sides shows no face, and the method returns without drawing. Such a block is not passed to the renderer ({@link #hidden}). Off when
- * another mod changes the renderer's face checks (hook {@code fluids.hiddenWater}), or with
- * {@code -Dgeneratoraccelerator2.fluids.hiddenWaterSkip=false}.
  */
 public final class StillWater {
     private StillWater() {}
 
     private static final boolean POST_PROCESS_SKIP = !"false".equals(System.getProperty("generatoraccelerator2.fluids.postProcessSkip"));
-    private static final boolean HIDDEN_SKIP = !"false".equals(System.getProperty("generatoraccelerator2.fluids.hiddenWaterSkip"));
     private static final HookTargets.Hook POST_PROCESS_HOOK = HookTargets.hook(HookTargets.FLUID_POST_PROCESS);
-    private static final HookTargets.Hook HIDDEN_HOOK = HookTargets.hook(HookTargets.FLUID_HIDDEN_WATER);
     private static final Direction[] HORIZONTAL = { Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
-    private static final Direction[] ALL = Direction.values();
 
     public static boolean postProcessSkipOn() {
         return POST_PROCESS_SKIP && POST_PROCESS_HOOK.allowed();
-    }
-
-    public static boolean hiddenSkipOn() {
-        return HIDDEN_SKIP && HIDDEN_HOOK.allowed();
     }
 
     /**
@@ -96,39 +82,9 @@ public final class StillWater {
 
     /** The block at {@code pos}, from the chunk's own sections when inside it. The level gives the same block there. */
     private static BlockState read(BlockGetter inside, ChunkPos chunk, BlockGetter outside, BlockPos pos) {
-        if (pos.getX() >> 4 == chunk.x && pos.getZ() >> 4 == chunk.z) {
+        if (pos.getX() >> 4 == chunk.x() && pos.getZ() >> 4 == chunk.z()) {
             return inside.getBlockState(pos);
         }
         return outside.getBlockState(pos);
-    }
-
-    /**
-     * True when {@code LiquidBlockRenderer.tesselate} of {@code fluid} at {@code pos} draws no face. Called on mesh threads. Counts
-     * every water block asked about and every block left out.
-     */
-    public static boolean hidden(BlockAndTintGetter level, BlockPos pos, FluidState fluid) {
-        if (!fluid.getType().isSame(Fluids.WATER)) {
-            return false;
-        }
-        ChunkLoadStats.WATER_MESHED.increment();
-        if (!hiddenSkipOn() || !surrounded(level, pos)) {
-            return false;
-        }
-        ChunkLoadStats.WATER_HIDDEN.increment();
-        return true;
-    }
-
-    /**
-     * True when all six neighbours of {@code pos} are water blocks. A water block hides the adjacent water face on both platforms.
-     * Vanilla compares the fluids. NeoForge asks {@code shouldHideAdjacentFluidFace}, whose default LiquidBlock keeps.
-     */
-    public static boolean surrounded(BlockGetter level, BlockPos pos) {
-        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
-        for (Direction d : ALL) {
-            if (!level.getBlockState(at.setWithOffset(pos, d)).is(Blocks.WATER)) {
-                return false;
-            }
-        }
-        return true;
     }
 }

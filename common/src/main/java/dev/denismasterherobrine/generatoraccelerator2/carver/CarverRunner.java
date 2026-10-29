@@ -24,7 +24,6 @@ import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Aquifer;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
@@ -115,7 +114,7 @@ public final class CarverRunner {
 
     /** @return false when vanilla must carve this chunk */
     public static boolean apply(NoiseBasedChunkGenerator generator, ChunkLookup region, RegistryAccess registries, long seed, RandomState randomState,
-                                BiomeManager levelBiomes, ChunkAccess chunk, GenerationStep.Carving step) {
+                                BiomeManager levelBiomes, ChunkAccess chunk) {
         // a chunk the GPU filled carves with the GPU's aquifer cells and no NoiseChunk. The carving context's top material reads the
         // GPU's surface levels.
         GpuTerrain terrain = GpuTerrain.of(chunk);
@@ -136,7 +135,7 @@ public final class CarverRunner {
         Aquifer aquifer = terrain != null ? terrain.aquifer() : noiseChunk.aquifer();
         CarvingContext context = new CarvingContext(generator, registries, chunk.getHeightAccessorForGeneration(), noiseChunk, randomState,
             surfaceRule(generator));
-        CarvingMask mask = ((ProtoChunk) chunk).getOrCreateCarvingMask(step);
+        CarvingMask mask = ((ProtoChunk) chunk).getOrCreateCarvingMask();
         Carving carving = new Carving(context, chunk, blocks, biomes::getBiome, aquifer, mask);
         // the start check's random, reseeded for every source chunk and carver
         FastLegacyRandom start = new FastLegacyRandom(0L);
@@ -144,14 +143,14 @@ public final class CarverRunner {
         try {
             for (int j = -8; j <= 8; j++) {
                 for (int k = -8; k <= 8; k++) {
-                    int sx = pos.x + j;
-                    int sz = pos.z + k;
+                    int sx = pos.x() + j;
+                    int sz = pos.z() + k;
                     ChunkAccess sourceChunk = region.get(sx, sz);
                     BiomeGenerationSettings settings = sourceChunk.carverBiome(() -> generator.getBiomeGenerationSettings(
                         biomeSource.getNoiseBiome(QuartPos.fromBlock(SectionPos.sectionToBlockCoord(sx)), 0, QuartPos.fromBlock(SectionPos.sectionToBlockCoord(sz)),
                             randomState.sampler())));
                     // a holder set is read by index. Its iterator cost one object per chunk around each carved chunk.
-                    Iterable<Holder<ConfiguredWorldCarver<?>>> carvers = settings.getCarvers(step);
+                    Iterable<Holder<ConfiguredWorldCarver<?>>> carvers = settings.getCarvers();
                     HolderSet<ConfiguredWorldCarver<?>> set = carvers instanceof HolderSet<ConfiguredWorldCarver<?>> s ? s : null;
                     Iterator<Holder<ConfiguredWorldCarver<?>>> it = set == null ? carvers.iterator() : null;
                     int n = set == null ? 0 : set.size();

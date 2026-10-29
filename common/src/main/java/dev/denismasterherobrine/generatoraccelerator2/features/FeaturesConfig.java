@@ -30,7 +30,7 @@ public final class FeaturesConfig {
     public static final Map<String, ConfigSpec.BooleanValue> FAST_PATHS = new LinkedHashMap<>();
 
     public static final String[] FAST_PATH_NAMES = { "ore", "geode", "disk", "spring", "snowAndFreeze", "seagrass", "kelp", "multiface",
-        "monsterRoom", "simpleBlock", "sculk" };
+        "monsterRoom", "simpleBlock", "sculk", "replaceBlobs" };
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();

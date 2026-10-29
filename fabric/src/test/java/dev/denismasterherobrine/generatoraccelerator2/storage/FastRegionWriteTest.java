@@ -27,7 +27,7 @@ import net.minecraft.nbt.LongArrayTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.storage.RegionFile;
@@ -76,7 +76,7 @@ public class FastRegionWriteTest {
         huge.put("noise", new ByteArrayTag(noise));
         tags.add(huge);
         RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+            Identifier.withDefaultNamespace("overworld")), "chunk");
         try (RegionFile file = new RegionFile(info, dir.resolve("r.0.0.mca"), dir, false)) {
             for (int i = 0; i < tags.size(); i++) {
                 ByteBuffer buffer = FastRegionWrite.encode(tags.get(i), RegionFileVersion.VERSION_DEFLATE.getId());
@@ -118,7 +118,7 @@ public class FastRegionWriteTest {
             tags.addAll(RegionChunks.readTags(region, 200));
         }
         RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+            Identifier.withDefaultNamespace("overworld")), "chunk");
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         Files.createDirectories(a);

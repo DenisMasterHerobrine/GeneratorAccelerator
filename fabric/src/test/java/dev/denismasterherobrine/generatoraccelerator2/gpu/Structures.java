@@ -1,6 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.SplittableRandom;
@@ -139,6 +139,6 @@ final class Structures {
 
     /** The chunk's Beardifier as the NOISE step would build it from these structures. */
     Beardifier beardifierFor(int cx, int cz) {
-        return new Beardifier(new ObjectArrayList<>(piecesFor(cx, cz)).iterator(), new ObjectArrayList<>(junctionsFor(cx, cz)).iterator());
+        return FillHarness.beardifier(piecesFor(cx, cz), junctionsFor(cx, cz));
     }
 }

@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.platform.fabric;
 
-import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Platform;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -75,19 +74,9 @@ public final class FabricPlatform implements Platform.Service {
         return "fabric";
     }
 
-    /**
-     * A production game runs under intermediary names and reads the name table bundled by the build. A development run is
-     * mapped to Mojang names and needs no table.
-     */
+    /** The game runs under Mojang names, so no name table is needed. */
     @Override
     public InputStream openNameTable() {
-        if (!"intermediary".equals(FabricLoader.getInstance().getMappingResolver().getCurrentRuntimeNamespace())) {
-            return null;
-        }
-        InputStream in = FabricPlatform.class.getClassLoader().getResourceAsStream(Names.RESOURCE);
-        if (in == null) {
-            throw new IllegalStateException("The jar has no " + Names.RESOURCE);
-        }
-        return in;
+        return null;
     }
 }

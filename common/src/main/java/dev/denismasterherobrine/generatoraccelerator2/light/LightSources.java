@@ -60,7 +60,7 @@ public final class LightSources {
     public static void find(ChunkAccess chunk, BiConsumer<BlockPos, BlockState> consumer) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int[] local = new int[256];
-        for (int sectionY = chunk.getMinSection(); sectionY < chunk.getMaxSection(); sectionY++) {
+        for (int sectionY = chunk.getMinSectionY(); sectionY < chunk.getMaxSectionY() + 1; sectionY++) {
             LevelChunkSection section = chunk.getSection(chunk.getSectionIndexFromSectionY(sectionY));
             if (!section.maybeHas(MAY_EMIT)) {
                 continue;

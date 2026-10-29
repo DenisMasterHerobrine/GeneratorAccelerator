@@ -13,12 +13,16 @@ import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 
 /**
- * {@code NoiseChunk.computePreliminarySurfaceLevel} on the compiled surface level function. The walk is the same: from the
- * top of the noise down in steps of the cell height, to the first level whose value exceeds 0.390625. The function is
+ * {@code NoiseChunk.computePreliminarySurfaceLevel} on the compiled surface level function. A router's surface level is usually a
+ * {@code find_top_surface}: from its upper bound, rounded down to the cell height, down in steps of the cell height to the first
+ * level whose density exceeds 0, else its lower bound. The walk is the same here, on the compiled density and upper bound
+ * ({@link Top}). Any other surface level function is compiled whole and floored at y 0, as vanilla floors it. The functions are
  * evaluated by a program bound to the chunk ({@link Templates#walk}, the chunk marker policy). The program computes the
  * function's x/z-only parts once per column instead of at every step. {@code cache_2d} wrappers over functions that read y
  * stay the chunk's objects, so their remembered values are vanilla's. Functions the compiler does not lower are called as
@@ -40,23 +44,55 @@ public final class SurfaceLevels {
     /** Columns computed by the program (always counted: one increment per column). */
     public static final LongAdder COLUMNS = new LongAdder();
 
+    /** The router roots of a {@code find_top_surface}'s density and upper bound, and of any other surface level function. */
+    public static final String DENSITY = "preliminary_surface_level.density";
+    public static final String UPPER_BOUND = "preliminary_surface_level.upper_bound";
+    public static final String WHOLE = "preliminary_surface_level";
+
+    /** A router's {@code find_top_surface}: the function the walk evaluates and its bounds. */
+    public record Top(DensityFunction density, DensityFunction upperBound, int lowerBound, int cellHeight) {
+        /** The surface level function as a {@code find_top_surface} behind its holders, or null. */
+        @Nullable
+        public static Top of(DensityFunction level) {
+            while (level instanceof DensityFunctions.HolderHolder h) {
+                level = h.function().value();
+            }
+            return level instanceof DensityFunctions.FindTopSurface f ? new Top(f.density(), f.upperBound(), f.lowerBound(), f.cellHeight()) : null;
+        }
+    }
+
+    /** The router roots the surface level evaluates, as {@code roots} holds them. */
+    public static String[] fields(Map<String, Node> roots) {
+        return roots.containsKey(DENSITY) ? new String[] { DENSITY, UPPER_BOUND } : new String[] { WHOLE };
+    }
+
     /**
-     * The compiled walk program, the program of the {@code flat_cache} children (null when there are none) and, by identity,
-     * each such marker's base function (an extern of the walk program) with its root index in {@code flats}.
+     * The compiled walk program, the compiled upper bound (with {@code top} only), the program of the {@code flat_cache} children
+     * (null when there are none) and, by identity, each such marker's base function (an extern of the walk or upper bound program)
+     * with its root index in {@code flats}. With {@code top}, the walk's root is the density. Without it, it is the whole function.
      */
-    public record Templates(PointTemplate walk, @Nullable PointTemplate flats, Map<DensityFunction, Integer> flatIndex) {}
+    public record Templates(PointTemplate walk, @Nullable PointTemplate upper, @Nullable PointTemplate flats, Map<DensityFunction, Integer> flatIndex,
+                            @Nullable Top top) {}
 
     private final PointProgram program;
+    @Nullable
+    private final PointProgram upper;
+    @Nullable
+    private final Top top;
     private final double[] scratch;
+    private final double[] upperScratch;
     private final double[] out;
     /** Set when only GA2's programs read the walk's positions (no extern but the flat values). Every step moves it. Else null. */
     @Nullable
     private final MutableContext moved;
 
-    private SurfaceLevels(PointProgram program, boolean pure) {
+    private SurfaceLevels(PointProgram program, @Nullable PointProgram upper, @Nullable Top top, boolean pure) {
         this.program = program;
+        this.upper = upper;
+        this.top = top;
         this.scratch = new double[Math.max(1, program.scratchSize)];
-        this.out = new double[program.rootCount];
+        this.upperScratch = upper == null ? null : new double[Math.max(1, upper.scratchSize)];
+        this.out = new double[Math.max(program.rootCount, upper == null ? 0 : upper.rootCount)];
         this.moved = pure ? new MutableContext() : null;
     }
 
@@ -68,30 +104,49 @@ public final class SurfaceLevels {
     /** {@link #bind(Templates, NoiseRouter, NoiseRouter)} with the chunk's router pairing already made ({@link MarkerPairing#of}). */
     public static SurfaceLevels bind(Templates templates, MarkerPairing pairing) {
         FlatColumn flats = templates.flats() == null ? null : new FlatColumn(templates.flats().instantiate(templates.flats().externTemplates));
-        PointTemplate walk = templates.walk();
-        DensityFunction[] externs = new DensityFunction[walk.externTemplates.length];
-        boolean pure = templates.flats() == null || templates.flats().externTemplates.length == 0;
+        boolean[] pure = { templates.flats() == null || templates.flats().externTemplates.length == 0 };
+        PointProgram walk = instantiate(templates.walk(), templates, flats, pairing, pure);
+        PointProgram upper = templates.upper() == null ? null : instantiate(templates.upper(), templates, flats, pairing, pure);
+        return new SurfaceLevels(walk, upper, templates.top(), pure[0]);
+    }
+
+    private static PointProgram instantiate(PointTemplate template, Templates templates, @Nullable FlatColumn flats, MarkerPairing pairing, boolean[] pure) {
+        DensityFunction[] externs = new DensityFunction[template.externTemplates.length];
         for (int i = 0; i < externs.length; i++) {
-            Integer flat = templates.flatIndex().get(walk.externTemplates[i]);
-            externs[i] = flat != null ? new FlatValue(flats, flat) : pairing.resolve(walk.externTemplates[i]);
-            pure &= flat != null;
+            Integer flat = templates.flatIndex().get(template.externTemplates[i]);
+            externs[i] = flat != null ? new FlatValue(flats, flat) : pairing.resolve(template.externTemplates[i]);
+            pure[0] &= flat != null;
         }
-        return new SurfaceLevels(walk.instantiate(externs), pure);
+        return template.instantiate(externs);
     }
 
     /** Vanilla's {@code computePreliminarySurfaceLevel} for the quart-aligned column {@code (x, z)}. */
-    public int level(int x, int z, int minY, int height, int cellHeight) {
+    public int level(int x, int z) {
         COLUMNS.increment();
-        boolean hoisted = false;
         MutableContext moved = this.moved;
-        for (int y = minY + height; y >= minY; y -= cellHeight) {
+        Top top = this.top;
+        if (top == null) {
+            // vanilla floors the function at y 0
+            this.program.computeColumnPoint(moved != null ? moved.at(x, 0, z) : new DensityFunction.SinglePointContext(x, 0, z), this.scratch, this.out, false);
+            return Mth.floor(this.out[0]);
+        }
+        // FindTopSurface.compute at y 0: the upper bound there, then the density from the rounded bound down
+        this.upper.computeColumnPoint(moved != null ? moved.at(x, 0, z) : new DensityFunction.SinglePointContext(x, 0, z), this.upperScratch, this.out, false);
+        int cellHeight = top.cellHeight();
+        int lowerBound = top.lowerBound();
+        int topY = Mth.floor(this.out[0] / cellHeight) * cellHeight;
+        if (topY <= lowerBound) {
+            return lowerBound;
+        }
+        boolean hoisted = false;
+        for (int y = topY; y >= lowerBound; y -= cellHeight) {
             this.program.computeColumnPoint(moved != null ? moved.at(x, y, z) : new DensityFunction.SinglePointContext(x, y, z), this.scratch, this.out, hoisted);
             hoisted = true;
-            if (this.out[0] > 0.390625) {
+            if (this.out[0] > 0.0) {
                 return y;
             }
         }
-        return Integer.MAX_VALUE;
+        return lowerBound;
     }
 
     /**

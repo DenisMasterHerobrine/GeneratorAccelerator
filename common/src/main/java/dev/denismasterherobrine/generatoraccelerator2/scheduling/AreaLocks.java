@@ -117,7 +117,7 @@ public final class AreaLocks {
 
     /** INITIALIZE_LIGHT of {@code pos}: reads the chunk itself. */
     public static Request single(ChunkPos pos, int level) {
-        return new Request(new long[] { ChunkPos.asLong(pos.x, pos.z) }, new long[0], false, level);
+        return new Request(new long[] { ChunkPos.pack(pos.x(), pos.z()) }, new long[0], false, level);
     }
 
     private static long[] square(ChunkPos pos, int radius) {
@@ -126,7 +126,7 @@ public final class AreaLocks {
         int i = 0;
         for (int dz = -radius; dz <= radius; dz++) {
             for (int dx = -radius; dx <= radius; dx++) {
-                keys[i++] = ChunkPos.asLong(pos.x + dx, pos.z + dz);
+                keys[i++] = ChunkPos.pack(pos.x() + dx, pos.z() + dz);
             }
         }
         return keys;

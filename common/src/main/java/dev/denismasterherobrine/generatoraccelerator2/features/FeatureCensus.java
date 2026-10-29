@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
@@ -76,7 +76,7 @@ public final class FeatureCensus {
 
         Dim(ServerLevel level) {
             this.level = new WeakReference<>(level);
-            this.name = level.dimension().location().toString();
+            this.name = level.dimension().identifier().toString();
         }
 
         synchronized Stat intern(PlacedFeature pf) {
@@ -293,16 +293,16 @@ public final class FeatureCensus {
     }
 
     private static String type(PlacedFeature pf) {
-        ResourceLocation key = BuiltInRegistries.FEATURE.getKey(pf.feature().value().feature());
+        Identifier key = BuiltInRegistries.FEATURE.getKey(pf.feature().value().feature());
         return key != null ? key.toString() : pf.feature().value().feature().getClass().getName();
     }
 
     private static String name(ServerLevel level, PlacedFeature pf) {
-        ResourceLocation key = level.registryAccess().registryOrThrow(Registries.PLACED_FEATURE).getKey(pf);
+        Identifier key = level.registryAccess().lookupOrThrow(Registries.PLACED_FEATURE).getKey(pf);
         if (key != null) {
             return key.toString();
         }
-        return pf.feature().unwrapKey().map(k -> "inline " + k.location()).orElse("inline " + type(pf));
+        return pf.feature().unwrapKey().map(k -> "inline " + k.identifier()).orElse("inline " + type(pf));
     }
 
     private static double pct(double part, double whole) {

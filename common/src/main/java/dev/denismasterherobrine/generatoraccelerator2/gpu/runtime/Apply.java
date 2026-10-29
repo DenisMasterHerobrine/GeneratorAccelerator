@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionCounts;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
@@ -7,7 +8,6 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillHeights;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceBatches;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
-import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.util.Mth;
@@ -48,14 +48,14 @@ public final class Apply {
      */
     public static boolean fits(GpuWorldgen wg, ChunkAccess chunk) {
         LevelHeightAccessor h = chunk.getHeightAccessorForGeneration();
-        int lo = Math.max(wg.minY, h.getMinBuildHeight()), hi = Math.min(wg.minY + wg.height, h.getMaxBuildHeight());
-        return lo == wg.minY && hi == wg.minY + wg.height && chunk.getMinBuildHeight() == h.getMinBuildHeight() && chunk.getHeight() == h.getHeight()
-            && Math.floorMod(wg.minY - chunk.getMinBuildHeight(), 16) == 0;
+        int lo = Math.max(wg.minY, h.getMinY()), hi = Math.min(wg.minY + wg.height, h.getMaxY() + 1);
+        return lo == wg.minY && hi == wg.minY + wg.height && chunk.getMinY() == h.getMinY() && chunk.getHeight() == h.getHeight()
+            && Math.floorMod(wg.minY - chunk.getMinY(), 16) == 0;
     }
 
     /** The chunk's section index of the program's first section. */
     static int base(GpuWorldgen wg, ChunkAccess chunk) {
-        return (wg.minY - chunk.getMinBuildHeight()) >> 4;
+        return (wg.minY - chunk.getMinY()) >> 4;
     }
 
     /**
@@ -100,36 +100,23 @@ public final class Apply {
                 @SuppressWarnings("unchecked")
                 PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, Mth.ceillog2(psize));
                 Palette<BlockState> palette = data.palette();
-                palette.idFor(AIR);
+                palette.idFor(AIR, container);
                 for (int a = 1; a < psize; a++) {
-                    palette.idFor(states[meta[m + a]]);
+                    palette.idFor(states[meta[m + a]], container);
                 }
                 if (palette.getSize() != psize || !(data.storage() instanceof SimpleBitStorage) || data.storage().getBits() != 4 || data.storage().getRaw().length != 256) {
                     throw new IllegalStateException("unexpected section layout: palette " + palette.getSize() + " of " + psize + ", bits " + data.storage().getBits());
                 }
                 System.arraycopy(r.storage()[sec], 0, data.storage().getRaw(), 0, 256);
                 container.data = data;
-                int nonEmpty = 0, ticking = 0, fluids = 0;
+                SectionCounts counts = new SectionCounts();
                 for (int id = 1; id < ClEmitter.ID_COUNT; id++) {
                     int c = meta[m + 16 + id];
-                    if (c == 0) {
-                        continue;
-                    }
-                    BlockState state = states[id];
-                    if (!PlatformHooks.isEmpty(state)) {
-                        nonEmpty += c;
-                        if (state.isRandomlyTicking()) {
-                            ticking += c;
-                        }
-                    }
-                    if (!state.getFluidState().isEmpty()) {
-                        fluids += c;
+                    if (c != 0) {
+                        counts.add(states[id], c);
                     }
                 }
-                LevelChunkSection target = secs[base + sec];
-                target.nonEmptyBlockCount = (short) (target.nonEmptyBlockCount + nonEmpty);
-                target.tickingBlockCount = (short) (target.tickingBlockCount + ticking);
-                target.tickingFluidCount = (short) (target.tickingFluidCount + fluids);
+                counts.addTo(secs[base + sec]);
             }
         } finally {
             for (LevelChunkSection section : secs) {
@@ -193,7 +180,7 @@ public final class Apply {
             PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, r.bits()[sec]);
             Palette<BlockState> palette = data.palette();
             for (int id : pal) {
-                palette.idFor(spec.states.get(id));
+                palette.idFor(spec.states.get(id), container);
             }
             if (palette.getSize() != pal.length || !(data.storage() instanceof SimpleBitStorage) || data.storage().getBits() != r.bits()[sec]
                 || data.storage().getRaw().length != r.storage()[sec].length) {
@@ -211,27 +198,14 @@ public final class Apply {
                     continue;
                 }
                 secs[sec].getStates().data = built[sec];
-                int nonEmpty = 0, ticking = 0, fluids = 0;
+                SectionCounts counts = new SectionCounts();
                 int[] pal = r.palettes()[sec], cnt = r.counts()[sec];
                 for (int p = 0; p < pal.length; p++) {
-                    int c = cnt[p];
-                    if (c == 0) {
-                        continue;
-                    }
-                    BlockState state = spec.states.get(pal[p]);
-                    if (!PlatformHooks.isEmpty(state)) {
-                        nonEmpty += c;
-                        if (state.isRandomlyTicking()) {
-                            ticking += c;
-                        }
-                    }
-                    if (!state.getFluidState().isEmpty()) {
-                        fluids += c;
+                    if (cnt[p] != 0) {
+                        counts.add(spec.states.get(pal[p]), cnt[p]);
                     }
                 }
-                secs[sec].nonEmptyBlockCount = (short) nonEmpty;
-                secs[sec].tickingBlockCount = (short) ticking;
-                secs[sec].tickingFluidCount = (short) fluids;
+                counts.setOn(secs[sec]);
             }
         } finally {
             for (LevelChunkSection section : secs) {
@@ -325,7 +299,7 @@ public final class Apply {
             return false;
         }
         ChunkPos cp = chunk.getPos();
-        int qx0 = cp.x * 4, qz0 = cp.z * 4, qy0 = wg.minY >> 2, qyn = wg.height >> 2;
+        int qx0 = cp.x() * 4, qz0 = cp.z() * 4, qy0 = wg.minY >> 2, qyn = wg.height >> 2;
         int[] quarts = r.quarts();
         // A chunk taller than the program has quarts the GPU did not decide. The CPU's climate sampler answers those.
         boolean taller = chunk.getHeight() != wg.height;

@@ -11,6 +11,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import net.minecraft.core.HolderLookup;
@@ -55,8 +56,9 @@ public class JsonRouterTest {
 
             // Point-level exactness against the JSON-decoded objects.
             NoiseRouter router = state.router();
-            Map<String, DensityFunction> fields = Map.of("final_density", router.finalDensity(), "initial_density_without_jaggedness", router.initialDensityWithoutJaggedness(),
-                "vein_toggle", router.veinToggle(), "vein_ridged", router.veinRidged(), "depth", router.depth());
+            Map<String, DensityFunction> fields = new HashMap<>(Map.of("final_density", router.finalDensity(), "vein_toggle", router.veinToggle(),
+                "vein_ridged", router.veinRidged(), "depth", router.depth()));
+            fields.putAll(DfcExactnessTest.surfaceRoots(router));
             for (Map.Entry<String, DensityFunction> e : fields.entrySet()) {
                 Node root = set.root(e.getKey());
                 for (int i = 0; i < 2000; i++) {

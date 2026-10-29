@@ -207,13 +207,13 @@ public final class SculkFast {
         WorldGenLevel level = s.level;
         BlockPos below = origin.below();
         if (random.nextFloat() <= config.catalystChance() && s.cursor.read(below).isCollisionShapeFullBlock(level, below)) {
-            RegionWriter.setBlock(region, origin, Blocks.SCULK_CATALYST.defaultBlockState());
+            RegionWriter.setBlock(region, origin, Blocks.SCULK_CATALYST.defaultBlockState(), Block.UPDATE_ALL);
         }
         int growths = config.extraRareGrowths().sample(random);
         for (int i = 0; i < growths; i++) {
             BlockPos at = origin.offset(random.nextInt(5) - 2, 0, random.nextInt(5) - 2);
             if (s.cursor.read(at).isAir() && s.cursor.read(at.below()).isFaceSturdy(level, at.below(), Direction.UP)) {
-                RegionWriter.setBlock(region, at, Blocks.SCULK_SHRIEKER.defaultBlockState().setValue(SculkShriekerBlock.CAN_SUMMON, Boolean.TRUE));
+                RegionWriter.setBlock(region, at, Blocks.SCULK_SHRIEKER.defaultBlockState().setValue(SculkShriekerBlock.CAN_SUMMON, Boolean.TRUE), Block.UPDATE_ALL);
             }
         }
         return true;
@@ -283,8 +283,8 @@ public final class SculkFast {
         return mask;
     }
 
-    private boolean write(int x, int y, int z, BlockState state) {
-        return RegionWriter.setBlock(region, new BlockPos(x, y, z), state);
+    private boolean write(int x, int y, int z, BlockState state, @Block.UpdateFlags int flags) {
+        return RegionWriter.setBlock(region, new BlockPos(x, y, z), state, flags);
     }
 
     // ---- SculkSpreader -------------------------------------------------------------------------------------------------
@@ -498,7 +498,7 @@ public final class SculkFast {
                     if (growth.hasProperty(BlockStateProperties.WATERLOGGED) && !cursor.readFluid(x, y + 1, z).isEmpty()) {
                         growth = growth.setValue(BlockStateProperties.WATERLOGGED, Boolean.TRUE);
                     }
-                    write(x, y + 1, z, growth);
+                    write(x, y + 1, z, growth, Block.UPDATE_ALL);
                 }
                 return Math.max(0, c - GROWTH_SPAWN_COST);
             }
@@ -562,7 +562,7 @@ public final class SculkFast {
             FluidState fluid = cursor.readFluid(x, y, z);
             state = (fluid.isEmpty() ? Blocks.AIR : Blocks.WATER).defaultBlockState();
         }
-        write(x, y, z, state);
+        write(x, y, z, state, Block.UPDATE_ALL);
     }
 
     /** Exact {@code SculkVeinBlock.attemptPlaceSculk} (world generation spreader: replaceable by its tag, marks on). */
@@ -582,7 +582,7 @@ public final class SculkFast {
                 BlockState target = read(bx, by, bz);
                 if (target.is(BlockTags.SCULK_REPLACEABLE_WORLD_GEN)) {
                     BlockState sculk = Blocks.SCULK.defaultBlockState();
-                    write(bx, by, bz, sculk);
+                    write(bx, by, bz, sculk, Block.UPDATE_ALL);
                     // Block.pushEntitiesUp finds no entities in a generation region. The sound is a no-op there.
                     spreadAll(VEINS, sculk, bx, by, bz);
                     Direction back = d.getOpposite();
@@ -622,7 +622,7 @@ public final class SculkFast {
         if (!state.getFluidState().isEmpty()) {
             vein = vein.setValue(BlockStateProperties.WATERLOGGED, Boolean.TRUE);
         }
-        write(x, y, z, vein);
+        write(x, y, z, vein, Block.UPDATE_ALL);
         return true;
     }
 
@@ -733,6 +733,6 @@ public final class SculkFast {
         }
         BlockState placed = base.setValue(FACE[face.ordinal()], Boolean.TRUE);
         cursor.chunk(px >> 4, pz >> 4).markPosForPostprocessing(scratch.set(px, py, pz));
-        return write(px, py, pz, placed);
+        return write(px, py, pz, placed, Block.UPDATE_CLIENTS);
     }
 }

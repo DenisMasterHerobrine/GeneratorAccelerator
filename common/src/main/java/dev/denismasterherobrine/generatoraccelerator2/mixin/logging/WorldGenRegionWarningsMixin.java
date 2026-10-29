@@ -24,7 +24,7 @@ public abstract class WorldGenRegionWarningsMixin {
     @Shadow private Supplier<String> currentlyGenerating;
     @Shadow @Final private ChunkStep generatingStep;
 
-    @WrapOperation(method = "ensureCanWrite", at = @At(value = "INVOKE", target = "Lnet/minecraft/Util;logAndPauseIfInIde(Ljava/lang/String;)V"),
+    @WrapOperation(method = "ensureCanWrite", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Util;logAndPauseIfInIde(Ljava/lang/String;)V"),
         require = 0)
     private void ga2$farWriteOnce(String message, Operation<Void> original) {
         String generating = RepeatedWarnings.generating(this.currentlyGenerating);

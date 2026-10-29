@@ -29,7 +29,7 @@ public sealed interface Node permits
 
     enum Ap2Type { ADD, MUL, MIN, MAX }
 
-    enum MappedType { ABS, SQUARE, CUBE, HALF_NEGATIVE, QUARTER_NEGATIVE, SQUEEZE }
+    enum MappedType { ABS, SQUARE, CUBE, HALF_NEGATIVE, QUARTER_NEGATIVE, INVERT, SQUEEZE }
 
     enum MarkerType { INTERPOLATED, FLAT_CACHE, CACHE_2D, CACHE_ONCE, CACHE_ALL_IN_CELL }
 

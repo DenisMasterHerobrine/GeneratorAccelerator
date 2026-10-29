@@ -31,6 +31,7 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
     @Unique private static final long WINDOW = 500_000_000L;
     @Unique private static final boolean TRACE = Boolean.getBoolean("generatoraccelerator2.lightTrace");
     @Unique private static final Logger LOGGER = Ga2Log.get("Light");
+    @Unique private static final ThreadMXBean ga2pl$THREADS = ManagementFactory.getThreadMXBean();
 
     @Shadow @Final private ObjectList<?> lightTasks;
 
@@ -51,7 +52,6 @@ public abstract class ThreadedLevelLightEngineMixin implements LightLoad {
 
     /** The light thread's CPU time at the start of the update, or -1 where the JVM cannot tell. */
     @Unique private long ga2pl$cpuStart;
-    @Unique private static final ThreadMXBean ga2pl$THREADS = ManagementFactory.getThreadMXBean();
 
     @Inject(method = "runUpdate", at = @At("HEAD"))
     private void ga2pl$startUpdate(CallbackInfo ci) {

@@ -8,7 +8,7 @@ pluginManagement {
 }
 
 plugins {
-    // provisions the Java 21 toolchain the build compiles with when no such JDK is installed
+    // provisions the Java 25 toolchain the build compiles with when no such JDK is installed
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 

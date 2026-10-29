@@ -36,7 +36,7 @@ public abstract class ProtoChunkReadsInspectMixin {
         long b = this.ga2$bounds;
         if (b == 0L) {
             ChunkAccess self = (ChunkAccess) (Object) this;
-            b = (long) self.getMinBuildHeight() << 32 | self.getMaxBuildHeight() & 0xFFFFFFFFL;
+            b = (long) self.getMinY() << 32 | self.getMaxY() + 1 & 0xFFFFFFFFL;
             this.ga2$bounds = b;
         }
         return b;

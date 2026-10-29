@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayDeque;
@@ -149,6 +150,8 @@ public final class ClEmitter {
     public boolean perChunkCorners;
     /** Some flat cache reads y. Each chunk then also walks the surface levels of its own quart columns ({@code k_surface_in}). */
     public boolean surfacePerChunk;
+    /** The router's surface level as a {@code find_top_surface} ({@code SurfaceLevels.Top#of}), or null for any other function. */
+    public SurfaceLevels.Top surfaceTop;
     public String nonce;
     /** Noise tables ({@link #tables}): ints (spec records, octave and blended permutation offsets), doubles, floats. */
     public int[] oi = new int[4];
@@ -188,8 +191,8 @@ public final class ClEmitter {
     public final int height;
     final int seaLevel;
 
-    /** The APOINT roots, in this order: their functions are {@code ap_<name>}. */
-    public static final String[] APOINT_ROOTS = { "initial_density_without_jaggedness", "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread",
+    /** The APOINT roots after the surface level's, in this order: their functions are {@code ap_<name>}. */
+    public static final String[] APOINT_ROOTS = { "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread",
         "lava", "temperature", "vegetation", "continents", "ridges" };
     /** The APOINT roots that only the biomes read. The aquifer also reads erosion and depth. */
     private static final Set<String> CLIMATE_ONLY = Set.of("temperature", "vegetation", "continents", "ridges");
@@ -245,9 +248,17 @@ public final class ClEmitter {
         return prec == Prec.F64 ? "double" : "float";
     }
 
-    /** Ints per chunk {@code k_terrain} writes: two per aquifer cell, 25 quart columns' surface levels, the fill's last fluid update flag. */
+    /**
+     * Ints per chunk {@code k_terrain} writes: two per aquifer cell, 25 quart columns' surface levels, the aquifer's sampling height,
+     * the fill's last fluid update flag.
+     */
     public int terrainInts() {
-        return 2 * cellsPerChunk + 26;
+        return 2 * cellsPerChunk + 27;
+    }
+
+    /** Ints per chunk in the cells buffer: five per aquifer cell (centre, fluid level, fluid), then the aquifer's sampling height. */
+    public int cellInts() {
+        return cellsPerChunk * 5 + 1;
     }
 
     /** The lowest aquifer cell row of a chunk's grid ({@code NoiseBasedAquifer.minGridY}). */
@@ -258,6 +269,24 @@ public final class ClEmitter {
     /** Aquifer cell rows of a chunk's grid. */
     public int cellsY() {
         return cellsY;
+    }
+
+    /**
+     * The OpenCL body that sets {@code res} to {@code NoiseChunk.computePreliminarySurfaceLevel} at the context's column. A
+     * {@code find_top_surface} walks its density from the rounded upper bound down. Any other function is floored at y 0.
+     */
+    private String surfaceWalk() {
+        if (surfaceTop == null) {
+            return "  c->by = 0; reset_APOINT_Y(c);\n  int res = jfloor((double) ap_surface_level(c));\n";
+        }
+        int ch = surfaceTop.cellHeight(), lb = surfaceTop.lowerBound();
+        return "  c->by = 0; reset_APOINT_Y(c);\n"
+            + "  int top = jfloor((double) ap_surface_upper(c) / " + ch + ".0) * " + ch + ";\n"
+            + "  int res = " + lb + ";\n"
+            + "  for (int y = top; top > " + lb + " && y >= " + lb + "; y -= " + ch + ") {\n"
+            + "    c->by = y; reset_APOINT_Y(c);\n"
+            + "    if ((double) ap_surface_density(c) > 0.0) { res = y; break; }\n"
+            + "  }\n";
     }
 
     private Node routerRoot(String name) {
@@ -278,6 +307,15 @@ public final class ClEmitter {
         List<Node> veinRoots = List.of(routerRoot("vein_toggle"), routerRoot("vein_ridged"), routerRoot("vein_gap"));
         List<Node> apointRoots = new ArrayList<>();
         List<String> apointNames = new ArrayList<>();
+        if (surfaceTop != null) {
+            apointRoots.add(routerRoot(SurfaceLevels.DENSITY));
+            apointNames.add("surface_density");
+            apointRoots.add(routerRoot(SurfaceLevels.UPPER_BOUND));
+            apointNames.add("surface_upper");
+        } else {
+            apointRoots.add(routerRoot(SurfaceLevels.WHOLE));
+            apointNames.add("surface_level");
+        }
         for (String name : APOINT_ROOTS) {
             if (biomes || !CLIMATE_ONLY.contains(name)) {
                 apointRoots.add(routerRoot(name));
@@ -684,22 +722,16 @@ public final class ClEmitter {
         k.append("  int g = get_global_id(0); if (g >= nsx * nsz) return;\n").append(ctxInit()).append(COMMON_INIT);
         k.append("  c->cqx0 = 0x40000000; c->cqz0 = 0x40000000;\n");
         k.append("  c->bx = (sqx0 + g / nsz) << 2; c->bz = (sqz0 + g % nsz) << 2;\n");
-        k.append("  int res = 0x7fffffff;\n");
-        k.append("  for (int y = ").append(minY + height).append("; y >= ").append(minY).append("; y -= ").append(cellHeight).append(") {\n");
-        k.append("    c->by = y; reset_APOINT_Y(c);\n");
-        k.append("    if ((double) ap_initial_density_without_jaggedness(c) > 0.390625) { res = y; break; }\n");
-        k.append("  }\n  surf[g] = res;\n}\n");
+        k.append(surfaceWalk());
+        k.append("  surf[g] = res;\n}\n");
         // each chunk's own 5x5 quart columns, with the chunk's flat cache view (only used when a flat cache reads y)
         k.append("__kernel void k_surface_in(").append(COMMON_ARGS).append(", __global int* surfIn, int cx0, int cz0, int hchunks, int nchunks) {\n");
         k.append("  int g = get_global_id(0); if (g >= nchunks * 25) return;\n").append(ctxInit()).append(COMMON_INIT);
         k.append("  int b = g / 25; int col = g % 25; int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  c->cqx0 = bcx * 4; c->cqz0 = bcz * 4;\n");
         k.append("  c->bx = (bcx * 4 + col / 5) << 2; c->bz = (bcz * 4 + col % 5) << 2;\n");
-        k.append("  int res = 0x7fffffff;\n");
-        k.append("  for (int y = ").append(minY + height).append("; y >= ").append(minY).append("; y -= ").append(cellHeight).append(") {\n");
-        k.append("    c->by = y; reset_APOINT_Y(c);\n");
-        k.append("    if ((double) ap_initial_density_without_jaggedness(c) > 0.390625) { res = y; break; }\n");
-        k.append("  }\n  surfIn[g] = res;\n}\n");
+        k.append(surfaceWalk());
+        k.append("  surfIn[g] = res;\n}\n");
         // aquifer cells of every chunk of the region
         k.append("__kernel void k_status(").append(COMMON_ARGS)
             .append(", __global const int* surf, __global const int* surfIn, int sqx0, int sqz0, int nsz, __global int* cells, int cx0, int cz0, int hchunks, int nchunks, ulong aqLo, ulong aqHi")
@@ -716,7 +748,10 @@ public final class ClEmitter {
             k.append("  c->c2h = 0;\n");
         }
         k.append("  FS s = compute_fluid(c, lx, ly, lz, surf, surfIn, b, sqx0, sqz0, nsz);\n");
-        k.append("  cells[g * 5] = lx; cells[g * 5 + 1] = ly; cells[g * 5 + 2] = lz; cells[g * 5 + 3] = s.level; cells[g * 5 + 4] = s.type;\n");
+        k.append("  __global int* cell = cells + b * ").append(cellInts()).append(" + ci * 5;\n");
+        k.append("  cell[0] = lx; cell[1] = ly; cell[2] = lz; cell[3] = s.level; cell[4] = s.type;\n");
+        // NoiseBasedAquifer.skipSamplingAboveY, once per chunk
+        k.append("  if (ci == 0) cells[b * ").append(cellInts()).append(" + SKIP_AT] = skip_sampling(c, surf, surfIn, b, sqx0, sqz0, nsz, bcx, bcz);\n");
         if (c2dKind == C2d.FLOODED) {
             // the cache_2d that floodedness reads answers with the value of the first call at its column since the last call elsewhere.
             // Whatever order vanilla asks this chunk's cells in, a cell reads its own value when the grid's cells at its column give the
@@ -743,13 +778,13 @@ public final class ClEmitter {
         k.append("#ifdef GA2_NONCE\n__kernel void k_nonce(__global int* o) { o[get_global_id(0)] = GA2_NONCE * (int) get_global_id(0); }\n#endif\n");
         k.append("__kernel void k_levels(__global const int* cells, __global int* levels, int nchunks) {\n");
         k.append("  int g = get_global_id(0); if (g >= nchunks) return;\n  int m = INT_MIN;\n");
-        k.append("  for (int i = 0; i < ").append(cellsPerChunk).append("; i++) m = max(m, cells[(g * ").append(cellsPerChunk).append(" + i) * 5 + 3]);\n");
+        k.append("  for (int i = 0; i < ").append(cellsPerChunk).append("; i++) m = max(m, cells[g * ").append(cellInts()).append(" + i * 5 + 3]);\n");
         k.append("  levels[g] = m;\n}\n");
         // what SURFACE and CARVERS read of each listed chunk (gpu.GpuTerrain). First, per aquifer cell: the fluid level, then the fluid
         // (bit 0: lava) with the cell centre's offsets in the cell (x, y, z in bits 8, 12, 16). Next, the surface levels of the chunk's
-        // 5 x 5 quart columns, using the chunk's own flat-cache view, as the chunk's NoiseChunk computes them. Last, the aquifer's fluid
-        // update flag after the fill's last block (x 15, z 15, the lowest y). A carver reads that flag before the aquifer computes
-        // anything.
+        // 5 x 5 quart columns, using the chunk's own flat-cache view, as the chunk's NoiseChunk computes them. Then the aquifer's sampling
+        // height ({@code skipSamplingAboveY}). Last, the aquifer's fluid update flag after the fill's last block (x 15, z 15, the lowest
+        // y). A carver reads that flag before the aquifer computes anything.
         int cpc = cellsPerChunk;
         k.append("__kernel void k_terrain(__global const int* lst, int n, __global const int* cells, __global const int* surf, __global const int* surfIn, "
             + "int sqx0, int sqz0, int nsz, int cx0, int cz0, int hchunks, __global const uchar* blocks, __global int* out) {\n");
@@ -757,11 +792,13 @@ public final class ClEmitter {
         k.append("  int i = g / ").append(terrainInts()).append(", k = g % ").append(terrainInts()).append("; int b = lst[i];\n");
         k.append("  int bcx = cx0 + b / hchunks, bcz = cz0 + b % hchunks;\n");
         k.append("  if (k < ").append(2 * cpc).append(") {\n");
-        k.append("    int ci = k >> 1; __global const int* c = cells + (b * ").append(cpc).append(" + ci) * 5;\n");
+        k.append("    int ci = k >> 1; __global const int* c = cells + b * ").append(cellInts()).append(" + ci * 5;\n");
         k.append("    if ((k & 1) == 0) { out[g] = c[3]; } else {\n");
         k.append("      int ii = ci % 3; int t = ci / 3; int kk = t % 3; int jj = t / 3;\n");
         k.append("      int ox = c[0] - (bcx - 1 + ii) * 16, oy = c[1] - (").append(minGridY).append(" + jj) * 12, oz = c[2] - (bcz - 1 + kk) * 16;\n");
         k.append("      out[g] = (c[4] == ").append(ID_LAVA).append(" ? 1 : 0) | (ox << 8) | (oy << 12) | (oz << 16);\n    }\n");
+        k.append("  } else if (k == ").append(terrainInts() - 2).append(") {\n");
+        k.append("    out[g] = cells[b * ").append(cellInts()).append(" + SKIP_AT];\n");
         k.append("  } else if (k == ").append(terrainInts() - 1).append(") {\n");
         k.append("    out[g] = blocks[(long) i * ").append(256 * height).append(" + 255 * ").append(height).append("] >> 7 & 1;\n");
         k.append("  } else {\n    int col = k - ").append(2 * cpc).append("; int qx = bcx * 4 + col / 5, qz = bcz * 4 + col % 5;\n");
@@ -936,7 +973,7 @@ public final class ClEmitter {
         k.append("  int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  int flag = 0;\n");
         if (aquifers) {
-            k.append("  int id = aquifer_decide(c, (double) d, cells, b * ").append(cellsPerChunk).append(", bcx, bcz, &flag);\n");
+            k.append("  int id = aquifer_decide(c, (double) d, cells, b * ").append(cellInts()).append(", bcx, bcz, &flag);\n");
         } else {
             k.append("  int id = aquifer_disabled(c, (double) d, &flag);\n");
         }
@@ -1100,6 +1137,7 @@ public final class ClEmitter {
             #define LQ_STRIDE 257
             #define LQ_NONE (-2147483647 - 1)
             #define MINGY %d
+            #define SKIP_AT SKIP_AT_VALUE
             #define SURF_PER_CHUNK SPC_VALUE
             #define FLUID_LAVA FLUID_LAVA_VALUE
             #define IS_LAVA(t) ((t) == ID_LAVA || (FLUID_LAVA && (t) == ID_WATER))
@@ -1114,6 +1152,17 @@ public final class ClEmitter {
             int surf_at(Ctx* c, __global const int* surf, __global const int* surfIn, int b, int sqx0, int sqz0, int nsz, int x, int z) {
               if (SURF_PER_CHUNK) { int ix = (x >> 2) - c->cqx0, iz = (z >> 2) - c->cqz0; if ((unsigned) ix < 5u && (unsigned) iz < 5u) return surfIn[b * 25 + ix * 5 + iz]; }
               return surf[((x >> 2) - sqx0) * nsz + ((z >> 2) - sqz0)];
+            }
+            /* NoiseBasedAquifer.skipSamplingAboveY: above the highest surface level over the chunk's cells (maxPreliminarySurfaceLevel) */
+            int skip_sampling(Ctx* c, __global const int* surf, __global const int* surfIn, int b, int sqx0, int sqz0, int nsz, int bcx, int bcz) {
+              int m = INT_MIN;
+              for (int qz = 0; qz <= 10; qz++) {
+                for (int qx = 0; qx <= 10; qx++) {
+                  m = max(m, surf_at(c, surf, surfIn, b, sqx0, sqz0, nsz, ((bcx - 1) * 4 + qx) << 2, ((bcz - 1) * 4 + qz) << 2));
+                }
+              }
+              int gy = jfloordiv(iwrap_add(m, 20), 12) + 1;
+              return iwrap_add((int) ((uint) gy * 12u), 10);
             }
             /* NoiseBasedAquifer.computeFluid with its computeSurfaceLevel, computeRandomizedFluidSurfaceLevel and computeFluidType */
             NI FS compute_fluid(Ctx* c, int x, int y, int z, __global const int* surf, __global const int* surfIn, int b, int sqx0, int sqz0, int nsz) {
@@ -1199,32 +1248,37 @@ public final class ClEmitter {
               } else d12 = 0.0;
               return 2.0 * (d12 + d10);
             }
-            FS cell_fs(__global const int* cells, int cbase, int ci) { FS f; f.level = cells[(cbase + ci) * 5 + 3]; f.type = cells[(cbase + ci) * 5 + 4]; return f; }
+            FS cell_fs(__global const int* cells, int cbase, int ci) { FS f; f.level = cells[cbase + ci * 5 + 3]; f.type = cells[cbase + ci * 5 + 4]; return f; }
+            int fs_eq(FS a, FS b) { return a.level == b.level && a.type == b.type; }
             /* NoiseBasedAquifer.computeSubstance: a block id, or ID_NONE for null (the block stays solid) */
             NI int aquifer_decide(Ctx* c, double density, __global const int* cells, int cbase, int bcx, int bcz, int* flag) {
               int x = c->bx, y = c->by, z = c->bz;
               if (density > 0.0) { *flag = 0; return ID_NONE; }
-              if (IS_LAVA(fs_at(picker(y), y))) { *flag = 0; return ID_LAVA; }
+              int gfl = fs_at(picker(y), y);
+              if (y > cells[cbase + SKIP_AT]) { *flag = 0; return gfl; }
+              if (IS_LAVA(gfl)) { *flag = 0; return ID_LAVA; }
               int l = jfloordiv(x - 5, 16), i1 = jfloordiv(y + 1, 12), j1 = jfloordiv(z - 5, 16);
-              int k1 = 0x7fffffff, l1 = 0x7fffffff, i2 = 0x7fffffff;
-              int a1 = 0, a2 = 0, a3 = 0;
+              int k1 = 0x7fffffff, l1 = 0x7fffffff, i2 = 0x7fffffff, m4 = 0x7fffffff;
+              int a1 = 0, a2 = 0, a3 = 0, a4 = 0;
               for (int i3 = 0; i3 <= 1; i3++) {
                 for (int j3 = -1; j3 <= 1; j3++) {
                   for (int k3 = 0; k3 <= 1; k3++) {
                     int ci = ((i1 + j3 - MINGY) * 3 + (j1 + k3 - (bcz - 1))) * 3 + (l + i3 - (bcx - 1));
-                    __global const int* cl = cells + (cbase + ci) * 5;
+                    __global const int* cl = cells + cbase + ci * 5;
                     int ex = cl[0] - x, ey = cl[1] - y, ez = cl[2] - z;
                     int l5 = ex * ex + ey * ey + ez * ez;
-                    if (k1 >= l5) { a3 = a2; a2 = a1; a1 = ci; i2 = l1; l1 = k1; k1 = l5; }
-                    else if (l1 >= l5) { a3 = a2; a2 = ci; i2 = l1; l1 = l5; }
-                    else if (i2 >= l5) { a3 = ci; i2 = l5; }
+                    if (k1 >= l5) { a4 = a3; a3 = a2; a2 = a1; a1 = ci; m4 = i2; i2 = l1; l1 = k1; k1 = l5; }
+                    else if (l1 >= l5) { a4 = a3; a3 = a2; a2 = ci; m4 = i2; i2 = l1; l1 = l5; }
+                    else if (i2 >= l5) { a4 = a3; a3 = ci; m4 = i2; i2 = l5; }
+                    else if (m4 >= l5) { a4 = ci; m4 = l5; }
                   }
                 }
               }
+              double flow = similarity(100, 144);
               FS s1 = cell_fs(cells, cbase, a1);
               double d1 = similarity(k1, l1);
               int bs = fs_at(s1, y);
-              if (d1 <= 0.0) { *flag = d1 >= similarity(100, 144) ? 1 : 0; return bs; }
+              if (d1 <= 0.0) { *flag = d1 >= flow && !fs_eq(s1, cell_fs(cells, cbase, a2)) ? 1 : 0; return bs; }
               if (IS_WATER(bs) && IS_LAVA(fs_at(picker(y - 1), y - 1))) { *flag = 1; return bs; }
               double barrier = NAN;
               FS s2 = cell_fs(cells, cbase, a2);
@@ -1241,7 +1295,8 @@ public final class ClEmitter {
                 double d5 = d1 * d4 * pressure(c, &barrier, s2, s3, y);
                 if (density + d5 > 0.0) { *flag = 0; return ID_NONE; }
               }
-              *flag = 1;
+              *flag = !fs_eq(s1, s2) || (d4 >= flow && !fs_eq(s2, s3)) || (d0 >= flow && !fs_eq(s1, s3))
+                || (d0 >= flow && similarity(k1, m4) >= flow && !fs_eq(s1, cell_fs(cells, cbase, a4))) ? 1 : 0;
               return bs;
             }
             /* Aquifer.createDisabled: the global fluid picker below zero density, never a fluid update */
@@ -1340,7 +1395,7 @@ public final class ClEmitter {
               int p = tree_other(tb, toff, first, count, key, root, key[u], q0, q1, q2, q3, q4, q5, &t);
               return p < 0 ? -2 : t == 1 ? p : -1;
             }
-            """.replace("SPC_VALUE", surfacePerChunk ? "1" : "0").replace("FLUID_LAVA_VALUE", fluidLava ? "1" : "0").replace("PICKER_FN", pickerFunction()))
+            """.replace("SPC_VALUE", surfacePerChunk ? "1" : "0").replace("SKIP_AT_VALUE", Integer.toString(cellsPerChunk * 5)).replace("FLUID_LAVA_VALUE", fluidLava ? "1" : "0").replace("PICKER_FN", pickerFunction()))
             .formatted(ID_AIR, ID_WATER, ID_LAVA, seaLevel,
                 Math.min(-54, seaLevel), minGridY,
                 ID_RAW_COPPER, ID_RAW_IRON, ID_COPPER_ORE, ID_DEEPSLATE_IRON_ORE, ID_GRANITE, ID_TUFF);
@@ -1461,6 +1516,7 @@ public final class ClEmitter {
                         case CUBE -> v + " * " + v + " * " + v;
                         case HALF_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.5);
                         case QUARTER_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.25);
+                        case INVERT -> lit(1.0) + " / " + v;
                         case SQUEEZE -> "jsqueeze(" + v + ")";
                     });
                 }
@@ -2357,6 +2413,15 @@ public final class ClEmitter {
                 // continuous at 0 and 1-Lipschitz. The halving or quartering is exact.
                 case HALF_NEGATIVE -> tmp(sb, x + " > 0 ? " + x + " : " + x + " * 0.5f", ex);
                 case QUARTER_NEGATIVE -> tmp(sb, x + " > 0 ? " + x + " : " + x + " * 0.25f", ex);
+                case INVERT -> {
+                    // 1 / x in double, rounded once. Within the input's error, |1/x - 1/x'| <= e / (|x| (|x| - e)), unbounded when the
+                    // error reaches 0.
+                    String n0 = "t" + tmp;
+                    V v = tmp(sb, "(float) (1.0 / (double) " + x + ")", "0.0f");
+                    sb.append("  ").append(v.e()).append(" = fabs(").append(x).append(") > SAFE(").append(ex).append(") ? SAFE(").append(ex).append(" / (fabs(")
+                        .append(x).append(") * (fabs(").append(x).append(") - SAFE(").append(ex).append(")))) + RND(").append(n0).append(") : INFINITY;\n");
+                    yield v;
+                }
                 case SQUEEZE -> {
                     // d0 / 2 - d0^3 / 24 over the clamped input, in double and rounded once: slope at most 1/2
                     String n0 = "t" + tmp;
@@ -2502,8 +2567,8 @@ public final class ClEmitter {
      * last (x, z) it was asked for, whatever the y. Which y that was depends on the order of the calls, so the value is exact only where
      * that order is known.
      *
-     * <p>{@code WALK}: only {@code initial_density_without_jaggedness} reaches the markers. A NoiseChunk evaluates that field only in
-     * its preliminary surface walks (one per column, top down). The first value at the column holds for the whole walk.
+     * <p>{@code WALK}: only the surface level function reaches the markers. A NoiseChunk evaluates it only in its preliminary surface
+     * walks (one per column: the upper bound, then the density top down). The first value at the column holds for the whole walk.
      *
      * <p>{@code FLOODED}: only {@code fluid_level_floodedness} reaches a marker. The aquifer evaluates that field once per cell, at the
      * cell's centre. Every call returns its own value when the cells of the chunk's grid at the same column agree. k_status checks
@@ -2592,7 +2657,7 @@ public final class ClEmitter {
             }
         }
         c2dPaths = paths.toString();
-        if (fields.equals(Set.of("initial_density_without_jaggedness"))) {
+        if (!fields.isEmpty() && Set.of(SurfaceLevels.DENSITY, SurfaceLevels.UPPER_BOUND, SurfaceLevels.WHOLE).containsAll(fields)) {
             c2dKind = C2d.WALK;
         } else if (fields.equals(Set.of("fluid_level_floodedness")) && markers.size() == 1) {
             c2dKind = C2d.FLOODED;
@@ -3006,31 +3071,35 @@ public final class ClEmitter {
               int x = c->bx, y = c->by, z = c->bz;
               if (CLOSE(density, ed)) c->unc |= 2;
               if (density > 0.0) { *flag = 0; return ID_NONE; }
-              if (IS_LAVA(fs_at(picker(y), y))) { *flag = 0; return ID_LAVA; }
+              int gfl = fs_at(picker(y), y);
+              if (y > cells[cbase + SKIP_AT]) { *flag = 0; return gfl; }
+              if (IS_LAVA(gfl)) { *flag = 0; return ID_LAVA; }
               /* 6 or more above every fluid level of the cells the chunk's blocks can see (lmax): each of them is air at y, and each pressure
                  is 2 * d10 with d10 <= -2.6 (the barrier unread), never raising the density: vanilla returns air (no fluid, no mark). Not
                  where Better Caves' liquid regions apply (lqOn): the air becomes liquid there, and the mark needs vanilla's flag */
               if (!lqOn && y >= lmax + 6) { *flag = 0; return ID_AIR; }
               int l = jfloordiv(x - 5, 16), i1 = jfloordiv(y + 1, 12), j1 = jfloordiv(z - 5, 16);
-              int k1 = 0x7fffffff, l1 = 0x7fffffff, i2 = 0x7fffffff;
-              int a1 = 0, a2 = 0, a3 = 0;
+              int k1 = 0x7fffffff, l1 = 0x7fffffff, i2 = 0x7fffffff, m4 = 0x7fffffff;
+              int a1 = 0, a2 = 0, a3 = 0, a4 = 0;
               for (int i3 = 0; i3 <= 1; i3++) {
                 for (int j3 = -1; j3 <= 1; j3++) {
                   for (int k3 = 0; k3 <= 1; k3++) {
                     int ci = ((i1 + j3 - MINGY) * 3 + (j1 + k3 - (bcz - 1))) * 3 + (l + i3 - (bcx - 1));
-                    __global const int* cl = cells + (cbase + ci) * 5;
+                    __global const int* cl = cells + cbase + ci * 5;
                     int ex = cl[0] - x, ey = cl[1] - y, ez = cl[2] - z;
                     int l5 = ex * ex + ey * ey + ez * ez;
-                    if (k1 >= l5) { a3 = a2; a2 = a1; a1 = ci; i2 = l1; l1 = k1; k1 = l5; }
-                    else if (l1 >= l5) { a3 = a2; a2 = ci; i2 = l1; l1 = l5; }
-                    else if (i2 >= l5) { a3 = ci; i2 = l5; }
+                    if (k1 >= l5) { a4 = a3; a3 = a2; a2 = a1; a1 = ci; m4 = i2; i2 = l1; l1 = k1; k1 = l5; }
+                    else if (l1 >= l5) { a4 = a3; a3 = a2; a2 = ci; m4 = i2; i2 = l1; l1 = l5; }
+                    else if (i2 >= l5) { a4 = a3; a3 = ci; m4 = i2; i2 = l5; }
+                    else if (m4 >= l5) { a4 = ci; m4 = l5; }
                   }
                 }
               }
+              double flow = similarity(100, 144);
               FS s1 = cell_fs(cells, cbase, a1);
               double d1 = similarity(k1, l1);
               int bs = fs_at(s1, y);
-              if (d1 <= 0.0) { *flag = d1 >= similarity(100, 144) ? 1 : 0; return bs; }
+              if (d1 <= 0.0) { *flag = d1 >= flow && !fs_eq(s1, cell_fs(cells, cbase, a2)) ? 1 : 0; return bs; }
               if (IS_WATER(bs) && IS_LAVA(fs_at(picker(y - 1), y - 1))) { *flag = 1; return bs; }
               double barrier = NAN, eb = 0.0, ep;
               FS s2 = cell_fs(cells, cbase, a2);
@@ -3050,7 +3119,8 @@ public final class ClEmitter {
                 if (CLOSE(density + d5, ed + d1 * d4 * ep)) c->unc |= 4;
                 if (density + d5 > 0.0) { *flag = 0; return ID_NONE; }
               }
-              *flag = 1;
+              *flag = !fs_eq(s1, s2) || (d4 >= flow && !fs_eq(s2, s3)) || (d0 >= flow && !fs_eq(s1, s3))
+                || (d0 >= flow && similarity(k1, m4) >= flow && !fs_eq(s1, cell_fs(cells, cbase, a4))) ? 1 : 0;
               return bs;
             }
             int aquifer_disabled32(Ctx* c, double density, double ed, int* flag) {
@@ -3193,7 +3263,7 @@ public final class ClEmitter {
         k.append("  int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  int flag = 0;\n");
         if (aquifers) {
-            k.append("  int id = aquifer_decide32(c, (double) d, (double) SAFE(ed), cells, b * ").append(cellsPerChunk).append(", bcx, bcz, levels[b], ")
+            k.append("  int id = aquifer_decide32(c, (double) d, (double) SAFE(ed), cells, b * ").append(cellInts()).append(", bcx, bcz, levels[b], ")
                 .append(liquidRegions ? "lq[li * LQ_STRIDE] != LQ_NONE && c->by <= lq[li * LQ_STRIDE]" : "0").append(", &flag);\n");
         } else {
             k.append("  int id = aquifer_disabled32(c, (double) d, (double) SAFE(ed), &flag);\n");
@@ -3264,7 +3334,7 @@ public final class ClEmitter {
         k.append("  int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  int flag = 0;\n");
         if (aquifers) {
-            k.append("  int id = aquifer_decide(c, (double) d, cells, b * ").append(cellsPerChunk).append(", bcx, bcz, &flag);\n");
+            k.append("  int id = aquifer_decide(c, (double) d, cells, b * ").append(cellInts()).append(", bcx, bcz, &flag);\n");
         } else {
             k.append("  int id = aquifer_disabled(c, (double) d, &flag);\n");
         }

@@ -24,7 +24,7 @@ public final class C2MEMixins {
      */
     public static final String GENERATOR_EXECUTOR = "com.ishland.c2me.rewrites.chunksystem.mixin.MixinNoiseChunkGenerator";
     /**
-     * C2ME's async serialization wraps the region's {@code onBlockStateChange} ({@code @WrapOperation}). The wrapper defers
+     * C2ME's async serialization wraps the region's {@code updatePOIOnBlockStateChange} ({@code @WrapOperation}). The wrapper defers
      * the call until the chunk's initial main-thread work is done. GA2's POI skip leaves out only calls that change no POI.
      * All other calls reach C2ME's wrapper.
      */

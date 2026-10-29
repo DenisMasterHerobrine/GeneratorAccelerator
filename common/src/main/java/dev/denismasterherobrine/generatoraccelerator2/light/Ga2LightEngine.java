@@ -28,11 +28,11 @@ public interface Ga2LightEngine {
     @Nullable
     LevelChunkSection ga2$blockSection(int x, int y, int z);
 
-    /** {@code getOpacity(state, pos)}. */
-    int ga2$opacity(BlockState state, BlockPos pos);
+    /** {@code getOpacity(state)}. */
+    int ga2$opacity(BlockState state);
 
-    /** {@code shapeOccludes(from, fromState, to, toState, direction)}. */
-    boolean ga2$occludes(long from, BlockState fromState, long to, BlockState toState, Direction direction);
+    /** {@code shapeOccludes(fromState, toState, direction)}. */
+    boolean ga2$occludes(BlockState fromState, BlockState toState, Direction direction);
 
     /** {@code storage.setStoredLevel(pos, level)}. */
     void ga2$setStoredLevel(long pos, int level);

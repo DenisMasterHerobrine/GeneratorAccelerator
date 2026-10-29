@@ -29,7 +29,7 @@ public final class GeneratorAcceleratorNeoForge {
                 GeneratorAccelerator.onLevelLoad(level);
             }
         });
-        NeoForge.EVENT_BUS.addListener((TagsUpdatedEvent e) -> GeneratorAccelerator.onTagsUpdated());
+        NeoForge.EVENT_BUS.addListener((TagsUpdatedEvent.ServerDataLoad e) -> GeneratorAccelerator.onTagsUpdated());
         NeoForge.EVENT_BUS.addListener((ServerAboutToStartEvent e) -> GeneratorAccelerator.onServerStarting(e.getServer()));
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent e) -> GeneratorAccelerator.onServerStopped(e.getServer()));
         NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post e) -> GeneratorAccelerator.onServerTickPost(e.getServer()));

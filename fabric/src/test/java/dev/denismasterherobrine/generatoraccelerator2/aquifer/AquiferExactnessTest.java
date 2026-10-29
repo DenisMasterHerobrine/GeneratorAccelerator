@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
 import java.lang.reflect.Field;
 import java.util.Arrays;
@@ -56,7 +57,7 @@ public class AquiferExactnessTest {
                     Variant variant = Variant.values()[(c + (int) seed) % 3];
                     boolean withPieces = c % 3 == 0;
                     Aquifer.FluidPicker picker = c % 2 == 0 ? FillHarness.vanillaPicker(settings) : FillHarness.allocatingPicker(settings);
-                    String where = preset.location() + " seed " + seed + " chunk " + cx + "," + cz + " " + variant + (withPieces ? " with pieces" : "");
+                    String where = preset.identifier() + " seed " + seed + " chunk " + cx + "," + cz + " " + variant + (withPieces ? " with pieces" : "");
 
                     RandomState vanillaState = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), seed);
                     NoiseChunk[] vanilla = new NoiseChunk[1];
@@ -117,7 +118,7 @@ public class AquiferExactnessTest {
                     int cz = CHUNKS[c][1];
                     boolean withPieces = c % 3 == 1;
                     Aquifer.FluidPicker picker = FillHarness.vanillaPicker(settings);
-                    String where = preset.location() + " (shared y cache) seed " + seed + " chunk " + cx + "," + cz + (withPieces ? " with pieces" : "");
+                    String where = preset.identifier() + " (shared y cache) seed " + seed + " chunk " + cx + "," + cz + (withPieces ? " with pieces" : "");
                     RandomState vanillaState = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), seed);
                     NoiseChunk[] vanilla = new NoiseChunk[1];
                     FillHarness.Fill[] expected = new FillHarness.Fill[1];
@@ -200,7 +201,7 @@ public class AquiferExactnessTest {
         DensityFunction flood = DensityFunctions.rangeChoice(inferno, 0.001, 64.0, DensityFunctions.constant(1.0), r.fluidLevelFloodednessNoise());
         NoiseRouter router = new NoiseRouter(r.barrierNoise(),
             flood, r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(), r.vegetation(), r.continents(), r.erosion(),
-            r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), r.finalDensity(), r.veinToggle(), r.veinRidged(), r.veinGap());
+            r.depth(), r.ridges(), r.preliminarySurfaceLevel(), r.finalDensity(), r.veinToggle(), r.veinRidged(), r.veinGap());
         return new NoiseGeneratorSettings(s.noiseSettings(), s.defaultBlock(), s.defaultFluid(), router, s.surfaceRule(), s.spawnTarget(), s.seaLevel(),
             s.disableMobGeneration(), s.aquifersEnabled(), s.oreVeinsEnabled(), s.useLegacyRandomSource());
     }
@@ -214,8 +215,11 @@ public class AquiferExactnessTest {
     public static NoiseGeneratorSettings withYCache(NoiseGeneratorSettings s, boolean shared) {
         NoiseRouter r = s.noiseRouter();
         // equal markers: NoiseChunk.wrap gives both the same Cache2D, so the fill and the surface levels share it
-        DensityFunction initial = DensityFunctions.add(r.initialDensityWithoutJaggedness(),
-            DensityFunctions.mul(DensityFunctions.constant(0.25), DensityFunctions.cache2d(DensityFunctions.yClampedGradient(-64, 320, 1.0, -1.0))));
+        // in the walked density of the preset's find_top_surface
+        SurfaceLevels.Top top = SurfaceLevels.Top.of(r.preliminarySurfaceLevel());
+        DensityFunction initial = DensityFunctions.findTopSurface(DensityFunctions.add(top.density(),
+            DensityFunctions.mul(DensityFunctions.constant(0.25), DensityFunctions.cache2d(DensityFunctions.yClampedGradient(-64, 320, 1.0, -1.0)))),
+            top.upperBound(), top.lowerBound(), top.cellHeight());
         DensityFunction fin = !shared ? r.finalDensity() : DensityFunctions.add(r.finalDensity(),
             DensityFunctions.mul(DensityFunctions.constant(0.02), DensityFunctions.cache2d(DensityFunctions.yClampedGradient(-64, 320, 1.0, -1.0))));
         NoiseRouter router = new NoiseRouter(r.barrierNoise(),
@@ -262,7 +266,7 @@ public class AquiferExactnessTest {
                 for (int j = 0; j < 4; j++) {
                     int cx = -2 + (i * 3) % 4;
                     int cz = 7 + (j * 3) % 4;
-                    String where = preset.location() + " chunk " + cx + "," + cz + " (shared surface levels)";
+                    String where = preset.identifier() + " chunk " + cx + "," + cz + " (shared surface levels)";
                     FillHarness.Fill[] expected = new FillHarness.Fill[1];
                     DfcHooks.runVanilla(() -> expected[0] = FillHarness.fill(
                         FillHarness.chunk(vanillaState, settings, cx, cz, DensityFunctions.BeardifierMarker.INSTANCE, picker), settings, cx, cz, true));
@@ -272,7 +276,7 @@ public class AquiferExactnessTest {
                         fast.aquifer(), cx * 31L + cz);
                 }
             }
-            assertTrue(SurfaceLevelCache.HITS.sum() > hitsBefore, preset.location() + ": no surface level was shared");
+            assertTrue(SurfaceLevelCache.HITS.sum() > hitsBefore, preset.identifier() + ": no surface level was shared");
         }
         System.out.println("AquiferExactnessTest: " + blocks + " blocks and queries identical to vanilla with shared surface levels");
     }

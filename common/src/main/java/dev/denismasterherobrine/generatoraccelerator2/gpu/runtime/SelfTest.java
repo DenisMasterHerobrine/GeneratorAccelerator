@@ -1,10 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuVerify;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClApi;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
@@ -30,7 +30,6 @@ import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
-import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
 
 /**
  * Checks run before the GPU is used. The first checks that the device computes Java's float and double expressions bit for bit,
@@ -138,12 +137,11 @@ public final class SelfTest {
         // The level's own structure manager. Other mods' changes to the biome step and the fill read it (Confluence reads its registries).
         // The chunks' NoiseChunk is created here first, so vanilla's code asks the manager for no structures.
         StructureManager structures = heights instanceof ServerLevel level ? level.structureManager() : null;
-        Beardifier none = new Beardifier(new ObjectArrayList<Beardifier.Rigid>().iterator(),
-            new ObjectArrayList<JigsawJunction>().iterator());
+        Beardifier none = Beardifier.EMPTY;
         int compared = 0;
         for (int[] c : CHUNKS) {
             ChunkPos pos = new ChunkPos(c[0], c[1]);
-            ProtoChunk gpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, biomes, null);
+            ProtoChunk gpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, ChunkCopy.factory(biomes), null);
             GpuWorldgen.BiomeResult b = null;
             Object[] start = null;
             if (wg.decidesBiomes()) {
@@ -182,7 +180,7 @@ public final class SelfTest {
             if (!Apply.noise(wg, gpu, n)) {
                 return "GPU blocks not applicable to chunk " + pos;
             }
-            ProtoChunk cpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, biomes, null);
+            ProtoChunk cpu = new ProtoChunk(pos, UpgradeData.EMPTY, heights, ChunkCopy.factory(biomes), null);
             if (start != null) {
                 GpuVerify.restoreHandState(wg, start);
             }

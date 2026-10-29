@@ -25,7 +25,6 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.status.ChunkStatusTasks;
 import net.minecraft.world.level.chunk.status.ChunkStep;
 import net.minecraft.world.level.chunk.status.WorldGenContext;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
 import org.spongepowered.asm.mixin.Mixin;
@@ -105,16 +104,16 @@ public abstract class ChunkStatusTasksMixin {
 
     /** CARVERS, handled like SURFACE. The region and the carving mask filter around old chunks stay on the worldgen thread. */
     @WrapOperation(method = "generateCarvers", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/world/level/chunk/ChunkGenerator;applyCarvers(Lnet/minecraft/server/level/WorldGenRegion;JLnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/GenerationStep$Carving;)V"),
+        target = "Lnet/minecraft/world/level/chunk/ChunkGenerator;applyCarvers(Lnet/minecraft/server/level/WorldGenRegion;JLnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)V"),
         require = 0)
     private static void ga2$parallelCarvers(ChunkGenerator generator, WorldGenRegion region, long seed, RandomState randomState, BiomeManager biomeManager,
-                                            StructureManager structures, ChunkAccess chunk, GenerationStep.Carving carving, Operation<Void> original,
+                                            StructureManager structures, ChunkAccess chunk, Operation<Void> original,
                                             @Local(argsOnly = true) ChunkStep step, @Local(argsOnly = true) StaticCache2D<GenerationChunkHolder> cache,
                                             @Share("ga2$async") LocalRef<CompletableFuture<ChunkAccess>> async) {
         CompletableFuture<ChunkAccess> future = ParallelSteps.carvers(step, cache, chunk, generator,
-            () -> original.call(generator, region, seed, randomState, biomeManager, structures, chunk, carving));
+            () -> original.call(generator, region, seed, randomState, biomeManager, structures, chunk));
         if (future == null) {
-            original.call(generator, region, seed, randomState, biomeManager, structures, chunk, carving);
+            original.call(generator, region, seed, randomState, biomeManager, structures, chunk);
         } else {
             async.set(future);
         }

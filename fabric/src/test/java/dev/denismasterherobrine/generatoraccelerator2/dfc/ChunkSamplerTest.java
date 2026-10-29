@@ -52,7 +52,7 @@ public class ChunkSamplerTest {
                 NoiseChunk chunk = new NoiseChunk(4, state, minX, minZ, ns, DensityFunctions.BeardifierMarker.INSTANCE, settings, picker, Blender.empty());
                 Climate.Sampler sampler = ((NoiseChunkAccessor) chunk).ga2$cachedClimateSampler(state.router(), List.of());
                 BoundSampler bound = BoundSampler.lookup(sampler);
-                assertNotNull(bound, "chunk sampler not bound on " + preset.location());
+                assertNotNull(bound, "chunk sampler not bound on " + preset.identifier());
 
                 int minQuartY = QuartPos.fromBlock(ns.minY());
                 int maxQuartY = QuartPos.fromBlock(ns.minY() + ns.height()) - 1;
@@ -66,7 +66,7 @@ public class ChunkSamplerTest {
                             Climate.TargetPoint[] vanilla = new Climate.TargetPoint[1];
                             DfcHooks.runVanilla(() -> vanilla[0] = sampler.sample(fx, fy, fz));
                             Climate.TargetPoint compiled = sampler.sample(fx, fy, fz);
-                            String where = preset.location() + " chunk " + c[0] + "," + c[1] + " quart " + qx + "," + qy + "," + qz;
+                            String where = preset.identifier() + " chunk " + c[0] + "," + c[1] + " quart " + qx + "," + qy + "," + qz;
                             assertEquals(vanilla[0].temperature(), compiled.temperature(), where + " temperature");
                             assertEquals(vanilla[0].humidity(), compiled.humidity(), where + " humidity");
                             assertEquals(vanilla[0].continentalness(), compiled.continentalness(), where + " continentalness");
@@ -80,7 +80,7 @@ public class ChunkSamplerTest {
                         }
                     }
                 }
-                assertTrue(bound.samples > before, "compiled sampler was not used on " + preset.location());
+                assertTrue(bound.samples > before, "compiled sampler was not used on " + preset.identifier());
             }
         }
         assertTrue(compared > 10000, "too few comparisons: " + compared);

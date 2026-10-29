@@ -124,10 +124,10 @@ final class LightTypes {
     /** Must hold the class lock. The light properties of {@code state} at {@code pos} as the light engine asks them. */
     private static int[] props(BlockState state, BlockGetter level, BlockPos pos) {
         int[] p = new int[7];
-        p[0] = state.getLightBlock(level, pos);
+        p[0] = state.getLightDampening();
         boolean empty = !state.canOcclude() || !state.useShapeForLightOcclusion();
         for (Direction d : Direction.values()) {
-            p[1 + d.ordinal()] = empty ? 0 : face(state.getFaceOcclusionShape(level, pos, d));
+            p[1 + d.ordinal()] = empty ? 0 : face(state.getFaceOcclusionShape(d));
         }
         return p;
     }

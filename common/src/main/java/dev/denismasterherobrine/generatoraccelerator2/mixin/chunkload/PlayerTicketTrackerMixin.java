@@ -4,7 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import java.util.function.IntSupplier;
-import net.minecraft.server.level.ChunkTaskPriorityQueueSorter;
+import net.minecraft.server.level.ThrottlingChunkTaskDispatcher;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -12,15 +12,14 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(targets = "net.minecraft.server.level.DistanceManager$PlayerTicketTracker")
 public abstract class PlayerTicketTrackerMixin {
     @WrapOperation(method = "onLevelChange(JIZZ)V", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/server/level/ChunkTaskPriorityQueueSorter;message(Ljava/lang/Runnable;JLjava/util/function/IntSupplier;)Lnet/minecraft/server/level/ChunkTaskPriorityQueueSorter$Message;"))
-    private ChunkTaskPriorityQueueSorter.Message<Runnable> ga2$timeSlotWait(Runnable task, long pos, IntSupplier level,
-        Operation<ChunkTaskPriorityQueueSorter.Message<Runnable>> original) {
+        target = "Lnet/minecraft/server/level/ThrottlingChunkTaskDispatcher;submit(Ljava/lang/Runnable;JLjava/util/function/IntSupplier;)V"))
+    private void ga2$timeSlotWait(ThrottlingChunkTaskDispatcher dispatcher, Runnable task, long pos, IntSupplier level, Operation<Void> original) {
         long queued = System.nanoTime();
         ChunkLoadStats.TICKETS_QUEUED.increment();
         Runnable timed = () -> {
             ChunkLoadStats.SLOT_WAIT.record(System.nanoTime() - queued);
             task.run();
         };
-        return original.call(timed, pos, level);
+        original.call(dispatcher, timed, pos, level);
     }
 }

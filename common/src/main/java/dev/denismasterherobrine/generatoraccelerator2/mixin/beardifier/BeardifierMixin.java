@@ -4,7 +4,6 @@ import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardBounds;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardifierFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
-import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -18,7 +17,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import java.util.List;
 import java.util.function.Function;
+import javax.annotation.Nullable;
 
 /**
  * Exact piece index for {@code Beardifier.compute}.
@@ -27,20 +28,22 @@ import java.util.function.Function;
  * and junctions are copied once into flat arrays in vanilla order. Each 4 x 8 x 4 block bucket
  * (one default noise cell) lists the pieces and junctions whose {@link BeardBounds} range reaches
  * the bucket. A block sums only that list, in the same order and with the same formulas. Everything
- * left out contributes exactly {@code +0.0}, so the sum is bit-identical.
+ * left out contributes exactly {@code +0.0}, so the sum is bit-identical. Outside the beardifier's affected box, vanilla's method
+ * runs: it returns there at once.
  */
 @Mixin(value = Beardifier.class, priority = 5000)
 public abstract class BeardifierMixin {
-    @Shadow @Final protected ObjectListIterator<Beardifier.Rigid> pieceIterator;
-    @Shadow @Final protected ObjectListIterator<JigsawJunction> junctionIterator;
+    @Shadow @Final private List<Beardifier.Rigid> pieces;
+    @Shadow @Final private List<JigsawJunction> junctions;
+    @Shadow @Final private @Nullable BoundingBox affectedBox;
 
     @Shadow
-    protected static double getBuryContribution(double x, double y, double z) {
+    private static double getBuryContribution(double x, double y, double z) {
         throw new AssertionError();
     }
 
     @Shadow
-    protected static double getBeardContribution(int x, int y, int z, int yToGround) {
+    private static double getBeardContribution(int x, int y, int z, int yToGround) {
         throw new AssertionError();
     }
 
@@ -72,7 +75,7 @@ public abstract class BeardifierMixin {
     @Unique private int ga2$activeJunctionCount;
 
     @Inject(method = "<init>", at = @At("TAIL"))
-    private void ga2$init(ObjectListIterator<Beardifier.Rigid> pieces, ObjectListIterator<JigsawJunction> junctions, CallbackInfo ci) {
+    private void ga2$init(List<Beardifier.Rigid> pieces, List<JigsawJunction> junctions, @Nullable BoundingBox affectedBox, CallbackInfo ci) {
         this.ga2$state = BeardifierFastPath.enabledFor(this) ? GA2_UNBUILT : BeardifierFastPath.enabledWithExtras(this) ? GA2_EXTRAS_PENDING : GA2_OFF;
     }
 
@@ -113,6 +116,16 @@ public abstract class BeardifierMixin {
         int x = context.blockX();
         int y = context.blockY();
         int z = context.blockZ();
+        BoundingBox box = this.affectedBox;
+        if (box == null || !box.isInside(x, y, z)) {
+            Function<ChunkPos, EnhancedBeard.Chunk> test = EnhancedBeard.testChunks;
+            if (test != null) {
+                // the tests' stand-in for the mods' density, which their return callbacks add to the early 0 as well
+                return EnhancedBeard.density(test.apply(new ChunkPos(x >> 4, z >> 4)), x, y, z, null);
+            }
+            // vanilla's early return, with whatever other mods do there
+            return Double.NaN;
+        }
         int bx = x >> 2;
         int by = y >> 3;
         int bz = z >> 2;
@@ -167,38 +180,20 @@ public abstract class BeardifierMixin {
         return plan != null ? plan.apply((Beardifier) (Object) this, context, sum) : sum;
     }
 
-    /**
-     * Copies the pieces and junctions in vanilla order. Vanilla's own {@code compute} walks both
-     * iterators to the end and rewinds them. This method does the same and leaves both iterators where it found them.
-     */
+    /** Copies the pieces and junctions in vanilla order. */
     @Unique
     private void ga2$build() {
         this.ga2$state = GA2_OFF;
-        ObjectListIterator<Beardifier.Rigid> pieces = this.pieceIterator;
-        ObjectListIterator<JigsawJunction> junctions = this.junctionIterator;
-        // A first compute() starting mid-list would see fewer elements than every later call. Keep vanilla for that case.
-        if (pieces.nextIndex() != 0 || junctions.nextIndex() != 0) {
-            return;
-        }
-        int pieceTotal = 0;
-        while (pieces.hasNext()) {
-            pieces.next();
-            pieceTotal++;
-        }
-        pieces.back(Integer.MAX_VALUE);
-        int junctionTotal = 0;
-        while (junctions.hasNext()) {
-            junctions.next();
-            junctionTotal++;
-        }
-        junctions.back(Integer.MAX_VALUE);
+        List<Beardifier.Rigid> pieces = this.pieces;
+        List<JigsawJunction> junctions = this.junctions;
+        int pieceTotal = pieces.size();
+        int junctionTotal = junctions.size();
 
         int[] data = new int[pieceTotal * GA2_PIECE_STRIDE];
         int[] ranges = new int[pieceTotal * 6];
         int count = 0;
         boolean ok = true;
-        while (pieces.hasNext()) {
-            Beardifier.Rigid rigid = pieces.next();
+        for (Beardifier.Rigid rigid : pieces) {
             int code = BeardBounds.code(rigid.terrainAdjustment());
             if (code == BeardBounds.NONE) {
                 continue;
@@ -222,13 +217,11 @@ public abstract class BeardifierMixin {
             BeardBounds.piece(box, code, rigid.groundLevelDelta(), ranges, count * 6);
             count++;
         }
-        pieces.back(Integer.MAX_VALUE);
 
         int[] jData = new int[junctionTotal * 3];
         int[] jRanges = new int[junctionTotal * 6];
         int jCount = 0;
-        while (junctions.hasNext()) {
-            JigsawJunction junction = junctions.next();
+        for (JigsawJunction junction : junctions) {
             if (!BeardBounds.sane(junction.getSourceX()) || !BeardBounds.sane(junction.getSourceGroundY()) || !BeardBounds.sane(junction.getSourceZ())) {
                 ok = false;
                 continue;
@@ -239,7 +232,6 @@ public abstract class BeardifierMixin {
             BeardBounds.junction(junction, jRanges, jCount * 6);
             jCount++;
         }
-        junctions.back(Integer.MAX_VALUE);
         if (!ok) {
             return;
         }

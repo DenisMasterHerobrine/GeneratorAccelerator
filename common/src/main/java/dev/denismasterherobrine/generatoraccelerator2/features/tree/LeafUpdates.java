@@ -9,7 +9,9 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.OptionalInt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LeavesBlock;
@@ -97,8 +99,8 @@ final class LeafUpdates {
     private static boolean declaresUpdateShape(Class<?> c) {
         for (Method m : c.getDeclaredMethods()) {
             Class<?>[] p = m.getParameterTypes();
-            if (p.length == 6 && p[0] == BlockState.class && p[1] == Direction.class && p[2] == BlockState.class && p[3] == LevelAccessor.class
-                && p[4] == BlockPos.class && p[5] == BlockPos.class && Names.mojangMethod(m.getName()).equals("updateShape")) {
+            if (p.length == 8 && p[0] == BlockState.class && p[1] == LevelReader.class && p[2] == ScheduledTickAccess.class && p[3] == BlockPos.class
+                && p[4] == Direction.class && p[5] == BlockPos.class && p[6] == BlockState.class && p[7] == RandomSource.class && Names.mojangMethod(m.getName()).equals("updateShape")) {
                 return true;
             }
         }
@@ -119,14 +121,14 @@ final class LeafUpdates {
             return e;
         }
 
-        /** {@code state.updateShape(direction, neighbour, level, pos, neighbourPos)}. */
+        /** {@code state.updateShape(level, level, pos, direction, neighbourPos, neighbour, level.getRandom())}. */
         BlockState update(BlockState state, Direction direction, BlockState neighbour, WorldGenLevel level, BlockPos pos, BlockPos neighbourPos) {
             int kind = KIND.get(state.getBlock().getClass());
             if (kind == NONE) {
                 return state;
             }
             if (kind == OTHER) {
-                return state.updateShape(direction, neighbour, level, pos, neighbourPos);
+                return state.updateShape(level, level, pos, direction, neighbourPos, neighbour, level.getRandom());
             }
             // LeavesBlock.updateShape
             if (state.getValue(BlockStateProperties.WATERLOGGED)) {

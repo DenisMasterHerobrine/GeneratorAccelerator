@@ -183,11 +183,11 @@ public class DecorationGridTest {
         TerrainHarness.World w = g.w;
         HeightmapPriming.prime(chunk, ChunkStatus.FINAL_HEIGHTMAPS, Heightmap::primeHeightmaps);
         ChunkPos cp = chunk.getPos();
-        BlockPos origin = new BlockPos(cp.getMinBlockX(), level.getMinBuildHeight(), cp.getMinBlockZ());
+        BlockPos origin = new BlockPos(cp.getMinBlockX(), level.getMinY(), cp.getMinBlockZ());
         Set<Holder<Biome>> set = new ObjectArraySet<>();
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
-                for (LevelChunkSection s : level.getChunk(cp.x + dx, cp.z + dz).getSections()) {
+                for (LevelChunkSection s : level.getChunk(cp.x() + dx, cp.z() + dz).getSections()) {
                     s.getBiomes().getAll(set::add);
                 }
             }
@@ -229,7 +229,7 @@ public class DecorationGridTest {
     static void decorateAll(Grid g, Each each) {
         for (List<ChunkPos> wave : waves(g)) {
             for (ChunkPos p : wave) {
-                decorate(g, level(g, p.x, p.z), g.at(p.x, p.z), each);
+                decorate(g, level(g, p.x(), p.z()), g.at(p.x(), p.z()), each);
             }
         }
     }
@@ -329,16 +329,16 @@ public class DecorationGridTest {
                 Runnable run = () -> {
                     for (List<ChunkPos> wave : waves(g)) {
                         for (ChunkPos p : wave) {
-                            HarnessLevel level = level(g, p.x, p.z);
+                            HarnessLevel level = level(g, p.x(), p.z());
                             long t0 = System.nanoTime();
-                            decorate(g, level, g.at(p.x, p.z), (pf, step, place) -> {
+                            decorate(g, level, g.at(p.x(), p.z()), (pf, step, place) -> {
                                 long b = ALLOCATED.getCurrentThreadAllocatedBytes();
                                 long s = System.nanoTime();
                                 place.run();
                                 long ns = System.nanoTime() - s;
                                 long bytes = ALLOCATED.getCurrentThreadAllocatedBytes() - b;
                                 var f = pf.feature().value().feature();
-                                String name = pf.feature().unwrapKey().map(k -> k.location().getPath()).orElse(f.getClass().getSimpleName());
+                                String name = pf.feature().unwrapKey().map(k -> k.identifier().getPath()).orElse(f.getClass().getSimpleName());
                                 byName.merge(name, ns, Long::sum);
                                 byKind.merge(f.getClass().getSimpleName(), ns, Long::sum);
                                 bytesByName.merge(name, bytes, Long::sum);
@@ -451,7 +451,7 @@ public class DecorationGridTest {
                 sections[s] = new LevelChunkSection(HarnessWorld.cloneStates(sec.getStates()), biomes);
             }
             ProtoChunk c = new ProtoChunk(src.getPos(), UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(),
-                new ProtoChunkTicks<>(), g.w.heights, g.w.registries.biomes, null);
+                new ProtoChunkTicks<>(), g.w.heights, g.w.registries.containers, null);
             for (Map.Entry<Heightmap.Types, Heightmap> e : src.getHeightmaps()) {
                 c.setHeightmap(e.getKey(), e.getValue().getRawData().clone());
             }

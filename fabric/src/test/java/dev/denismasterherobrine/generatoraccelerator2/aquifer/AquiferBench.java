@@ -25,7 +25,7 @@ public class AquiferBench {
             int[][] chunks = FillBench.grid(200, 200, 8);
             Map<FillBench.Setup, Long> result = FillBench.run(settings, lookup.lookupOrThrow(Registries.NOISE), 1234567L, chunks,
                 i -> DensityFunctions.BeardifierMarker.INSTANCE, FillBench.setups(), 2, 5);
-            System.out.println("AquiferBench " + preset.location() + ", " + chunks.length + " chunks, no structures:\n" + FillBench.format(result));
+            System.out.println("AquiferBench " + preset.identifier() + ", " + chunks.length + " chunks, no structures:\n" + FillBench.format(result));
 
             if (AquiferFastPath.STATS) {
                 AquiferFastPath.resetStats();
@@ -34,7 +34,7 @@ public class AquiferBench {
                     NoiseChunk chunk = FillHarness.chunk(state, settings, c[0], c[1], DensityFunctions.BeardifierMarker.INSTANCE, FillHarness.vanillaPicker(settings));
                     FillHarness.fill(chunk, settings, c[0], c[1], false);
                 }
-                System.out.println("AquiferBench " + preset.location() + " aquifer paths: " + AquiferFastPath.statsLine());
+                System.out.println("AquiferBench " + preset.identifier() + " aquifer paths: " + AquiferFastPath.statsLine());
             }
         }
     }

@@ -53,7 +53,7 @@ public interface Ga2Region {
     /** Dimension max build height (exclusive). */
     int ga2$maxY();
 
-    /** {@code ServerLevel.onBlockStateChange}: POI bookkeeping, a cross-thread side effect that must be kept. */
+    /** {@code ServerLevel.updatePOIOnBlockStateChange}: POI bookkeeping, a cross-thread side effect that must be kept. */
     void ga2$onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState);
 
     /** The region's zoom cache for {@code BiomeManager.getBiome}, or null when its lookups go the vanilla way. */

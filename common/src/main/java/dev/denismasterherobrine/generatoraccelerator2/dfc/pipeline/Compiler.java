@@ -60,7 +60,14 @@ public final class Compiler {
         routerField(builder, routerRoots, "erosion", router.erosion());
         routerField(builder, routerRoots, "depth", router.depth());
         routerField(builder, routerRoots, "ridges", router.ridges());
-        routerField(builder, routerRoots, "initial_density_without_jaggedness", router.initialDensityWithoutJaggedness());
+        // a find_top_surface is a walk over its density: the density and the upper bound are compiled, the walk is SurfaceLevels'
+        SurfaceLevels.Top top = SurfaceLevels.Top.of(router.preliminarySurfaceLevel());
+        if (top != null) {
+            routerField(builder, routerRoots, SurfaceLevels.DENSITY, top.density());
+            routerField(builder, routerRoots, SurfaceLevels.UPPER_BOUND, top.upperBound());
+        } else {
+            routerField(builder, routerRoots, SurfaceLevels.WHOLE, router.preliminarySurfaceLevel());
+        }
         routerField(builder, routerRoots, "final_density", router.finalDensity());
         routerField(builder, routerRoots, "vein_toggle", router.veinToggle());
         routerField(builder, routerRoots, "vein_ridged", router.veinRidged());
@@ -171,11 +178,23 @@ public final class Compiler {
         // points up to three chunks away. So its program keeps the chunk marker policy but evaluates flat caches as their
         // children. This requires every flat cache in the function to read x and z only.
         SurfaceLevels.Templates surfaceLevels = null;
-        Node levels = routerRoots.get("initial_density_without_jaggedness");
+        Node levels = routerRoots.get(top != null ? SurfaceLevels.DENSITY : SurfaceLevels.WHOLE);
+        Node upperBound = top != null ? routerRoots.get(SurfaceLevels.UPPER_BOUND) : null;
         List<Node.Marker> levelFlats = levels == null ? null : SurfaceLevels.flatCaches(levels);
-        if (DfcConfig.pointPrograms() && SurfaceLevels.ENABLED && levelFlats != null) {
+        List<Node.Marker> upperFlats = upperBound == null ? List.of() : SurfaceLevels.flatCaches(upperBound);
+        if (levelFlats != null && upperFlats != null && !upperFlats.isEmpty()) {
+            levelFlats = new ArrayList<>(levelFlats);
+            for (Node.Marker m : upperFlats) {
+                if (!levelFlats.contains(m)) {
+                    levelFlats.add(m);
+                }
+            }
+        }
+        if (DfcConfig.pointPrograms() && SurfaceLevels.ENABLED && levelFlats != null && upperFlats != null) {
             try {
                 PointTemplate walk = ProgramCompiler.compilePointTemplate("surface-levels", List.of(levels), builder.specs(), builder.blendedSpecs(), Emitter.Mode.COLUMN);
+                PointTemplate upper = upperBound == null ? null
+                    : ProgramCompiler.compilePointTemplate("surface-upper-bound", List.of(upperBound), builder.specs(), builder.blendedSpecs(), Emitter.Mode.COLUMN);
                 PointTemplate flats = null;
                 Map<DensityFunction, Integer> flatIndex = new IdentityHashMap<>();
                 if (!levelFlats.isEmpty()) {
@@ -186,7 +205,7 @@ public final class Compiler {
                     }
                     flats = ProgramCompiler.compilePointTemplate("surface-flats", children, builder.specs(), builder.blendedSpecs(), Emitter.Mode.POINT);
                 }
-                surfaceLevels = new SurfaceLevels.Templates(walk, flats, flatIndex);
+                surfaceLevels = new SurfaceLevels.Templates(walk, upper, flats, flatIndex, top);
             } catch (DfcCompileException e) {
                 if (DfcConfig.failOnCodegenError()) {
                     throw e;

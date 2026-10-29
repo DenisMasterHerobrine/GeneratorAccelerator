@@ -104,6 +104,8 @@ public final class SurfaceSpec {
     }
     /** Tectonic's snow start offset ({@code compat.tectonic}), or 0. The temperature reads the height lowered by this offset. */
     private final int snowOffset;
+    /** {@code getHeightAdjustedTemperature}'s snow line: 17 above the level's sea level. */
+    private final int snowLine;
     private final int nbands;
     // The three temperature noises. Per level: the perm table's offset in the int table (-1: no level). Also their factors.
     private final int[][] simplexLevels = new int[3][];
@@ -287,6 +289,7 @@ public final class SurfaceSpec {
             at += ed.length;
         }
         this.snowOffset = snowOffset();
+        this.snowLine = settings.seaLevel() + 17;
         table[tSnow] = snowOffset;
         putLong(table, tSeed, zoomSeed);
         putLong(table, tSeed + 2, noiseRandomLo);
@@ -597,7 +600,8 @@ public final class SurfaceSpec {
         b.append("#define SF_TPRED ").append(tPred).append("\n#define SF_PW ").append(predWords).append("\n#define SF_TINFO ").append(tInfo)
             .append("\n#define SF_TBANDS ").append(tBands).append("\n#define SF_NBANDS ").append(nbands).append("\n");
         // The zoom seed is the column walk's own copy of the table's zoom seed. sf_zoom reads it through s.
-        b.append("#define SF_TSEED ").append(tSeed).append("\n#define SF_ZSEED (s->zs)\n#define SF_TSNOW ").append(tSnow).append('\n').append(SEED64);
+        b.append("#define SF_TSEED ").append(tSeed).append("\n#define SF_ZSEED (s->zs)\n#define SF_TSNOW ").append(tSnow)
+            .append("\n#define SF_SNOWLINE ").append(snowLine).append('\n').append(SEED64);
         if (!extData.isEmpty()) {
             // The start of a compat extern's data slot in the int table (SurfaceExtern.Gpu). Without externs, the source is as before.
             b.append("#define SF_TEXT ").append(tExt).append("\n#define SF_EXT(k) (s->sp[SF_TEXT + (k)])\n");
@@ -746,9 +750,9 @@ public final class SurfaceSpec {
               }
               float t;
               int y = s->y - s->sp[SF_TSNOW]; /* Tectonic's snow line reads the height that much lower (0 without it) */
-              if (y > 80) {
+              if (y > SF_SNOWLINE) {
                 float f1 = (float) (sx_temperature(s->sp, (double) ((float) s->x / 8.0f), (double) ((float) s->z / 8.0f)) * 8.0);
-                t = f - (f1 + (float) y - 80.0f) * 0.05f / 40.0f;
+                t = f - (f1 + (float) y - (float) SF_SNOWLINE) * 0.05f / 40.0f;
               } else t = f;
               return !(t >= 0.15f);
             }

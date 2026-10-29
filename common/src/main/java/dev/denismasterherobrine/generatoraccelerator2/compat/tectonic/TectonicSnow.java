@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.tectonic;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -78,6 +79,8 @@ public final class TectonicSnow {
 
     public static void register() {
         CompatAdapters.register(HookTargets.GPU_SURFACE, TectonicMixins.BIOME, () -> offset().isPresent());
+        // a lowered snow line would make heights colder than vanilla's bound for always-warm biomes
+        CompatAdapters.register(FeatureTargets.compatKey(FeatureTargets.CLIMATE), TectonicMixins.BIOME, () -> offset().orElse(-1) >= 0);
     }
 
     /**

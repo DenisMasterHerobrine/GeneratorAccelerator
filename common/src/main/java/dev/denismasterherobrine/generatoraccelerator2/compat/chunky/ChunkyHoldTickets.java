@@ -1,24 +1,26 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 
 import dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload.ChunkMapUpdatingInvoker;
-import java.util.Comparator;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.ChunkMap;
-import net.minecraft.server.level.DistanceManager;
+import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
-import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.TicketStorage;
 
 /** GA2's tickets on the chunks {@link ChunkyHolds} keeps, in one dimension. */
 public final class ChunkyHoldTickets implements ChunkyHolds.Tickets {
-    /** Without a timeout. A kept chunk's ticket goes when the chunk is let go. */
-    static final TicketType<ChunkPos> TICKET = TicketType.create("generatoraccelerator2:chunky_hold", Comparator.comparingLong(ChunkPos::toLong));
+    /**
+     * Loads, without a timeout, and is not saved. A kept chunk's ticket goes when the chunk is let go. Tickets compare their
+     * types by identity, so no other ticket matches this one.
+     */
+    static final TicketType TICKET = new TicketType(TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING);
 
-    private final DistanceManager distanceManager;
+    private final TicketStorage tickets;
     private final ChunkMap chunkMap;
 
-    public ChunkyHoldTickets(DistanceManager distanceManager, ChunkMap chunkMap) {
-        this.distanceManager = distanceManager;
+    public ChunkyHoldTickets(TicketStorage tickets, ChunkMap chunkMap) {
+        this.tickets = tickets;
         this.chunkMap = chunkMap;
     }
 
@@ -28,14 +30,12 @@ public final class ChunkyHoldTickets implements ChunkyHolds.Tickets {
         if (holder == null || holder.getLatestChunk() == null) {
             return false;
         }
-        ChunkPos at = new ChunkPos(pos);
-        this.distanceManager.addTicket(TICKET, at, ChunkLevel.MAX_LEVEL, at);
+        this.tickets.addTicket(pos, new Ticket(TICKET, ChunkLevel.MAX_LEVEL));
         return true;
     }
 
     @Override
     public void letGo(long pos) {
-        ChunkPos at = new ChunkPos(pos);
-        this.distanceManager.removeTicket(TICKET, at, ChunkLevel.MAX_LEVEL, at);
+        this.tickets.removeTicket(pos, new Ticket(TICKET, ChunkLevel.MAX_LEVEL));
     }
 }

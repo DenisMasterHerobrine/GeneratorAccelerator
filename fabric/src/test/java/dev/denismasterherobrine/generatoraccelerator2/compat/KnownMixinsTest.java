@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.bettercaves.BetterCavesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbevolutioncompanion.FtbEvolutionCompanionMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -43,6 +46,13 @@ class KnownMixinsTest {
         // the same mixin on another hook, or another mixin, is not known
         assertNull(KnownMixins.find(HookTargets.SURFACE_TOP_MATERIAL, NaturesSpiritMixins.SURFACE, List.of("handler$zza000$natures_spirit$injectPillars")));
         assertNull(KnownMixins.find(hook, OTHER, List.of("handler$zza000$other$injectPillars")));
+        // Mixin drops a handler's own mod id prefix (modid_ or modid$) when it merges it: names as merged on NeoForge 26.1.2
+        assertNotNull(KnownMixins.find(YungsCaveBiomesMixins.AQUIFER_ORDER_KEPT, YungsCaveBiomesMixins.AQUIFER,
+            List.of("handler$dmi000$yungscavebiomes$noLavaAquifersInFrostedCaves")));
+        assertNotNull(KnownMixins.find(BetterCavesMixins.AQUIFER_LIQUID_REGIONS, BetterCavesMixins.AQUIFER,
+            List.of("handler$bel000$bettercaves$setLiquidRegions", "handler$bel000$bettercaves$fixAquiferLiquids")));
+        assertNotNull(KnownMixins.find(HookTargets.BIOME_ANSWERS, FtbEvolutionCompanionMixins.MULTI_NOISE_SOURCE,
+            List.of("handler$dfa000$ftbevolutioncompanion$pyramidBiome")));
     }
 
     @Test

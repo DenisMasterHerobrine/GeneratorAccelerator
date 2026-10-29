@@ -1,23 +1,28 @@
 package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.CrashReport;
+import net.minecraft.ReportType;
+import net.minecraft.ReportedException;
+import net.minecraft.util.thread.BlockableEventLoop;
 import org.slf4j.Logger;
 
 /**
  * Own threads for a dimension's chunk scheduling mailboxes.
  *
- * <p>Vanilla runs the task sorter, the worldgen mailbox and the light mailbox on the shared worker pool.
+ * <p>Vanilla runs the task dispatchers, the worldgen executor and the light executor on the shared worker pool.
  * A pool worker drains its own queue before it looks at other work. So once the steps run in parallel, the
  * mailboxes wait behind hundreds of step bodies, and dispatch stalls. The light engine, one thread's worth
  * of work by design, only gets to run when the pool runs dry, and so holds finished chunks back from FULL.
- * Here the sorter and the worldgen mailbox share one thread, and the light mailbox gets another. Both threads
+ * Here the dispatchers and the worldgen executor share one thread, and the light executor gets another. Both threads
  * only schedule and light, and nothing they run waits on the pool. What runs, and in what order within each
- * mailbox, is unchanged.
+ * executor, is unchanged.
  */
 public final class MailboxThreads {
     private MailboxThreads() {}
@@ -41,10 +46,23 @@ public final class MailboxThreads {
             Thread thread = new Thread(task, name + " #" + id);
             thread.setDaemon(true);
             thread.setPriority(priority);
-            thread.setUncaughtExceptionHandler((t, e) -> LOGGER.error("uncaught exception on {}", t.getName(), e));
+            thread.setUncaughtExceptionHandler(MailboxThreads::onException);
             return thread;
         });
         executor.allowCoreThreadTimeOut(true);
         return executor;
+    }
+
+    /**
+     * As on vanilla's worker threads ({@code Util.onThreadException}). The crash report goes to the server, which stops with
+     * it. Otherwise a failed chunk step would leave the chunks waiting for it, and the server would wait forever.
+     */
+    private static void onException(Thread thread, Throwable throwable) {
+        Throwable cause = throwable instanceof CompletionException completion && completion.getCause() != null ? completion.getCause() : throwable;
+        CrashReport report = cause instanceof ReportedException reported ? reported.getReport()
+            : CrashReport.forThrowable(cause, "Exception on worker thread");
+        report.addCategory("ThreadInfo").setDetail("Name", thread.getName());
+        LOGGER.error("uncaught exception on {}\n{}", thread.getName(), report.getFriendlyReport(ReportType.CRASH));
+        BlockableEventLoop.relayDelayCrash(report);
     }
 }

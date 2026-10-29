@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.state.PaletteCopy;
 import java.util.Arrays;
 import net.minecraft.util.BitStorage;
 import net.minecraft.world.level.chunk.Palette;
+import net.minecraft.world.level.chunk.PaletteResize;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -55,7 +56,7 @@ public abstract class PaletteCopyMixin<T> {
                 int id = remap[old];
                 if (id < 0) {
                     // First entry with this id. Make vanilla's two calls, in vanilla's order.
-                    id = toPalette.idFor(from.valueFor(old));
+                    id = toPalette.idFor(from.valueFor(old), PaletteResize.noResizeExpected());
                     remap[old] = id;
                 }
                 lastOld = old;

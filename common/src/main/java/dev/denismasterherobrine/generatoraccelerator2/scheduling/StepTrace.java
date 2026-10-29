@@ -31,7 +31,7 @@ public final class StepTrace {
     }
 
     private static long key(ChunkPos pos) {
-        return pos.toLong() * 0x9E3779B97F4A7C15L;
+        return pos.pack() * 0x9E3779B97F4A7C15L;
     }
 
     /** A step is called for the chunk. Returns the start time. Callers only call it when {@link #ENABLED}. */

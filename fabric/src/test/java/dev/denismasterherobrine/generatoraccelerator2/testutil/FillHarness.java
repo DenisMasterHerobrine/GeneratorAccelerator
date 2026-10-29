@@ -2,7 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.testutil;
 
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
 import java.util.Random;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Aquifer;
@@ -154,6 +156,19 @@ public final class FillHarness {
             junctions.add(new JigsawJunction(minX - 12 + r.nextInt(40), groundY - 2 + r.nextInt(5), minZ - 12 + r.nextInt(40), r.nextInt(3) - 1,
                 i % 2 == 0 ? StructureTemplatePool.Projection.RIGID : StructureTemplatePool.Projection.TERRAIN_MATCHING));
         }
-        return new Beardifier(pieces.iterator(), junctions.iterator());
+        return beardifier(pieces, junctions);
+    }
+
+    /** A beardifier of these pieces and junctions, with the box vanilla's {@code forStructuresInChunk} gives: all of them, inflated by 24. */
+    public static Beardifier beardifier(List<Beardifier.Rigid> pieces, List<JigsawJunction> junctions) {
+        BoundingBox any = null;
+        for (Beardifier.Rigid p : pieces) {
+            any = any == null ? p.box() : BoundingBox.encapsulating(any, p.box());
+        }
+        for (JigsawJunction j : junctions) {
+            BoundingBox b = new BoundingBox(new BlockPos(j.getSourceX(), j.getSourceGroundY(), j.getSourceZ()));
+            any = any == null ? b : BoundingBox.encapsulating(any, b);
+        }
+        return any == null ? Beardifier.EMPTY : new Beardifier(List.copyOf(pieces), List.copyOf(junctions), any.inflatedBy(24));
     }
 }

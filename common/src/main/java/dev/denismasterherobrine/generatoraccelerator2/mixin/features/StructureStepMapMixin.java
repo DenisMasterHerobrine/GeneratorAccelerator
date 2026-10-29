@@ -25,7 +25,7 @@ public abstract class StructureStepMapMixin {
     @WrapOperation(method = "applyBiomeDecoration", at = @At(value = "INVOKE",
         target = "Ljava/util/stream/Stream;collect(Ljava/util/stream/Collector;)Ljava/lang/Object;"), require = 0)
     private Object ga2$structureSteps(Stream<?> stream, Collector<?, ?, ?> collector, Operation<Object> original, @Local(argsOnly = true) WorldGenLevel level) {
-        Registry<Structure> registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        Registry<Structure> registry = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
         // kept outside the mixin (StructureSteps) so a stopped server's registry can be dropped
         Object[] cached = StructureSteps.cached;
         if (cached != null && cached[0] == registry) {

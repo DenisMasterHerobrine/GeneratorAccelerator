@@ -22,7 +22,7 @@ public abstract class PoiSectionWarningsMixin {
     @Shadow @Final private Short2ObjectMap<PoiRecord> records;
 
     @WrapOperation(method = "add(Lnet/minecraft/world/entity/ai/village/poi/PoiRecord;)Z", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/Util;logAndPauseIfInIde(Ljava/lang/String;)V"), require = 0)
+        target = "Lnet/minecraft/util/Util;logAndPauseIfInIde(Ljava/lang/String;)V"), require = 0)
     private void ga2$mismatchOnce(String message, Operation<Void> original, @Local(argsOnly = true) PoiRecord added) {
         PoiRecord registered = this.records.get(SectionPos.sectionRelativePos(added.getPos()));
         String source = (registered != null ? registered.getPoiType().getRegisteredName() : "?") + " -> " + added.getPoiType().getRegisteredName();

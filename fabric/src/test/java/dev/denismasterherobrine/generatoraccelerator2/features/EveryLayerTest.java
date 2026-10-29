@@ -41,11 +41,13 @@ public class EveryLayerTest {
     @Test
     void sameAsVanilla() {
         HarnessWorld.Registries2 r = HarnessWorld.registries();
-        List<IntProvider> counts = List.of(ConstantInt.of(1), ConstantInt.of(4), ConstantInt.of(10), UniformInt.of(0, 6), UniformInt.of(2, 12));
+        // 60 a layer draws most columns more than once, so the kept scans are used
+        List<IntProvider> counts = List.of(ConstantInt.of(1), ConstantInt.of(4), ConstantInt.of(10), UniformInt.of(0, 6), UniformInt.of(2, 12), ConstantInt.of(60));
         int readsCompared = 0;
         int calls = 0;
         int positions = 0;
         int maxLayers = 0;
+        long continuedBefore = EveryLayer.CONTINUED.sum();
         for (HarnessWorld.Kind kind : List.of(HarnessWorld.Kind.NETHER, HarnessWorld.Kind.OVERWORLD)) {
             for (long seed : new long[] { 1L, 77L, 4242L }) {
                 LevelHeightAccessor heights = HarnessWorld.heights(r, kind);
@@ -63,7 +65,7 @@ public class EveryLayerTest {
                 for (int i = 0; i < 200_000; i++) {
                     int cx = FeatureRun.CENTER_X + pick.nextInt(2 * HarnessWorld.RADIUS + 1) - HarnessWorld.RADIUS;
                     int cz = FeatureRun.CENTER_Z + pick.nextInt(2 * HarnessWorld.RADIUS + 1) - HarnessWorld.RADIUS;
-                    int y = heights.getMinBuildHeight() - 24 + pick.nextInt(heights.getHeight() + 48);
+                    int y = heights.getMinY() - 24 + pick.nextInt(heights.getHeight() + 48);
                     BlockPos pos = new BlockPos(cx * 16 + pick.nextInt(16), y, cz * 16 + pick.nextInt(16));
                     ProtoChunk chunk = chunks[HarnessWorld.index(cx, cz, FeatureRun.CENTER_X, FeatureRun.CENTER_Z)];
                     assertSame(chunk.getBlockState(pos), reads.read(pos), "block at " + pos);
@@ -82,7 +84,7 @@ public class EveryLayerTest {
                                 if (Math.abs(((ox + 15) >> 4) - FeatureRun.CENTER_X) > HarnessWorld.RADIUS || Math.abs(((oz + 15) >> 4) - FeatureRun.CENTER_Z) > HarnessWorld.RADIUS) {
                                     continue;
                                 }
-                                BlockPos origin = new BlockPos(ox, heights.getMinBuildHeight(), oz);
+                                BlockPos origin = new BlockPos(ox, heights.getMinY(), oz);
                                 long s = seed * 1_000_003L + calls;
                                 RandomSource a = new XoroshiroRandomSource(s);
                                 RandomSource b = new XoroshiroRandomSource(s);
@@ -105,8 +107,9 @@ public class EveryLayerTest {
             }
         }
         System.out.println("[EveryLayerTest] reads compared " + readsCompared + ", layer searches " + calls + ", positions " + positions
-            + ", most grounds found in one column " + maxLayers);
+            + ", most grounds found in one column " + maxLayers + ", columns continued " + (EveryLayer.CONTINUED.sum() - continuedBefore));
         assertTrue(positions > 1000, "too few positions found: " + positions);
+        assertTrue(EveryLayer.CONTINUED.sum() > continuedBefore, "no column was continued from its kept scan");
     }
 
     /**
@@ -128,7 +131,7 @@ public class EveryLayerTest {
         PlacementContext ctx = new PlacementContext(level, HarnessWorld.generator(r, kind), Optional.empty());
         IntProvider count = ConstantInt.of(8);
         CountOnEveryLayerPlacement vanilla = CountOnEveryLayerPlacement.of(count);
-        BlockPos origin = new BlockPos(FeatureRun.CENTER_X * 16, heights.getMinBuildHeight(), FeatureRun.CENTER_Z * 16);
+        BlockPos origin = new BlockPos(FeatureRun.CENTER_X * 16, heights.getMinY(), FeatureRun.CENTER_Z * 16);
         long bestVanilla = Long.MAX_VALUE;
         long bestFast = Long.MAX_VALUE;
         long sink = 0;
@@ -162,16 +165,16 @@ public class EveryLayerTest {
                 BlockState state = EXTRA[random.nextInt(EXTRA.length)];
                 int x = random.nextInt(16);
                 int z = random.nextInt(16);
-                int y = heights.getMinBuildHeight() + random.nextInt(heights.getHeight());
+                int y = heights.getMinY() + random.nextInt(heights.getHeight());
                 int thickness = 1 + random.nextInt(3);
-                for (int t = 0; t < thickness && y + t < heights.getMaxBuildHeight(); t++) {
+                for (int t = 0; t < thickness && y + t < heights.getMaxY() + 1; t++) {
                     set(chunk, heights, x, y + t, z, state);
                 }
             }
             if (random.nextInt(3) == 0) {
                 int section = random.nextInt(chunk.getSections().length);
                 BlockState fill = random.nextBoolean() ? Blocks.AIR.defaultBlockState() : Blocks.CAVE_AIR.defaultBlockState();
-                int y0 = heights.getMinBuildHeight() + section * 16;
+                int y0 = heights.getMinY() + section * 16;
                 for (int y = y0; y < y0 + 16; y++) {
                     for (int x = 0; x < 16; x++) {
                         for (int z = 0; z < 16; z++) {
@@ -191,7 +194,7 @@ public class EveryLayerTest {
     }
 
     private static void set(ProtoChunk chunk, LevelHeightAccessor heights, int x, int y, int z, BlockState state) {
-        LevelChunkSection section = chunk.getSection((y >> 4) - (heights.getMinBuildHeight() >> 4));
+        LevelChunkSection section = chunk.getSection((y >> 4) - (heights.getMinY() >> 4));
         section.setBlockState(x, y & 15, z, state, false);
     }
 }

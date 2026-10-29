@@ -53,14 +53,13 @@ public final class SelfCheck {
                 compare(log, "NormalNoise.getValue", normal.getValue(x, y, z), ReferenceNoise.normal(normal, x, y, z), x, y, z);
             }
 
-            // Legacy PerlinNoise with the 6-argument getValue, both origin modes.
+            // Legacy PerlinNoise with the 5-argument getValue.
             PerlinNoise legacy = PerlinNoise.createLegacyForBlendedNoise(new XoroshiroRandomSource(seed ^ 0x9E3779B97F4A7C15L), IntStream.rangeClosed(-7, 0));
             for (int i = 0; i < 10000; i++) {
                 double x = coord(rng), y = coord(rng), z = coord(rng);
                 double yScale = rng.nextDouble() * 20.0, yMax = rng.nextDouble() * 400.0 - 100.0;
-                boolean origin = rng.nextBoolean();
-                compare(log, "PerlinNoise.getValue(6)", legacy.getValue(x, y, z, yScale, yMax, origin), ReferenceNoise.perlin(legacy, x, y, z, yScale, yMax, origin), x, y, z);
-                compare(log, "PerlinNoise.getValue(3)", legacy.getValue(x, y, z), ReferenceNoise.perlin(legacy, x, y, z, 0.0, 0.0, false), x, y, z);
+                compare(log, "PerlinNoise.getValue(5)", legacy.getValue(x, y, z, yScale, yMax), ReferenceNoise.perlin(legacy, x, y, z, yScale, yMax), x, y, z);
+                compare(log, "PerlinNoise.getValue(3)", legacy.getValue(x, y, z), ReferenceNoise.perlin(legacy, x, y, z, 0.0, 0.0), x, y, z);
             }
 
             // BlendedNoise with the overworld parameters at cell-corner positions, near and far.

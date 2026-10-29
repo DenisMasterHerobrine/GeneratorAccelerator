@@ -15,21 +15,21 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.Litho
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryCells;
 import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Barnacles;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaClusters;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.FeatureCopies;
 import dev.denismasterherobrine.generatoraccelerator2.features.placement.EveryLayer;
-import dev.denismasterherobrine.generatoraccelerator2.features.placement.PatchRepeats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
 import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkMapHoldersAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.GenerationChunkHolderAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
 import dev.denismasterherobrine.generatoraccelerator2.storage.FastPack;
-import dev.denismasterherobrine.generatoraccelerator2.storage.LoadPrep;
 import dev.denismasterherobrine.generatoraccelerator2.storage.Precompress;
 import dev.denismasterherobrine.generatoraccelerator2.storage.RegionScan;
 import dev.denismasterherobrine.generatoraccelerator2.storage.RegionSync;
-import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import dev.denismasterherobrine.generatoraccelerator2.structure.HeightProbes;
 import dev.denismasterherobrine.generatoraccelerator2.structure.TemplatePlacement;
 import dev.denismasterherobrine.generatoraccelerator2.surface.NoiseBiomeMemo;
@@ -71,7 +71,7 @@ public final class StepsCommand {
             loaded++;
             ChunkStatus status = holder.getLatestStatus();
             byStatus.merge(status == null ? "none" : status.getName(), 1, Integer::sum);
-            if (holder.getGenerationRefCount() > 0) {
+            if (((GenerationChunkHolderAccessor) holder).ga2$generationRefCount().get() > 0) {
                 claimed++;
             }
             if (!holder.getSaveSyncFuture().isDone()) {
@@ -84,7 +84,7 @@ public final class StepsCommand {
             pending++;
             ChunkStatus status = holder.getLatestStatus();
             pendingByStatus.merge(status == null ? "none" : status.getName(), 1, Integer::sum);
-            if (holder.getGenerationRefCount() > 0) {
+            if (((GenerationChunkHolderAccessor) holder).ga2$generationRefCount().get() > 0) {
                 pendingClaimed++;
             }
             if (!holder.getSaveSyncFuture().isDone()) {
@@ -115,12 +115,20 @@ public final class StepsCommand {
         send(source, "features: parallel " + ParallelSteps.FEATURES_ASYNC.sum() + " (" + ParallelSteps.FEATURES_WAITED.sum() + " waited for a neighbour), inline "
             + ParallelSteps.FEATURES_INLINE.sum() + " (config " + SchedulingConfig.parallelFeatures() + ", guard radius " + SchedulingConfig.featuresGuardRadius()
             + "); light initializations that waited: " + ParallelSteps.LIGHT_WAITED.sum() + "; area locks now: " + locks[0] + " held, " + locks[1] + " waiting");
+        send(source, "features' locks: waited for " + ParallelSteps.FEATURES_LOCK_WAIT.describe() + "; held while queued on the lane "
+            + ParallelSteps.FEATURES_HOLD_QUEUED.describe() + ", while running " + ParallelSteps.FEATURES_HOLD_RUN.describe()
+            + "; longest holds: " + ParallelSteps.FEATURES_SLOWEST.describe());
         send(source, "surface builder: GA2 " + SurfaceHooks.CHUNKS_FAST.sum() + " (with other mods' rules "
             + SurfaceHooks.CHUNKS_OPAQUE.sum() + ", with their column code "
             + SurfaceHooks.CHUNKS_HOOKED.sum() + "), vanilla "
             + SurfaceHooks.CHUNKS_VANILLA.sum() + "; deep columns "
             + SurfaceHooks.COLUMNS_DEEP.sum() + ", bulk sections "
             + SurfaceHooks.SECTIONS_BULK.sum());
+        if (FrostedCaves.active()) {
+            send(source, "YUNG's Frosted Caves water by GA2: aquifers with every cell's biome sure " + FrostedCaves.SURE.sum() + ", in vanilla's order "
+                + FrostedCaves.UNSURE.sum() + ", without the step " + FrostedCaves.NO_REGISTRY.sum());
+        }
+        send(source, "modded features on per-thread copies: " + FeatureCopies.MADE.sum() + " copies made");
         send(source, "carver runner: GA2 " + CarverRunner.CHUNKS_FAST.sum() + ", vanilla "
             + CarverRunner.CHUNKS_VANILLA.sum() + "; starts replayed "
             + CarverRunner.CARVES_REPLAYED.sum() + ", other carvers "
@@ -144,9 +152,6 @@ public final class StepsCommand {
             send(source, "Supplementaries' barnacles searched once per direction: " + Barnacles.PLACEMENTS.sum()
                 + " placements, rounds left out " + Barnacles.ROUNDS_SKIPPED.sum());
         }
-        send(source, "random patch tries whose inner feature only reads: " + PatchRepeats.TRIED.sum()
-            + ", answered from an earlier try at the same position " + PatchRepeats.SKIPPED.sum()
-            + (HookTargets.allowed(HookTargets.PATCH_REPEATS) ? "" : " (off: another mod changes it)"));
         send(source, "structure references: parallel " + ParallelSteps.REFERENCES_ASYNC.sum() + ", inline " + ParallelSteps.REFERENCES_INLINE.sum()
             + "; light initializations on the pool " + ParallelSteps.LIGHT_INIT_ASYNC.sum());
         send(source, "light: fast engine " + (FastLight.on ? "on" : "off")
@@ -156,10 +161,8 @@ public final class StepsCommand {
             + " (pool tasks taken back " + Precompress.SKIPPED.sum()
             + ", waited for " + Precompress.WAITED.sum() + ")"
             + ", region old-chunk scans " + RegionScan.SCANS.sum());
-        send(source, SavePrep.stats());
         send(source, RegionSync.stats());
         send(source, TemplatePlacement.stats());
-        send(source, LoadPrep.stats());
         long aliased = BlueprintClimate.ALIASED.sum();
         if (aliased > 0) {
             long verified = BlueprintClimate.VERIFIED.sum();
@@ -187,6 +190,7 @@ public final class StepsCommand {
             long readsVerified = RegionReads.VERIFIED.sum();
             long layersVerified = EveryLayer.VERIFIED.sum();
             send(source, "regions reading in place: " + readRegions + "; layer placements transcribed: " + layerSearches
+                + " (columns continued: " + EveryLayer.CONTINUED.sum() + ")"
                 + (readsVerified > 0 ? "; reads verified " + readsVerified + ", differing " + RegionReads.DIFFERING.sum() : "")
                 + (layersVerified > 0 ? "; layer scans verified " + layersVerified + ", differing " + EveryLayer.DIFFERING.sum() : ""));
         }

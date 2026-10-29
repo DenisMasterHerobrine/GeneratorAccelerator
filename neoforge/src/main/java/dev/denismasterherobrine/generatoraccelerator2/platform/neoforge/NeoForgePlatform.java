@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.fml.loading.LoadingModList;
 import net.neoforged.fml.loading.moddiscovery.ModInfo;
@@ -18,7 +19,7 @@ public final class NeoForgePlatform implements Platform.Service {
     /** The loading mod list: complete while mixins are applied, before {@link ModList} exists. */
     @Override
     public boolean isModLoaded(String modId) {
-        LoadingModList list = LoadingModList.get();
+        LoadingModList list = loadingMods();
         if (list == null) {
             return false;
         }
@@ -40,7 +41,7 @@ public final class NeoForgePlatform implements Platform.Service {
             }
             return out;
         }
-        LoadingModList loading = LoadingModList.get();
+        LoadingModList loading = loadingMods();
         if (loading != null) {
             for (ModInfo info : loading.getMods()) {
                 out.add(new Platform.ModEntry(info.getModId(), info.getVersion().toString()));
@@ -49,17 +50,16 @@ public final class NeoForgePlatform implements Platform.Service {
         return out;
     }
 
-    /** By the type's module: each mod file is a module named after its jar. */
+    /** By the mod file that holds the type's class file. */
     @Override
     public String modIdOf(Class<?> type) {
-        Module module = type.getModule();
-        String moduleName = module != null && module.isNamed() ? module.getName() : null;
         ModList list = ModList.get();
-        if (list == null || moduleName == null) {
+        if (list == null) {
             return null;
         }
+        String classFile = type.getName().replace('.', '/') + ".class";
         for (IModFileInfo info : list.getModFiles()) {
-            if (moduleName.equals(info.getFile().getSecureJar().name()) && !info.getMods().isEmpty()) {
+            if (!info.getMods().isEmpty() && info.getFile().getContents().containsFile(classFile)) {
                 return info.getMods().get(0).getModId();
             }
         }
@@ -78,7 +78,7 @@ public final class NeoForgePlatform implements Platform.Service {
 
     @Override
     public boolean isDevelopment() {
-        return !FMLEnvironment.production;
+        return !FMLEnvironment.isProduction();
     }
 
     @Override
@@ -90,5 +90,10 @@ public final class NeoForgePlatform implements Platform.Service {
     @Override
     public InputStream openNameTable() {
         return null;
+    }
+
+    private static LoadingModList loadingMods() {
+        FMLLoader loader = FMLLoader.getCurrentOrNull();
+        return loader != null ? loader.getLoadingModList() : null;
     }
 }

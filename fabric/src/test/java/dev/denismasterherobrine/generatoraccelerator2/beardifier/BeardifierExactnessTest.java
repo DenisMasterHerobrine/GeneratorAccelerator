@@ -2,12 +2,11 @@ package dev.denismasterherobrine.generatoraccelerator2.beardifier;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Supplier;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -87,25 +86,11 @@ public class BeardifierExactnessTest {
         List<JigsawJunction> junctions = new ObjectArrayList<>();
         junctions.add(new JigsawJunction(4, 2, 4, 0, StructureTemplatePool.Projection.RIGID));
 
-        // Iterators handed over mid-list: vanilla's first compute sees a suffix, later ones everything.
-        Supplier<Beardifier> midList = () -> {
-            ObjectListIterator<Beardifier.Rigid> it = new ObjectArrayList<>(pieces).iterator();
-            it.next();
-            return new Beardifier(it, new ObjectArrayList<>(junctions).iterator());
-        };
-        BeardifierFastPath.override = false;
-        Beardifier vanilla = midList.get();
-        BeardifierFastPath.override = true;
-        Beardifier fast = midList.get();
-        for (int i = 0; i < 3; i++) {
-            compare(vanilla, fast, 5, 3, 5, -1);
-        }
-
         // Coordinates beyond the overflow-safe range keep vanilla's arithmetic.
         List<Beardifier.Rigid> far = new ObjectArrayList<>(pieces);
         far.add(new Beardifier.Rigid(new BoundingBox(1 << 30, 0, 0, (1 << 30) + 4, 4, 4), TerrainAdjustment.BEARD_BOX, 0));
-        vanilla = beardifier(far, junctions, false);
-        fast = beardifier(far, junctions, true);
+        Beardifier vanilla = beardifier(far, junctions, false);
+        Beardifier fast = beardifier(far, junctions, true);
         compare(vanilla, fast, 5, 3, 5, -1);
         compare(vanilla, fast, (1 << 30) + 2, 3, 2, -1);
         assertTrue(state(fast) == 0, "far piece must keep the vanilla path");
@@ -124,7 +109,7 @@ public class BeardifierExactnessTest {
     private static Beardifier beardifier(List<Beardifier.Rigid> pieces, List<JigsawJunction> junctions, boolean index) {
         BeardifierFastPath.override = index;
         try {
-            return new Beardifier(new ObjectArrayList<>(pieces).iterator(), new ObjectArrayList<>(junctions).iterator());
+            return FillHarness.beardifier(pieces, junctions);
         } finally {
             BeardifierFastPath.override = null;
         }

@@ -101,7 +101,7 @@ public final class FeaturesCompat {
     public static final FastPath ORE = new FastPath("ore"), GEODE = new FastPath("geode"), DISK = new FastPath("disk"), SPRING = new FastPath("spring"),
         SNOW_AND_FREEZE = new FastPath("snowAndFreeze"), SEAGRASS = new FastPath("seagrass"), KELP = new FastPath("kelp"),
         MULTIFACE = new FastPath("multiface"), MONSTER_ROOM = new FastPath("monsterRoom"), SIMPLE_BLOCK = new FastPath("simpleBlock"),
-        SCULK = new FastPath("sculk");
+        SCULK = new FastPath("sculk"), REPLACE_BLOBS = new FastPath("replaceBlobs");
 
     public static boolean decorationAllowed() {
         return FeaturesConfig.decorationSetup() && DECORATION.allowed();

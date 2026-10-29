@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -109,9 +110,11 @@ final class ClGen {
     final int minY;
     final int height;
     final int seaLevel;
+    /** The router's surface level as a {@code find_top_surface}, or null for any other function. */
+    SurfaceLevels.Top surfaceTop;
 
-    /** The APOINT roots, in this order. Their functions are named {@code ap_<name>}. */
-    static final String[] APOINT_ROOTS = { "initial_density_without_jaggedness", "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread",
+    /** The APOINT roots after the surface level's, in this order. Their functions are named {@code ap_<name>}. */
+    static final String[] APOINT_ROOTS = { "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread",
         "lava", "temperature", "vegetation", "continents", "ridges" };
 
     private final List<Node.SplineMulti> splines = new ArrayList<>();
@@ -160,6 +163,21 @@ final class ClGen {
         return prec == Prec.F64 ? "double" : "float";
     }
 
+    /** The OpenCL body that sets {@code res} to the column's preliminary surface level, as {@code ClEmitter#surfaceWalk} does. */
+    private String surfaceWalk() {
+        if (surfaceTop == null) {
+            return "  c->by = 0; reset_APOINT_Y(c);\n  int res = jfloor((double) ap_surface_level(c));\n";
+        }
+        int ch = surfaceTop.cellHeight(), lb = surfaceTop.lowerBound();
+        return "  c->by = 0; reset_APOINT_Y(c);\n"
+            + "  int top = jfloor((double) ap_surface_upper(c) / " + ch + ".0) * " + ch + ";\n"
+            + "  int res = " + lb + ";\n"
+            + "  for (int y = top; top > " + lb + " && y >= " + lb + "; y -= " + ch + ") {\n"
+            + "    c->by = y; reset_APOINT_Y(c);\n"
+            + "    if ((double) ap_surface_density(c) > 0.0) { res = y; break; }\n"
+            + "  }\n";
+    }
+
     private Node routerRoot(String name) {
         Node n = router.get(name);
         if (n == null) {
@@ -176,8 +194,19 @@ final class ClGen {
         List<Node> blockRoots = List.of(cellRoot, routerRoot("barrier"));
         List<Node> veinRoots = List.of(routerRoot("vein_toggle"), routerRoot("vein_ridged"), routerRoot("vein_gap"));
         List<Node> apointRoots = new ArrayList<>();
+        List<String> apointNames = new ArrayList<>();
+        if (surfaceTop != null) {
+            apointRoots.add(routerRoot(SurfaceLevels.DENSITY));
+            apointNames.add("surface_density");
+            apointRoots.add(routerRoot(SurfaceLevels.UPPER_BOUND));
+            apointNames.add("surface_upper");
+        } else {
+            apointRoots.add(routerRoot(SurfaceLevels.WHOLE));
+            apointNames.add("surface_level");
+        }
         for (String name : APOINT_ROOTS) {
             apointRoots.add(routerRoot(name));
+            apointNames.add(name);
         }
         // every flat cache any context reads (a flat cache inside another is read transparently by the flat fill)
         Map<Node, Boolean> seen = new IdentityHashMap<>();
@@ -218,7 +247,7 @@ final class ClGen {
         rootFunctions(Mode.CORNER, "cr_", roots, null, rootFns, rootProtos);
         rootFunctions(Mode.BLOCK, "bk_", blockRoots, new String[] { "final", "barrier" }, rootFns, rootProtos);
         rootFunctions(Mode.VEIN, "vn_", veinRoots, new String[] { "toggle", "ridged", "gap" }, rootFns, rootProtos);
-        rootFunctions(Mode.APOINT, "ap_", apointRoots, APOINT_ROOTS, rootFns, rootProtos);
+        rootFunctions(Mode.APOINT, "ap_", apointRoots, apointNames.toArray(String[]::new), rootFns, rootProtos);
         rootFunctions(Mode.XZBLOCK, "xb_", blockHoisted, null, rootFns, rootProtos);
 
         StringBuilder src = new StringBuilder();
@@ -521,22 +550,16 @@ final class ClGen {
         k.append("  int g = get_global_id(0); if (g >= nsx * nsz) return;\n").append(ctxInit()).append(COMMON_INIT);
         k.append("  c->cqx0 = 0x40000000; c->cqz0 = 0x40000000;\n");
         k.append("  c->bx = (sqx0 + g / nsz) << 2; c->bz = (sqz0 + g % nsz) << 2;\n");
-        k.append("  int res = 0x7fffffff;\n");
-        k.append("  for (int y = ").append(minY + height).append("; y >= ").append(minY).append("; y -= ").append(cellHeight).append(") {\n");
-        k.append("    c->by = y; reset_APOINT_Y(c);\n");
-        k.append("    if ((double) ap_initial_density_without_jaggedness(c) > 0.390625) { res = y; break; }\n");
-        k.append("  }\n  surf[g] = res;\n}\n");
+        k.append(surfaceWalk());
+        k.append("  surf[g] = res;\n}\n");
         // each chunk's own 5x5 quart columns, with the chunk's flat cache view (only used when a flat cache reads y)
         k.append("__kernel void k_surface_in(").append(COMMON_ARGS).append(", __global int* surfIn, int cx0, int cz0, int hchunks, int nchunks) {\n");
         k.append("  int g = get_global_id(0); if (g >= nchunks * 25) return;\n").append(ctxInit()).append(COMMON_INIT);
         k.append("  int b = g / 25; int col = g % 25; int bcx = cx0 + b / hchunks; int bcz = cz0 + b % hchunks;\n");
         k.append("  c->cqx0 = bcx * 4; c->cqz0 = bcz * 4;\n");
         k.append("  c->bx = (bcx * 4 + col / 5) << 2; c->bz = (bcz * 4 + col % 5) << 2;\n");
-        k.append("  int res = 0x7fffffff;\n");
-        k.append("  for (int y = ").append(minY + height).append("; y >= ").append(minY).append("; y -= ").append(cellHeight).append(") {\n");
-        k.append("    c->by = y; reset_APOINT_Y(c);\n");
-        k.append("    if ((double) ap_initial_density_without_jaggedness(c) > 0.390625) { res = y; break; }\n");
-        k.append("  }\n  surfIn[g] = res;\n}\n");
+        k.append(surfaceWalk());
+        k.append("  surfIn[g] = res;\n}\n");
         // aquifer cells
         k.append("__kernel void k_status(").append(COMMON_ARGS)
             .append(", __global const int* surf, __global const int* surfIn, int sqx0, int sqz0, int nsz, __global int* cells, int cx0, int cz0, int hchunks, int nchunks, ulong aqLo, ulong aqHi) {\n");
@@ -993,6 +1016,7 @@ final class ClGen {
                         case CUBE -> v + " * " + v + " * " + v;
                         case HALF_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.5);
                         case QUARTER_NEGATIVE -> v + " > 0 ? " + v + " : " + v + " * " + lit(0.25);
+                        case INVERT -> lit(1.0) + " / " + v;
                         case SQUEEZE -> "jsqueeze(" + v + ")";
                     });
                 }

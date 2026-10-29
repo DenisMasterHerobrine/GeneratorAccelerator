@@ -650,10 +650,10 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
     /** The block types of stored section {@code key} (slot {@code slot}) as the light engine reads its blocks. */
     private static void blocks(Scratch s, LightTypes types, BlockGetter level, LightEngineAccessor e, int slot, long key) {
         int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
-        ChunkInfo c = s.chunks.get(ChunkPos.asLong(sx, sz));
+        ChunkInfo c = s.chunks.get(ChunkPos.pack(sx, sz));
         if (c == null) {
             c = chunkInfo(e.ga2pl$chunkSource().getChunkForLighting(sx, sz));
-            s.chunks.put(ChunkPos.asLong(sx, sz), c);
+            s.chunks.put(ChunkPos.pack(sx, sz), c);
         }
         if (c.kind == KIND_NONE) {
             single(s, slot, types.type(Blocks.BEDROCK.defaultBlockState()));
@@ -754,11 +754,11 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
         Class<?> c = chunk.getClass();
         if (c == ProtoChunk.class) {
             ChunkAccess a = (ChunkAccess) chunk;
-            return new ChunkInfo(chunk, KIND_PROTO, a.getSections(), a.getMinSection());
+            return new ChunkInfo(chunk, KIND_PROTO, a.getSections(), a.getMinSectionY());
         }
         LevelChunk level = c == LevelChunk.class ? (LevelChunk) chunk : c == ImposterProtoChunk.class ? ((ImposterProtoChunk) chunk).getWrapped() : null;
         if (level != null && level.getClass() == LevelChunk.class && !level.getLevel().isDebug()) {
-            return new ChunkInfo(chunk, KIND_LEVEL, level.getSections(), level.getMinSection());
+            return new ChunkInfo(chunk, KIND_LEVEL, level.getSections(), level.getMinSectionY());
         }
         return new ChunkInfo(chunk, KIND_OTHER, null, 0);
     }

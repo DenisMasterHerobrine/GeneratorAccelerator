@@ -51,7 +51,7 @@ public final class MarkerPairing {
         p.pair(base.erosion(), wrapped.erosion());
         p.pair(base.depth(), wrapped.depth());
         p.pair(base.ridges(), wrapped.ridges());
-        p.pair(base.initialDensityWithoutJaggedness(), wrapped.initialDensityWithoutJaggedness());
+        p.pair(base.preliminarySurfaceLevel(), wrapped.preliminarySurfaceLevel());
         p.pair(base.finalDensity(), wrapped.finalDensity());
         p.pair(base.veinToggle(), wrapped.veinToggle());
         p.pair(base.veinRidged(), wrapped.veinRidged());

@@ -10,6 +10,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
@@ -36,9 +37,9 @@ public final class BeardExtras {
     private BeardExtras() {}
 
     /**
-     * An enhanced beardifier: its mixin and the interface methods of its two lists. A null or exhausted list means no
-     * pieces. When {@code data} is null, {@code pieces} instead names the provider's own no-argument method on the
-     * beardifier that reports it has no pieces.
+     * An enhanced beardifier: its mixin and the interface methods of its two lists (iterators, or the lists themselves for
+     * Moog's Structures on 26.1). A null, exhausted or empty list means no pieces. When {@code data} is null, {@code pieces}
+     * instead names the provider's own no-argument method on the beardifier that reports it has no pieces.
      */
     private record Provider(String mixin, String data, String pieces, String junctions) {}
 
@@ -51,7 +52,7 @@ public final class BeardExtras {
             "getEnhancedRigidIterator", "getEnhancedJunctionIterator"),
         new Provider("com.finndog.moogs_structures.mixins.terrainadaptation.BeardifierMixin",
             "com.finndog.moogs_structures.world.structures.terrainadaptation.beardifier.EnhancedBeardifierData",
-            "moogs_structures_getEnhancedPieceIterator", "moogs_structures_getEnhancedJunctionIterator"),
+            "moogs_structures_getEnhancedPieces", "moogs_structures_getEnhancedJunctions"),
         // a @WrapMethod: the method's value plus its witch villages' density, or the value alone when it has no such pieces
         new Provider("com.faboslav.villagesandpillages.common.mixin.BeardifierMixin", null,
             "villagesandpillages$hasNoTerrainAdaptationData", null));
@@ -180,8 +181,8 @@ public final class BeardExtras {
         return null;
     }
 
-    private static boolean empty(Object iterator) {
-        return iterator == null || iterator instanceof Iterator<?> it && !it.hasNext();
+    private static boolean empty(Object list) {
+        return list == null || list instanceof Iterator<?> it && !it.hasNext() || list instanceof Collection<?> c && c.isEmpty();
     }
 
     /**

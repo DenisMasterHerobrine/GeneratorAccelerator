@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.aquifer.AquiferFastPath;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.CellAir;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.Ga2Aquifer;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
@@ -36,19 +37,19 @@ import java.util.Arrays;
 /**
  * Exact fast path for {@code NoiseBasedAquifer.computeSubstance}.
  *
- * <p>Vanilla looks for the three nearest of 12 aquifer cells (2 x 3 x 2 around the block) for every
- * block that is not solid. That includes every air block of the open sky. Blocks that share the same
+ * <p>Vanilla looks for the four nearest of 12 aquifer cells (2 x 3 x 2 around the block) for every
+ * block that is not solid, up to its chunk's sampling height ({@code skipSamplingAboveY}). Blocks that share the same
  * 12 cells form a neighbourhood. The first time a neighbourhood is seen, its 12 statuses are computed
  * with vanilla's own code and caches, and the neighbourhood is classified:
  * <ul>
- * <li>All 12 statuses have the same fluid level and type. Whichever three are nearest, the block is
+ * <li>All 12 statuses have the same fluid level and type. Whichever four are nearest, the block is
  *     {@code status.at(y)} and every pressure term is 0. The result never depends on the search.</li>
  * <li>Otherwise, the block is at least 5 blocks above every fluid level of the 12. The block is air
  *     and every pressure term is negative, so the result is air. The barrier noise is not even sampled.</li>
  * </ul>
- * In both cases only the {@code shouldScheduleFluidUpdate} flag depends on the two nearest
- * distances. That flag is computed when someone reads it. Every other block runs vanilla's algorithm
- * with a branch-free top-3 search over cached cell centres. The search reproduces vanilla's tie order.
+ * In both cases only the {@code shouldScheduleFluidUpdate} flag depends on the four nearest cells,
+ * whose statuses are known. That flag is computed when someone reads it. Every other block runs vanilla's algorithm
+ * with a branch-free top-4 search over cached cell centres. The search reproduces vanilla's tie order.
  *
  * <p>Classification computes statuses that vanilla might compute later or not at all. So it only runs
  * up front when the status fields read no order-sensitive chunk state (see {@code OrderIndependence}).
@@ -82,6 +83,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Shadow @Final protected int gridSizeZ;
     @Shadow @Final private NoiseChunk noiseChunk;
     @Shadow @Final private static int[][] SURFACE_SAMPLING_OFFSETS_IN_CHUNKS;
+    @Shadow @Final private int skipSamplingAboveY;
 
     // Better Caves' liquid regions this aquifer was made with, and the table of the chunk last asked (aquifer.LiquidRegions)
     @Unique private boolean ga2$lqResolved;
@@ -124,7 +126,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     }
 
     @Shadow
-    private Aquifer.FluidStatus getAquiferStatus(long location) {
+    private Aquifer.FluidStatus getAquiferStatus(int index) {
         throw new AssertionError();
     }
 
@@ -143,6 +145,11 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Unique private static final int GA2_AIR_MARGIN = 5;
 
     @Unique private int ga2$mode;
+    /** Each cell's Frosted Caves answer looked up ahead and the cell centres they were looked up at, or null to look up live (FrostedCaves). */
+    @Unique private byte[] ga2$frosted;
+    @Unique private long[] ga2$frostedAt;
+    /** Whether the Frosted Caves answers were decided (before the first status, FrostedCaves). */
+    @Unique private boolean ga2$frostedDecided;
     @Unique private int ga2$gridSizeY;
     /** Index offsets of the 12 candidate cells from the neighbourhood key, in vanilla's loop order. */
     @Unique private int[] ga2$offsets;
@@ -164,6 +171,8 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     @Unique private final int[] ga2$nz = new int[12];
     /** Per candidate of the current search: squared distance shifted left by 4, with {@code 15 - order} in the low bits. */
     @Unique private final int[] ga2$packed = new int[12];
+    /** The packed keys of the four nearest cells of the last {@link #ga2$nearest} call, nearest first. */
+    @Unique private final int[] ga2$near = new int[4];
     /** {@link AquiferFastPath#COLUMNS} mode. The chunk's surface level memo, and per neighbourhood the column the last classify attempt lacked. */
     @Unique private Long2IntMap ga2$levels;
     @Unique private long[] ga2$waitingFor;
@@ -244,6 +253,51 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         this.ga2$mode = mode;
     }
 
+    /**
+     * Looks up every cell's Frosted Caves answer before the aquifer's first status (FrostedCaves). The aquifer is made with its
+     * NoiseChunk at the biome step, and the mod notes the biome registry on that NoiseChunk only at the step's end, so this waits for the
+     * fill. When an answer depends on the order of the lookups, the aquifer searches in vanilla's order instead.
+     */
+    @Unique
+    private void ga2$frostedDecide() {
+        this.ga2$frostedDecided = true;
+        if (!FrostedCaves.active() || this.ga2$mode == AquiferFastPath.OFF || this.ga2$mode == AquiferFastPath.SEARCH) {
+            return;
+        }
+        long[] at = new long[this.aquiferLocationCache.length];
+        byte[] bits = FrostedCaves.cells(this.noiseChunk, this.positionalRandomFactory, this.minGridX, this.minGridY, this.minGridZ, this.gridSizeX,
+            this.ga2$gridSizeY, this.gridSizeZ, at);
+        if (bits == null) {
+            this.ga2$mode = AquiferFastPath.SEARCH;
+        } else if (bits != FrostedCaves.NO_STEP) {
+            this.ga2$frosted = bits;
+            this.ga2$frostedAt = at;
+        }
+    }
+
+    /** YUNG's Cave Biomes' Frosted Caves water, where GA2 took its handler over: from the answer looked up ahead, or live. */
+    @Inject(method = "computeFluid", at = @At("RETURN"), cancellable = true)
+    private void ga2$frostedCaves(int x, int y, int z, CallbackInfoReturnable<Aquifer.FluidStatus> cir) {
+        if (!FrostedCaves.active()) {
+            return;
+        }
+        int known = -1;
+        byte[] bits = this.ga2$frosted;
+        if (bits != null) {
+            // vanilla's gridX, gridY, gridZ and getIndex
+            int gx = Math.floorDiv(x, 16) - this.minGridX, gy = Math.floorDiv(y, 12) - this.minGridY, gz = Math.floorDiv(z, 16) - this.minGridZ;
+            int i = (gy * this.gridSizeZ + gz) * this.gridSizeX + gx;
+            if (gx >= 0 && gx < this.gridSizeX && gz >= 0 && gz < this.gridSizeZ && i >= 0 && i < bits.length && this.ga2$frostedAt[i] == BlockPos.asLong(x, y, z)) {
+                known = bits[i];
+            }
+        }
+        Aquifer.FluidStatus status = cir.getReturnValue();
+        Aquifer.FluidStatus out = FrostedCaves.apply(this.noiseChunk, x, y, z, status, known);
+        if (out != status) {
+            cir.setReturnValue(out);
+        }
+    }
+
     @Inject(method = "computeSubstance", at = @At("HEAD"), cancellable = true)
     private void ga2$computeSubstance(DensityFunction.FunctionContext context, double density, CallbackInfoReturnable<BlockState> cir) {
         if (this.ga2$mode != AquiferFastPath.OFF) {
@@ -306,6 +360,9 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     /** The fast path at {@code x, y, z}. {@code context} is that position's, or null if the caller has none (made if needed). */
     @Unique
     private Object ga2$compute(DensityFunction.FunctionContext context, double density, int x, int y, int z) {
+        if (!this.ga2$frostedDecided) {
+            this.ga2$frostedDecide();
+        }
         if (density > 0.0) {
             if (AquiferFastPath.STATS) {
                 AquiferFastPath.SOLID.increment();
@@ -314,7 +371,17 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             this.shouldScheduleFluidUpdate = false;
             return null;
         }
-        if (this.globalFluidPicker.computeFluid(x, y, z).at(y).is(Blocks.LAVA)) {
+        Aquifer.FluidStatus global = this.globalFluidPicker.computeFluid(x, y, z);
+        if (y > this.skipSamplingAboveY) {
+            // vanilla samples no cell above its chunk's surfaces
+            if (AquiferFastPath.STATS) {
+                AquiferFastPath.ABOVE_SAMPLING.increment();
+            }
+            this.ga2$pending = false;
+            this.shouldScheduleFluidUpdate = false;
+            return global.at(y);
+        }
+        if (global.at(y).is(Blocks.LAVA)) {
             if (AquiferFastPath.STATS) {
                 AquiferFastPath.LAVA.increment();
             }
@@ -409,6 +476,9 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
 
     @Override
     public boolean ga2$cellAir(int x0, int y0, int z0, int w, int h) {
+        if (!this.ga2$frostedDecided) {
+            this.ga2$frostedDecide();
+        }
         if (this.ga2$mode == AquiferFastPath.OFF || !CellAir.noLava(this.globalFluidPicker, x0, y0, z0, w, h)) {
             return false;
         }
@@ -418,6 +488,18 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
             if (table != null && y0 <= table.altitude()) {
                 return false;
             }
+        }
+        // above the sampling height a block is the picker's fluid
+        int top = y0 + h - 1;
+        if (top > this.skipSamplingAboveY) {
+            int from = Math.max(y0, this.skipSamplingAboveY + 1);
+            if (!CellAir.allAir(this.globalFluidPicker, x0, from, z0, w, top - from + 1)) {
+                return false;
+            }
+            if (y0 > this.skipSamplingAboveY) {
+                return true;
+            }
+            h = this.skipSamplingAboveY - y0 + 1;
         }
         int gx0 = (x0 - 5) >> 4;
         int gx1 = (x0 + w - 6) >> 4;
@@ -484,13 +566,13 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     /**
      * Decides a box of a neighbourhood that is not classified (search mode). The decision uses the statuses that vanilla's
      * searches have computed so far, in vanilla's order. The candidates are the neighbourhood's cells that can be among the
-     * three nearest to some block of the box. Returns {@link #GA2_BOX_UNIFORM} when every candidate has its status and those
+     * four nearest to some block of the box. Returns {@link #GA2_BOX_UNIFORM} when every candidate has its status and those
      * statuses are equal ({@link #ga2$boxStatus}). Every block of the box is then {@code status.at(y)} and every pressure term
      * is 0, as for a uniform neighbourhood. Returns {@link #GA2_BOX_AIR} when all candidates have fluid levels at least 5
      * below the box. Every block of the box is then air, and no pressure term samples the barrier noise (see the class
-     * comment). In both cases vanilla's searches in the box would only read those statuses and compute nothing. A cell is
-     * never among the three nearest if three other cells are strictly nearer at every block of the box, that is, if their
-     * farthest distance is below the cell's nearest distance. Among equal distances vanilla ranks by loop order, so only
+     * comment). In both cases vanilla's searches in the box would only read those statuses and compute nothing, the fourth
+     * nearest included, which the flag may read. A cell is never among the four nearest if four other cells are strictly
+     * nearer at every block of the box, that is, if their farthest distance is below the cell's nearest distance. Among equal distances vanilla ranks by loop order, so only
      * strictly nearer cells exclude a cell. Returns {@link #GA2_BOX_SEARCH} when a candidate's status is missing (vanilla's
      * search could compute it inside the box) or neither condition holds.
      */
@@ -526,7 +608,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
                     closer++;
                 }
             }
-            if (closer >= 3) {
+            if (closer >= 4) {
                 continue;
             }
             Aquifer.FluidStatus status = cache[key + offsets[o]];
@@ -579,11 +661,11 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
 
     /** {@code getAquiferStatus}, counting the statuses it computes. A box answered "search" is decided again after each new status. */
     @Unique
-    private Aquifer.FluidStatus ga2$status(int index, long location) {
+    private Aquifer.FluidStatus ga2$status(int index) {
         if (this.aquiferCache[index] == null) {
             this.ga2$epoch++;
         }
-        return this.getAquiferStatus(location);
+        return this.getAquiferStatus(index);
     }
 
     @Unique
@@ -667,7 +749,7 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         boolean bounded = true;
         int maxLevel = Integer.MIN_VALUE;
         for (int o = 0; o < 12; o++) {
-            Aquifer.FluidStatus status = this.getAquiferStatus(this.aquiferLocationCache[key + offsets[o]]);
+            Aquifer.FluidStatus status = this.getAquiferStatus(key + offsets[o]);
             FluidStatusAccessor acc = (FluidStatusAccessor) (Object) status;
             int level = acc.ga2$fluidLevel();
             BlockState type = acc.ga2$fluidType();
@@ -796,12 +878,12 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
     }
 
     /**
-     * Vanilla's algorithm. The three nearest cells are found with packed keys
-     * {@code distance << 4 | (15 - order)}. Among equal distances, the later cell in vanilla's loop
-     * order ranks nearer. Vanilla's {@code >=} insertion does the same.
+     * The four nearest of a neighbourhood's cells to a block, as packed keys {@code distance << 4 | (15 - order)} in
+     * {@link #ga2$near}, nearest first. Among equal distances, the later cell in vanilla's loop order ranks nearer.
+     * Vanilla's {@code >=} insertion does the same.
      */
     @Unique
-    private BlockState ga2$search(DensityFunction.FunctionContext context, double density, int x, int y, int z, int key) {
+    private void ga2$nearest(int key, int x, int y, int z) {
         int[] offsets = this.ga2$offsets;
         int[] nx = this.ga2$nx;
         int[] ny = this.ga2$ny;
@@ -827,29 +909,46 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         int m1 = Integer.MAX_VALUE;
         int m2 = Integer.MAX_VALUE;
         int m3 = Integer.MAX_VALUE;
+        int m4 = Integer.MAX_VALUE;
         for (int o = 0; o < 12; o++) {
             int p = packed[o];
             int t = Math.max(m1, p);
             m1 = Math.min(m1, p);
             int u = Math.max(m2, t);
             m2 = Math.min(m2, t);
+            int v = Math.max(m3, u);
             m3 = Math.min(m3, u);
+            m4 = Math.min(m4, v);
         }
-        int k1 = m1 >> 4;
-        int l1 = m2 >> 4;
-        int i2 = m3 >> 4;
-        int c1 = key + offsets[15 - (m1 & 15)];
-        int c2 = key + offsets[15 - (m2 & 15)];
-        int c3 = key + offsets[15 - (m3 & 15)];
-        long j2 = this.aquiferLocationCache[c1];
-        long k2 = this.aquiferLocationCache[c2];
-        long l2 = this.aquiferLocationCache[c3];
+        int[] nearest = this.ga2$near;
+        nearest[0] = m1;
+        nearest[1] = m2;
+        nearest[2] = m3;
+        nearest[3] = m4;
+    }
 
-        Aquifer.FluidStatus status1 = this.ga2$status(c1, j2);
-        double d1 = similarity(k1, l1);
+    /** The cell index of a packed key from {@link #ga2$near}. */
+    @Unique
+    private int ga2$cell(int key, int packed) {
+        return key + this.ga2$offsets[15 - (packed & 15)];
+    }
+
+    /**
+     * Vanilla's algorithm over the four nearest cells ({@link #ga2$nearest}). The statuses are computed when vanilla computes
+     * them, in the same order.
+     */
+    @Unique
+    private BlockState ga2$search(DensityFunction.FunctionContext context, double density, int x, int y, int z, int key) {
+        this.ga2$nearest(key, x, y, z);
+        int[] nearest = this.ga2$near;
+        int d1 = nearest[0] >> 4;
+        int d2 = nearest[1] >> 4;
+        int d3 = nearest[2] >> 4;
+        Aquifer.FluidStatus status1 = this.ga2$status(this.ga2$cell(key, nearest[0]));
+        double similarity12 = similarity(d1, d2);
         BlockState state = status1.at(y);
-        if (d1 <= 0.0) {
-            this.shouldScheduleFluidUpdate = d1 >= FLOWING_UPDATE_SIMULARITY;
+        if (similarity12 <= 0.0) {
+            this.shouldScheduleFluidUpdate = similarity12 >= FLOWING_UPDATE_SIMULARITY && !status1.equals(this.ga2$status(this.ga2$cell(key, nearest[1])));
             return state;
         } else if (state.is(Blocks.WATER) && this.globalFluidPicker.computeFluid(x, y - 1, z).at(y - 1).is(Blocks.LAVA)) {
             this.shouldScheduleFluidUpdate = true;
@@ -862,62 +961,69 @@ public abstract class NoiseBasedAquiferMixin implements Ga2Aquifer {
         // Vanilla's per-block barrier value holder, reset. calculatePressure samples the barrier noise into it once.
         MutableDouble barrier = this.ga2$barrier;
         barrier.setValue(Double.NaN);
-        Aquifer.FluidStatus status2 = this.ga2$status(c2, k2);
-        double d2 = d1 * this.calculatePressure(context, barrier, status1, status2);
-        if (density + d2 > 0.0) {
+        Aquifer.FluidStatus status2 = this.ga2$status(this.ga2$cell(key, nearest[1]));
+        if (density + similarity12 * this.calculatePressure(context, barrier, status1, status2) > 0.0) {
             this.shouldScheduleFluidUpdate = false;
             return null;
         }
-        Aquifer.FluidStatus status3 = this.ga2$status(c3, l2);
-        double d0 = similarity(k1, i2);
-        if (d0 > 0.0) {
-            double d3 = d1 * d0 * this.calculatePressure(context, barrier, status1, status3);
-            if (density + d3 > 0.0) {
-                this.shouldScheduleFluidUpdate = false;
-                return null;
-            }
+        Aquifer.FluidStatus status3 = this.ga2$status(this.ga2$cell(key, nearest[2]));
+        double similarity13 = similarity(d1, d3);
+        if (similarity13 > 0.0 && density + similarity12 * similarity13 * this.calculatePressure(context, barrier, status1, status3) > 0.0) {
+            this.shouldScheduleFluidUpdate = false;
+            return null;
         }
-        double d4 = similarity(l1, i2);
-        if (d4 > 0.0) {
-            double d5 = d1 * d4 * this.calculatePressure(context, barrier, status2, status3);
-            if (density + d5 > 0.0) {
-                this.shouldScheduleFluidUpdate = false;
-                return null;
-            }
+        double similarity23 = similarity(d2, d3);
+        if (similarity23 > 0.0 && density + similarity12 * similarity23 * this.calculatePressure(context, barrier, status2, status3) > 0.0) {
+            this.shouldScheduleFluidUpdate = false;
+            return null;
         }
-        this.shouldScheduleFluidUpdate = true;
+        // the fourth status only when vanilla asks for it
+        this.shouldScheduleFluidUpdate = !status1.equals(status2)
+            || similarity23 >= FLOWING_UPDATE_SIMULARITY && !status2.equals(status3)
+            || similarity13 >= FLOWING_UPDATE_SIMULARITY && !status1.equals(status3)
+            || similarity13 >= FLOWING_UPDATE_SIMULARITY && similarity(d1, nearest[3] >> 4) >= FLOWING_UPDATE_SIMULARITY
+                && !status1.equals(this.ga2$status(this.ga2$cell(key, nearest[3])));
         return state;
     }
 
     /**
-     * Resolves the flag of a classified block. Vanilla sets {@code d1 >= FLOWING_UPDATE_SIMULARITY} when
-     * the two nearest distances give {@code d1 <= 0}. On every other path such a block can take, vanilla
-     * sets true.
+     * Resolves the flag of a block answered from a classified neighbourhood or a decided box. Such a block is never solid by the
+     * pressure terms: they are 0 or negative. So vanilla's flag is the one of its last branches, over the four nearest cells,
+     * whose statuses are all known (see {@link #ga2$classifyBox}).
      */
     @Unique
     private void ga2$resolvePending() {
         if (AquiferFastPath.STATS) {
             AquiferFastPath.LAZY_FLAGS.increment();
         }
-        int[] offsets = this.ga2$offsets;
-        int[] centres = this.ga2$centres;
         int x = this.ga2$pendingX;
         int y = this.ga2$pendingY;
         int z = this.ga2$pendingZ;
         int key = this.ga2$pendingKey;
-        int m1 = Integer.MAX_VALUE;
-        int m2 = Integer.MAX_VALUE;
-        for (int o = 0; o < 12; o++) {
-            int b = (key + offsets[o]) * 3;
-            int dx = centres[b] - x;
-            int dy = centres[b + 1] - y;
-            int dz = centres[b + 2] - z;
-            int d = dx * dx + dy * dy + dz * dz;
-            m2 = Math.min(m2, Math.max(m1, d));
-            m1 = Math.min(m1, d);
+        this.ga2$nearest(key, x, y, z);
+        int[] nearest = this.ga2$near;
+        int d1 = nearest[0] >> 4;
+        int d2 = nearest[1] >> 4;
+        int d3 = nearest[2] >> 4;
+        Aquifer.FluidStatus status1 = this.ga2$status(this.ga2$cell(key, nearest[0]));
+        Aquifer.FluidStatus status2 = this.ga2$status(this.ga2$cell(key, nearest[1]));
+        double similarity12 = similarity(d1, d2);
+        boolean flag;
+        if (similarity12 <= 0.0) {
+            flag = similarity12 >= FLOWING_UPDATE_SIMULARITY && !status1.equals(status2);
+        } else if (status1.at(y).is(Blocks.WATER) && this.globalFluidPicker.computeFluid(x, y - 1, z).at(y - 1).is(Blocks.LAVA)) {
+            flag = true;
+        } else {
+            Aquifer.FluidStatus status3 = this.ga2$status(this.ga2$cell(key, nearest[2]));
+            double similarity13 = similarity(d1, d3);
+            double similarity23 = similarity(d2, d3);
+            flag = !status1.equals(status2)
+                || similarity23 >= FLOWING_UPDATE_SIMULARITY && !status2.equals(status3)
+                || similarity13 >= FLOWING_UPDATE_SIMULARITY && !status1.equals(status3)
+                || similarity13 >= FLOWING_UPDATE_SIMULARITY && similarity(d1, nearest[3] >> 4) >= FLOWING_UPDATE_SIMULARITY
+                    && !status1.equals(this.ga2$status(this.ga2$cell(key, nearest[3])));
         }
-        double d1 = similarity(m1, m2);
-        this.shouldScheduleFluidUpdate = d1 <= 0.0 ? d1 >= FLOWING_UPDATE_SIMULARITY : true;
+        this.shouldScheduleFluidUpdate = flag;
         this.ga2$pending = false;
     }
 }

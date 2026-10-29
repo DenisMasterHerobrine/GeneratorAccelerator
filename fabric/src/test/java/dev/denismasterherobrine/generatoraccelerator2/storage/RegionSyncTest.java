@@ -15,7 +15,7 @@ import java.util.List;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
@@ -44,7 +44,7 @@ public class RegionSyncTest {
         assertFalse(RegionSync.openUnsynced(false, null), "a storage that does not sync stays as it is");
         assertFalse(RegionSync.consumeClaim(), "no claim without a sync request");
         assertTrue(RegionSync.enabled(), "batched syncing off: " + RegionSync.stats());
-        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION, ResourceLocation.withDefaultNamespace("overworld")), "chunk");
+        RegionStorageInfo info = new RegionStorageInfo("test", ResourceKey.create(Registries.DIMENSION, Identifier.withDefaultNamespace("overworld")), "chunk");
         Path batched = dir.resolve("batched");
         Path synced = dir.resolve("synced");
         Files.createDirectories(batched);

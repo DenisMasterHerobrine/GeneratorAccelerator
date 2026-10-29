@@ -18,7 +18,7 @@ import java.util.zip.ZipInputStream;
 /**
  * Loads the OpenCL binding ({@code gpu.cl.lwjgl.LwjglCl} over LWJGL's {@code lwjgl-opencl}) without putting it on GA2's class
  * path. The binding cannot live there. It needs the LWJGL core whose native library the game already loaded. A second core in
- * another class loader may fail to load the same library file. Dedicated servers have no LWJGL at all.
+ * another class loader may fail to load the same library file. Dedicated servers have no LWJGL natives.
  *
  * <p>The jar carries the binding, an LWJGL core and the core's natives under {@code META-INF/ga2-gpu/} ({@code gpuBundle} in
  * build.gradle). They are copied out once to {@code <game dir>/.ga2/gpu-lib/} and read by a dedicated class loader. That loader
@@ -29,7 +29,8 @@ import java.util.zip.ZipInputStream;
 public final class ClLoader {
     private ClLoader() {}
 
-    public static final String LWJGL_VERSION = "3.3.3";
+    /** The bundled LWJGL, as {@code lwjgl_version} in gradle.properties (the game's own LWJGL). */
+    public static final String LWJGL_VERSION = "3.4.1";
     private static final String IMPL = "dev.denismasterherobrine.generatoraccelerator2.gpu.cl.lwjgl.LwjglCl";
     private static final String IMPL_PACKAGE = "dev.denismasterherobrine.generatoraccelerator2.gpu.cl.lwjgl.";
     private static final String GA2_PACKAGE = "dev.denismasterherobrine.generatoraccelerator2.";
@@ -63,9 +64,13 @@ public final class ClLoader {
         return new Loaded(api, "OpenCL through " + how);
     }
 
-    /** The class loader of the game's LWJGL core, or null (dedicated servers). */
+    /**
+     * The class loader of the game's LWJGL core, or null on a dedicated server. A 26.1 server carries the core jar without its
+     * natives and never loads the core's library. The bundled core and natives serve it instead.
+     */
     private static ClassLoader gameCore(ClassLoader ga2) {
         try {
+            Class.forName("net.minecraft.client.main.Main", false, ga2);
             return Class.forName("org.lwjgl.system.MemoryUtil", false, ga2).getClassLoader();
         } catch (ClassNotFoundException | LinkageError e) {
             return null;

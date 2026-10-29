@@ -49,8 +49,8 @@ public record NamespacedSurfaceRuleSource(SurfaceRules.RuleSource base, Map<Stri
         public BlockState tryApply(int x, int y, int z) {
             Holder<Biome> biome = biome(this.context);
             BlockState state = null;
-            if (biome.is(key -> this.rules.containsKey(key.location().getNamespace()))) {
-                state = this.rules.get(biome.unwrapKey().get().location().getNamespace()).tryApply(x, y, z);
+            if (biome.is(key -> this.rules.containsKey(key.identifier().getNamespace()))) {
+                state = this.rules.get(biome.unwrapKey().get().identifier().getNamespace()).tryApply(x, y, z);
             }
             if (state == null) {
                 state = this.baseRule.tryApply(x, y, z);

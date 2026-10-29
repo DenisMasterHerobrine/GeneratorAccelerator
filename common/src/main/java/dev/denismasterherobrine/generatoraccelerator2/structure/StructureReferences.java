@@ -19,7 +19,7 @@ public final class StructureReferences {
     public static ReportedException crash(WorldGenLevel level, StructureStart start, Exception exception) {
         CrashReport report = CrashReport.forThrowable(exception, "Generating structure reference");
         CrashReportCategory category = report.addCategory("Structure");
-        Optional<? extends Registry<Structure>> registry = level.registryAccess().registry(Registries.STRUCTURE);
+        Optional<? extends Registry<Structure>> registry = level.registryAccess().lookup(Registries.STRUCTURE);
         category.setDetail("Id", () -> registry.<String>map(r -> r.getKey(start.getStructure()).toString()).orElse("UNKNOWN"));
         category.setDetail("Name", () -> BuiltInRegistries.STRUCTURE_TYPE.getKey(start.getStructure().type()).toString());
         category.setDetail("Class", () -> start.getStructure().getClass().getCanonicalName());

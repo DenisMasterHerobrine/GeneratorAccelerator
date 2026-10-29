@@ -2,19 +2,22 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
-import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.PalettedContainerInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
-import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import it.unimi.dsi.fastutil.shorts.ShortList;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.Strategy;
 import net.minecraft.world.level.chunk.UpgradeData;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -30,17 +33,33 @@ import java.util.List;
 public final class ChunkCopy {
     private ChunkCopy() {}
 
-    @SuppressWarnings("unchecked")
+    /** The container factory of the last biome registry asked for. It only makes the copy's first sections, which the copies replace. */
+    private static volatile Factory factory;
+
+    private record Factory(Registry<Biome> biomes, PalettedContainerFactory containers) {}
+
+    /** {@code PalettedContainerFactory.create} for a biome registry alone. */
+    public static PalettedContainerFactory factory(Registry<Biome> biomes) {
+        Factory f = factory;
+        if (f == null || f.biomes() != biomes) {
+            Strategy<BlockState> states = Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY);
+            BlockState air = Blocks.AIR.defaultBlockState();
+            Strategy<Holder<Biome>> biomeStrategy = Strategy.createForBiomes(biomes.asHolderIdMap());
+            Holder<Biome> plains = biomes.getOrThrow(Biomes.PLAINS);
+            f = new Factory(biomes, new PalettedContainerFactory(states, air, PalettedContainer.codecRW(BlockState.CODEC, states, air), biomeStrategy, plains,
+                PalettedContainer.codecRO(biomes.holderByNameCodec(), biomeStrategy, plains)));
+            factory = f;
+        }
+        return f.containers();
+    }
+
     public static ProtoChunk copy(ProtoChunk chunk, Registry<Biome> biomes) {
-        ProtoChunk copy = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, chunk.getHeightAccessorForGeneration(), biomes, chunk.getBlendingData());
+        ProtoChunk copy = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, chunk.getHeightAccessorForGeneration(), factory(biomes), chunk.getBlendingData());
         LevelChunkSection[] from = chunk.getSections();
         LevelChunkSection[] to = copy.getSections();
         for (int i = 0; i < from.length; i++) {
-            // Not PalettedContainer.copy(). That copy keeps the original's palette or resize callback. A write that needs a
-            // bigger palette in the copy would then resize the original instead.
-            to[i] = new LevelChunkSection(exact(from[i].getStates(), 16), exact((PalettedContainer<Holder<Biome>>) from[i].getBiomes(), 4));
-            // The constructor recounts, which counts a fluid twice. The original's counts were kept per write, so copy them.
-            copyCounters(from[i], to[i]);
+            // The copy has its own storage and palette, in the original's layout, and the original's counters
+            to[i] = from[i].copy();
         }
         for (Heightmap.Types type : Heightmap.Types.values()) {
             if (chunk.hasPrimedHeightmap(type)) {
@@ -50,16 +69,12 @@ public final class ChunkCopy {
         ShortList[] marks = chunk.getPostProcessing();
         for (int i = 0; i < marks.length; i++) {
             if (marks[i] != null) {
-                for (int j = 0; j < marks[i].size(); j++) {
-                    copy.addPackedPostProcess(marks[i].getShort(j), i);
-                }
+                copy.addPackedPostProcess(marks[i], i);
             }
         }
-        for (GenerationStep.Carving step : GenerationStep.Carving.values()) {
-            CarvingMask mask = chunk.getCarvingMask(step);
-            if (mask != null) {
-                copy.setCarvingMask(step, new CarvingMask(mask.toArray(), chunk.getMinBuildHeight()));
-            }
+        CarvingMask mask = chunk.getCarvingMask();
+        if (mask != null) {
+            copy.setCarvingMask(new CarvingMask(mask.toArray(), chunk.getMinY()));
         }
         copy.setPersistedStatus(chunk.getPersistedStatus());
         ((ChunkAccessAccessor) copy).ga2$setNoiseChunk(((ChunkAccessAccessor) chunk).ga2$noiseChunk());
@@ -110,60 +125,5 @@ public final class ChunkCopy {
                 }
             }
         };
-    }
-
-    /**
-     * A container with the original's palette entries in the same order, the same storage bits and words, and its own resize
-     * callback. The copy therefore stores the blocks exactly as the original does. A step run on the copy leaves its sections as
-     * it would leave the original's. When the original's layout cannot be reproduced (a global palette), the container is
-     * rebuilt block by block.
-     */
-    @SuppressWarnings("unchecked")
-    private static <T> PalettedContainer<T> exact(PalettedContainer<T> from, int size) {
-        PalettedContainer.Data<T> d = from.data;
-        int bits = d.storage().getBits();
-        if (bits > 8) {
-            return rebuilt(from, size);
-        }
-        PalettedContainer<T> to = from.recreate();
-        PalettedContainer.Data<T> nd = ((PalettedContainerInvoker) (Object) to).ga2$createOrReuseData(null, bits);
-        for (int i = 0; i < d.palette().getSize(); i++) {
-            nd.palette().idFor(d.palette().valueFor(i));
-        }
-        long[] raw = d.storage().getRaw(), nraw = nd.storage().getRaw();
-        if (nd.palette().getSize() != d.palette().getSize() || nd.palette().getClass() != d.palette().getClass() || nd.storage().getBits() != bits
-            || nraw.length != raw.length) {
-            return rebuilt(from, size);
-        }
-        System.arraycopy(raw, 0, nraw, 0, raw.length);
-        to.data = nd;
-        return to;
-    }
-
-    /** A new container of the same kind holding the same values (its own palette, resized as values are set). */
-    private static <T> PalettedContainer<T> rebuilt(PalettedContainer<T> from, int size) {
-        PalettedContainer<T> to = from.recreate();
-        for (int y = 0; y < size; y++) {
-            for (int z = 0; z < size; z++) {
-                for (int x = 0; x < size; x++) {
-                    to.getAndSetUnchecked(x, y, z, from.get(x, y, z));
-                }
-            }
-        }
-        return to;
-    }
-
-    private static final String[] COUNTERS = {"nonEmptyBlockCount", "tickingBlockCount", "tickingFluidCount"};
-
-    private static void copyCounters(LevelChunkSection from, LevelChunkSection to) {
-        for (String name : COUNTERS) {
-            try {
-                Field f = LevelChunkSection.class.getDeclaredField(Names.runtimeField("net/minecraft/world/level/chunk/LevelChunkSection", name));
-                f.setAccessible(true);
-                f.setShort(to, f.getShort(from));
-            } catch (ReflectiveOperationException | RuntimeException e) {
-                return;
-            }
-        }
     }
 }

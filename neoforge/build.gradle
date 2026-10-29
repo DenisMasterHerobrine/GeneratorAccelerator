@@ -1,3 +1,5 @@
+import net.fabricmc.loom.configuration.IncludeConfigurations
+
 plugins {
     id 'com.gradleup.shadow'
 }
@@ -37,7 +39,7 @@ dependencies {
     // Bundled: lets GA2 cancel the mixins it takes over from other performance mods (see compat/Takeover)
     include(implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:$rootProject.mixinsquared_version"))
 
-    common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
+    common(project(path: ':common')) { transitive = false }
     shadowBundle project(path: ':common', configuration: 'transformProductionNeoForge')
 }
 
@@ -45,22 +47,41 @@ processResources {
     inputs.property 'version', project.version
 
     filesMatching('META-INF/neoforge.mods.toml') {
-        expand version: project.version
+        expand version: inputs.properties.version
     }
+}
+
+// Minecraft is not obfuscated on this version, so there is no remapJar task.
+// The shaded jar is the mod jar that ships.
+jar {
+    archiveClassifier = 'dev'
 }
 
 shadowJar {
     configurations = [project.configurations.shadowBundle]
-    archiveClassifier = 'dev-shadow'
+    archiveClassifier = null
 }
 
-remapJar {
-    input.set shadowJar.archiveFile
+assemble.dependsOn shadowJar
+
+configurations {
+    apiElements {
+        outgoing.artifacts.clear()
+        outgoing.artifact(shadowJar)
+    }
+    runtimeElements {
+        outgoing.artifacts.clear()
+        outgoing.artifact(shadowJar)
+    }
 }
 
 loom {
     neoForge {
         // NeoForge has no access widener support: convert the common AW into META-INF/accesstransformer.cfg.
-        convertAccessWideners(tasks.named('remapJar'), 'generatoraccelerator2.accesswidener')
+        convertAccessWideners(tasks.named('shadowJar'), 'generatoraccelerator2.accesswidener')
     }
 }
+
+// Loom nests the `include` jars only into the `jar` task's output on this version. The shadow jar is the jar that ships, so it
+// nests them too. GA2's takeovers need the bundled MixinSquared (see compat/Takeover).
+IncludeConfigurations.nestJars(project, tasks.named('shadowJar', Jar), configurations.named('include'))

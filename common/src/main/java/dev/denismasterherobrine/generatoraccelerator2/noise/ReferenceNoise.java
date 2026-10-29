@@ -11,7 +11,7 @@ import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import net.minecraft.world.level.levelgen.synth.PerlinNoise;
 
 /**
- * Line-by-line port of the vanilla 1.21.1 noise code, kept independent of the fused kernel.
+ * Line-by-line port of the vanilla noise code, kept independent of the fused kernel.
  * The mixins replace the vanilla methods at runtime, so this is the only way to obtain the
  * original values for comparison in {@link SelfCheck}.
  */
@@ -85,7 +85,7 @@ public final class ReferenceNoise {
         return v - (double) Mth.lfloor(v / 3.3554432E7 + 0.5) * 3.3554432E7;
     }
 
-    public static double perlin(PerlinNoise noise, double x, double y, double z, double yScale, double yMax, boolean useOrigin) {
+    public static double perlin(PerlinNoise noise, double x, double y, double z, double yScale, double yMax) {
         PerlinNoiseAccessor a = (PerlinNoiseAccessor) noise;
         ImprovedNoise[] levels = a.ga2$noiseLevels();
         DoubleList amplitudes = a.ga2$amplitudes();
@@ -95,7 +95,7 @@ public final class ReferenceNoise {
         for (int i = 0; i < levels.length; i++) {
             ImprovedNoise level = levels[i];
             if (level != null) {
-                double d3 = improved(level, wrap(x * d1), useOrigin ? -level.yo : wrap(y * d1), wrap(z * d1), yScale * d1, yMax * d1);
+                double d3 = improved(level, wrap(x * d1), wrap(y * d1), wrap(z * d1), yScale * d1, yMax * d1);
                 d0 += amplitudes.getDouble(i) * d3 * d2;
             }
             d1 *= 2.0;
@@ -109,7 +109,7 @@ public final class ReferenceNoise {
         double d0 = x * 1.0181268882175227;
         double d1 = y * 1.0181268882175227;
         double d2 = z * 1.0181268882175227;
-        return (perlin(a.ga2$first(), x, y, z, 0.0, 0.0, false) + perlin(a.ga2$second(), d0, d1, d2, 0.0, 0.0, false)) * a.ga2$valueFactor();
+        return (perlin(a.ga2$first(), x, y, z, 0.0, 0.0) + perlin(a.ga2$second(), d0, d1, d2, 0.0, 0.0)) * a.ga2$valueFactor();
     }
 
     public static double blended(BlendedNoise noise, int bx, int by, int bz) {
@@ -156,6 +156,6 @@ public final class ReferenceNoise {
             }
             d11 /= 2.0;
         }
-        return Mth.clampedLerp(d8 / 512.0, d9 / 512.0, d16) / 128.0;
+        return Mth.clampedLerp(d16, d8 / 512.0, d9 / 512.0) / 128.0;
     }
 }

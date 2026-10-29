@@ -11,13 +11,16 @@ import java.util.concurrent.ConcurrentMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoublePlantBlock;
 import net.minecraft.world.level.block.KelpBlock;
-import net.minecraft.world.level.block.SnowyDirtBlock;
+import net.minecraft.world.level.block.MossyCarpetBlock;
+import net.minecraft.world.level.block.SnowyBlock;
 import net.minecraft.world.level.block.TallSeagrassBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
@@ -28,6 +31,7 @@ import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.levelgen.feature.KelpFeature;
 import net.minecraft.world.level.levelgen.feature.MultifaceGrowthFeature;
+import net.minecraft.world.level.levelgen.feature.ReplaceBlobsFeature;
 import net.minecraft.world.level.levelgen.feature.SeagrassFeature;
 import net.minecraft.world.level.levelgen.feature.SimpleBlockFeature;
 import net.minecraft.world.level.levelgen.feature.SnowAndFreezeFeature;
@@ -35,6 +39,7 @@ import net.minecraft.world.level.levelgen.feature.SpringFeature;
 import net.minecraft.world.level.levelgen.feature.configurations.DiskConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.MultifaceGrowthConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.ProbabilityFeatureConfiguration;
+import net.minecraft.world.level.levelgen.feature.configurations.ReplaceSphereConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.SimpleBlockConfiguration;
 import net.minecraft.world.level.levelgen.feature.configurations.SpringConfiguration;
 import javax.annotation.Nullable;
@@ -69,14 +74,23 @@ public final class SmallFeatures {
             for (int dx = -radius; dx <= radius; dx++) {
                 if (dx * dx + dz * dz <= radius * radius) {
                     column.set(origin.getX() + dx, y, origin.getZ() + dz);
+                    // DiskFeature.placeColumn: only the top block of each run of placed blocks marks the blocks above it
                     boolean any = false;
+                    boolean placedAbove = false;
                     for (int by = top; by > bottom; by--) {
                         column.setY(by);
                         if (PredicatePrograms.test(target, config.target(), level, column)) {
-                            BlockState state = config.stateProvider().getState(level, random, column);
-                            RegionWriter.setBlock(region, column, state);
-                            Fast.markAboveForPostProcessing(cursor, column);
-                            any = true;
+                            BlockState state = config.stateProvider().getOptionalState(level, random, column);
+                            if (state != null) {
+                                RegionWriter.setBlock(region, column, state, Block.UPDATE_CLIENTS);
+                                if (!placedAbove) {
+                                    Fast.markAboveForPostProcessing(cursor, column);
+                                }
+                                any = true;
+                                placedAbove = true;
+                            }
+                        } else {
+                            placedAbove = false;
                         }
                     }
                     placed |= any;
@@ -85,6 +99,69 @@ public final class SmallFeatures {
         }
         FeatureStats.fast(DiskFeature.class);
         return placed;
+    }
+
+    /**
+     * Exact {@code ReplaceBlobsFeature.place}: the target found down from the clamped origin, the three radii drawn, then the blocks
+     * of {@code BlockPos.withinManhattan} in its order up to the largest radius (depth by depth: x, then y, the z side, then its
+     * mirror). Terralith's cave blobs run it in every cave.
+     */
+    public static boolean replaceBlobs(FeaturePlaceContext<?> ctx, Ga2Region region) {
+        ReplaceSphereConfiguration config = (ReplaceSphereConfiguration) ctx.config();
+        WorldGenLevel level = ctx.level();
+        RandomSource random = ctx.random();
+        Block target = config.targetState.getBlock();
+        SectionCursor cursor = SectionCursor.mine(SectionCursor.REPLACE_BLOBS, region);
+        BlockPos origin = ctx.origin();
+        int ox = origin.getX();
+        int oz = origin.getZ();
+        int oy = Mth.clamp(origin.getY(), level.getMinY() + 1, level.getMaxY());
+        // findTarget
+        while (true) {
+            if (oy <= level.getMinY() + 1) {
+                FeatureStats.fast(ReplaceBlobsFeature.class);
+                return false;
+            }
+            if (cursor.read(ox, oy, oz).is(target)) {
+                break;
+            }
+            oy--;
+        }
+        int rx = config.radius().sample(random);
+        int ry = config.radius().sample(random);
+        int rz = config.radius().sample(random);
+        int max = Math.max(rx, Math.max(ry, rz));
+        BlockState replace = config.replaceState;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        boolean replaced = false;
+        for (int depth = 0; depth <= max; depth++) {
+            int maxX = Math.min(rx, depth);
+            for (int x = -maxX; x <= maxX; x++) {
+                int maxY = Math.min(ry, depth - Math.abs(x));
+                for (int y = -maxY; y <= maxY; y++) {
+                    int z = depth - Math.abs(x) - Math.abs(y);
+                    if (z > rz) {
+                        continue;
+                    }
+                    replaced |= replaceBlob(cursor, region, pos, ox + x, oy + y, oz + z, target, replace);
+                    if (z != 0) {
+                        replaced |= replaceBlob(cursor, region, pos, ox + x, oy + y, oz - z, target, replace);
+                    }
+                }
+            }
+        }
+        FeatureStats.fast(ReplaceBlobsFeature.class);
+        return replaced;
+    }
+
+    /** One block of a replace blob: the target becomes the replacement, written as {@code Feature.setBlock} writes (flags 3). */
+    private static boolean replaceBlob(SectionCursor cursor, Ga2Region region, BlockPos.MutableBlockPos pos, int x, int y, int z, Block target, BlockState replace) {
+        if (!cursor.read(x, y, z).is(target)) {
+            return false;
+        }
+        pos.set(x, y, z);
+        RegionWriter.setBlock(region, pos, replace, Block.UPDATE_ALL);
+        return true;
     }
 
     /** Each disk target's program ({@link PredicatePrograms#programFor}), by predicate. */
@@ -146,7 +223,7 @@ public final class SmallFeatures {
             holes++;
         }
         if (rocks == config.rockCount && holes == config.holeCount) {
-            RegionWriter.setBlock(region, pos, config.state.createLegacyBlock());
+            RegionWriter.setBlock(region, pos, config.state.createLegacyBlock(), Block.UPDATE_CLIENTS);
             level.scheduleTick(pos, config.state.getType(), 0);
             return true;
         }
@@ -162,8 +239,8 @@ public final class SmallFeatures {
         BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
         // another mod's snow test may snow where vanilla's temperature says no
         boolean warmSkip = FeatureWraps.snow == null;
-        int maxY = level.getMaxBuildHeight();
-        if (warmSkip && WarmBiomes.everyBiome(region, origin.getX(), origin.getZ(), level.getMinBuildHeight(), maxY)) {
+        int maxY = level.getMaxY() + 1;
+        if (warmSkip && WarmBiomes.everyBiome(region, origin.getX(), origin.getZ(), level.getMinY(), maxY, level.getSeaLevel())) {
             // every biome a column's lookup can answer is too warm to freeze or snow, so no column changes
             FeatureStats.fast(SnowAndFreezeFeature.class);
             return true;
@@ -176,7 +253,7 @@ public final class SmallFeatures {
                 top.set(x, y, z);
                 below.set(top).move(Direction.DOWN, 1);
                 Biome biome = level.getBiome(top).value();
-                if (warmSkip && WarmBiomes.alwaysWarm(biome, maxY)) {
+                if (warmSkip && WarmBiomes.alwaysWarm(biome, maxY, level.getSeaLevel())) {
                     // both of vanilla's tests are false for such a biome
                     continue;
                 }
@@ -184,10 +261,10 @@ public final class SmallFeatures {
                     FeatureWraps.setIce(feature, level, region, below);
                 }
                 if (FeatureWraps.shouldSnow(feature, biome, level, top)) {
-                    RegionWriter.setBlock(region, top, Blocks.SNOW.defaultBlockState());
+                    RegionWriter.setBlock(region, top, Blocks.SNOW.defaultBlockState(), Block.UPDATE_CLIENTS);
                     BlockState state = cursor.read(below);
-                    if (state.hasProperty(SnowyDirtBlock.SNOWY)) {
-                        RegionWriter.setBlock(region, below, state.setValue(SnowyDirtBlock.SNOWY, Boolean.TRUE));
+                    if (state.hasProperty(SnowyBlock.SNOWY)) {
+                        RegionWriter.setBlock(region, below, state.setValue(SnowyBlock.SNOWY, Boolean.TRUE), Block.UPDATE_CLIENTS);
                     }
                 }
             }
@@ -220,11 +297,11 @@ public final class SmallFeatures {
             BlockState upper = state.setValue(TallSeagrassBlock.HALF, DoubleBlockHalf.UPPER);
             BlockPos above = pos.above();
             if (cursor.read(above).is(Blocks.WATER)) {
-                RegionWriter.setBlock(region, pos, state);
-                RegionWriter.setBlock(region, above, upper);
+                RegionWriter.setBlock(region, pos, state, Block.UPDATE_CLIENTS);
+                RegionWriter.setBlock(region, above, upper, Block.UPDATE_CLIENTS);
             }
         } else {
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, Block.UPDATE_CLIENTS);
         }
         return true;
     }
@@ -246,15 +323,15 @@ public final class SmallFeatures {
             for (int l = 0; l <= height; l++) {
                 if (cursor.read(pos).is(Blocks.WATER) && cursor.read(pos.getX(), pos.getY() + 1, pos.getZ()).is(Blocks.WATER) && plant.canSurvive(level, pos)) {
                     if (l == height) {
-                        RegionWriter.setBlock(region, pos, kelp.setValue(KelpBlock.AGE, Integer.valueOf(random.nextInt(4) + 20)));
+                        RegionWriter.setBlock(region, pos, kelp.setValue(KelpBlock.AGE, Integer.valueOf(random.nextInt(4) + 20)), Block.UPDATE_CLIENTS);
                         placed++;
                     } else {
-                        RegionWriter.setBlock(region, pos, plant);
+                        RegionWriter.setBlock(region, pos, plant, Block.UPDATE_CLIENTS);
                     }
                 } else if (l > 0) {
                     BlockPos belowPos = pos.below();
                     if (kelp.canSurvive(level, belowPos) && !cursor.read(belowPos.getX(), belowPos.getY() - 1, belowPos.getZ()).is(Blocks.KELP)) {
-                        RegionWriter.setBlock(region, belowPos, kelp.setValue(KelpBlock.AGE, Integer.valueOf(random.nextInt(4) + 20)));
+                        RegionWriter.setBlock(region, belowPos, kelp.setValue(KelpBlock.AGE, Integer.valueOf(random.nextInt(4) + 20)), Block.UPDATE_CLIENTS);
                         placed++;
                     }
                     break;
@@ -277,7 +354,10 @@ public final class SmallFeatures {
     static boolean simpleBlock(Feature<?> feature, @Nullable FeaturePlaceContext<?> ctx,
                                SimpleBlockConfiguration config, WorldGenLevel level, RandomSource random, BlockPos pos, Ga2Region region) {
         FeatureStats.fast(SimpleBlockFeature.class);
-        BlockState state = config.toPlace().getState(random, pos);
+        BlockState state = config.toPlace().getOptionalState(level, random, pos);
+        if (state == null) {
+            return false;
+        }
         boolean survives = state.canSurvive(level, pos);
         // other mods' callbacks right after that call, whatever it answered
         if (ctx != null) {
@@ -293,9 +373,14 @@ public final class SmallFeatures {
             if (!level.isEmptyBlock(pos.above())) {
                 return false;
             }
-            DoublePlantBlock.placeAt(level, state, pos, 2);
+            DoublePlantBlock.placeAt(level, state, pos, Block.UPDATE_CLIENTS);
+        } else if (state.getBlock() instanceof MossyCarpetBlock) {
+            MossyCarpetBlock.placeAt(level, pos, level.getRandom(), Block.UPDATE_CLIENTS);
         } else {
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, Block.UPDATE_CLIENTS);
+        }
+        if (config.scheduleTick()) {
+            level.scheduleTick(pos, level.getBlockState(pos).getBlock(), 1);
         }
         return true;
     }
@@ -394,7 +479,7 @@ public final class SmallFeatures {
                 if (placement == null) {
                     return false;
                 }
-                RegionWriter.setBlock(cursor.region(), pos, placement);
+                RegionWriter.setBlock(cursor.region(), pos, placement, Block.UPDATE_ALL);
                 cursor.chunk(pos.getX() >> 4, pos.getZ() >> 4).markPosForPostprocessing(pos);
                 if (random.nextFloat() < config.chanceOfSpreading) {
                     config.placeBlock.getSpreader().spreadFromFaceTowardRandomDirection(placement, level, pos, direction, random, true);

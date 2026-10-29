@@ -4,64 +4,56 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload.SectionStorageAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import io.netty.buffer.Unpooled;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.util.datafix.DataFixers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.ai.village.poi.PoiManager;
-import net.minecraft.world.entity.ai.village.poi.PoiType;
-import net.minecraft.world.entity.ai.village.poi.PoiTypes;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelHeightAccessor;
-import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.storage.ChunkIOErrorReporter;
-import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.entity.ChunkEntities;
-import net.minecraft.world.level.entity.EntityAccess;
 import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.level.entity.EntityPersistentStorage;
 import net.minecraft.world.level.entity.LevelCallback;
 import net.minecraft.world.level.entity.PersistentEntitySectionManager;
 import net.minecraft.world.level.entity.Visibility;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
+import sun.misc.Unsafe;
 
-/** Chunk loading and sending: section change counts, block data written ahead, the entity budget, POI reads ahead. */
+/** Chunk loading and sending: section change counts, block data written ahead, the entity budget. */
 class ChunkLoadTest {
-    private static Registry<Biome> biomes() {
-        return TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1L).registries.biomes;
+    private static PalettedContainerFactory containers() {
+        return TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1L).registries.containers;
     }
 
     /** The chunk loading mixins' injections are required. A target class whose code they do not find fails to load. */
     @Test
     void targetsLoad() throws ClassNotFoundException {
         ClassLoader loader = getClass().getClassLoader();
-        for (String name : List.of("net.minecraft.world.level.chunk.storage.ChunkSerializer", "net.minecraft.server.network.PlayerChunkSender",
+        for (String name : List.of("net.minecraft.world.level.chunk.storage.SerializableChunkData", "net.minecraft.server.network.PlayerChunkSender",
             "net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData", "net.minecraft.server.level.ServerLevel",
             "net.minecraft.server.level.ServerChunkCache$MainThreadExecutor", "net.minecraft.server.level.DistanceManager$PlayerTicketTracker",
-            "net.minecraft.server.level.DistanceManager", "net.minecraft.world.level.chunk.storage.SectionStorage", "net.minecraft.server.level.ChunkMap",
+            "net.minecraft.server.level.DistanceManager", "net.minecraft.server.level.ThrottlingChunkTaskDispatcher", "net.minecraft.server.level.ChunkMap",
             "net.minecraft.world.level.entity.PersistentEntitySectionManager", "net.minecraft.world.level.chunk.LevelChunkSection")) {
             Class.forName(name, false, loader);
         }
@@ -69,7 +61,7 @@ class ChunkLoadTest {
 
     @Test
     void sectionCountsBlockChanges() {
-        LevelChunkSection section = new LevelChunkSection(biomes());
+        LevelChunkSection section = new LevelChunkSection(containers());
         LevelChunkSection[] sections = { section };
         long before = ChunkPackets.version(sections);
         section.setBlockState(1, 2, 3, Blocks.STONE.defaultBlockState());
@@ -77,14 +69,14 @@ class ChunkLoadTest {
     }
 
     /** Sections with a few states, many states and none, as single, linear, hash map and global palettes. */
-    private static LevelChunkSection[] randomChunk(Registry<Biome> biomes, Random random) {
+    private static LevelChunkSection[] randomChunk(PalettedContainerFactory containers, Random random) {
         List<BlockState> states = new ArrayList<>();
         for (Block block : BuiltInRegistries.BLOCK) {
             states.add(block.defaultBlockState());
         }
         LevelChunkSection[] sections = new LevelChunkSection[24];
         for (int s = 0; s < sections.length; s++) {
-            LevelChunkSection section = new LevelChunkSection(biomes);
+            LevelChunkSection section = new LevelChunkSection(containers);
             int kinds = switch (s % 4) {
                 case 0 -> 0;
                 case 1 -> 3;
@@ -103,11 +95,11 @@ class ChunkLoadTest {
 
     @Test
     void parallelWritesMatchTheSectionWrites() {
-        Registry<Biome> biomes = biomes();
+        PalettedContainerFactory containers = containers();
         Random random = new Random(42);
         List<LevelChunkSection[]> chunks = new ArrayList<>();
         for (int c = 0; c < 24; c++) {
-            chunks.add(randomChunk(biomes, random));
+            chunks.add(randomChunk(containers, random));
         }
         byte[][] parallel = new byte[chunks.size()][];
         assertTrue(ChunkPackets.forEachParallel(chunks.size(), i -> parallel[i] = ChunkPackets.encode(chunks.get(i))));
@@ -127,26 +119,52 @@ class ChunkLoadTest {
         }
     }
 
-    private static final class FakeEntity implements EntityAccess {
+    /**
+     * An entity in a chunk, made without its constructor. Fabric API's load event takes every added entity for an {@link Entity}
+     * and reads its level, a server level made the same way.
+     */
+    private static final class FakeEntity extends Entity {
         private static int ids;
-        final int id = ++ids;
-        final UUID uuid = UUID.randomUUID();
-        final ChunkPos chunk;
+        private static ServerLevel level;
+        UUID uuid;
+        ChunkPos chunk;
 
-        FakeEntity(ChunkPos chunk) {
-            this.chunk = chunk;
+        @SuppressWarnings("unused")
+        private FakeEntity(EntityType<?> type, Level level) {
+            super(type, level);
         }
 
-        @Override public int getId() { return this.id; }
+        static FakeEntity in(ChunkPos chunk) {
+            try {
+                Field f = Unsafe.class.getDeclaredField("theUnsafe");
+                f.setAccessible(true);
+                Unsafe unsafe = (Unsafe) f.get(null);
+                if (level == null) {
+                    level = (ServerLevel) unsafe.allocateInstance(ServerLevel.class);
+                }
+                FakeEntity e = (FakeEntity) unsafe.allocateInstance(FakeEntity.class);
+                e.chunk = chunk;
+                e.uuid = UUID.randomUUID();
+                e.setId(++ids);
+                e.setBoundingBox(new AABB(e.blockPosition()));
+                return e;
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
         @Override public UUID getUUID() { return this.uuid; }
         @Override public BlockPos blockPosition() { return this.chunk.getBlockAt(8, 64, 8); }
-        @Override public AABB getBoundingBox() { return new AABB(blockPosition()); }
+        @Override public Level level() { return level; }
         @Override public void setLevelCallback(EntityInLevelCallback callback) {}
-        @Override public Stream<? extends EntityAccess> getSelfAndPassengers() { return Stream.of(this); }
-        @Override public Stream<? extends EntityAccess> getPassengersAndSelf() { return Stream.of(this); }
-        @Override public void setRemoved(Entity.RemovalReason reason) {}
+        @Override public Stream<Entity> getSelfAndPassengers() { return Stream.of(this); }
+        @Override public Stream<Entity> getPassengersAndSelf() { return Stream.of(this); }
         @Override public boolean shouldBeSaved() { return true; }
         @Override public boolean isAlwaysTicking() { return false; }
+        @Override protected void defineSynchedData(SynchedEntityData.Builder builder) {}
+        @Override public boolean hurtServer(ServerLevel level, DamageSource source, float amount) { return false; }
+        @Override protected void readAdditionalSaveData(ValueInput input) {}
+        @Override protected void addAdditionalSaveData(ValueOutput output) {}
     }
 
     /** Each entity takes 2 ms to start tracking. With the 5 ms budget a tick adds a few chunks, and the rest follow in order. */
@@ -175,7 +193,7 @@ class ChunkLoadTest {
         EntityPersistentStorage<FakeEntity> storage = new EntityPersistentStorage<>() {
             @Override
             public CompletableFuture<ChunkEntities<FakeEntity>> loadEntities(ChunkPos pos) {
-                FakeEntity e = new FakeEntity(pos);
+                FakeEntity e = FakeEntity.in(pos);
                 saved.add(e);
                 return CompletableFuture.completedFuture(new ChunkEntities<>(pos, List.of(e)));
             }
@@ -196,55 +214,8 @@ class ChunkLoadTest {
         }
         assertEquals(saved, tracked);
         for (int i = 0; i < chunks; i++) {
-            assertTrue(manager.areEntitiesLoaded(new ChunkPos(i, 0).toLong()));
+            assertTrue(manager.areEntitiesLoaded(new ChunkPos(i, 0).pack()));
         }
     }
 
-    @Test
-    void poiColumnTakesTheReadMadeAhead() throws Exception {
-        Path dir = Files.createTempDirectory("ga2-poi");
-        RegionStorageInfo info = new RegionStorageInfo("test", Level.OVERWORLD, "poi");
-        LevelHeightAccessor heights = LevelHeightAccessor.create(-64, 384);
-        RegistryAccess access = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
-        ChunkIOErrorReporter errors = new ChunkIOErrorReporter() {
-            @Override
-            public void reportChunkLoadFailure(Throwable t, RegionStorageInfo i, ChunkPos p) {
-                throw new AssertionError(t);
-            }
-
-            @Override
-            public void reportChunkSaveFailure(Throwable t, RegionStorageInfo i, ChunkPos p) {
-                throw new AssertionError(t);
-            }
-        };
-        BlockPos bed = new BlockPos(5, 70, 7);
-        ChunkPos pos = new ChunkPos(bed);
-        Holder<PoiType> home = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.HOME);
-        try (PoiManager first = new PoiManager(info, dir, DataFixers.getDataFixer(), false, access, errors, heights)) {
-            first.add(bed, home);
-            first.flush(pos);
-        }
-        try (PoiManager second = new PoiManager(info, dir, DataFixers.getDataFixer(), false, access, errors, heights)) {
-            CompoundTag chunkTag = new CompoundTag();
-            long used = ChunkLoadStats.POI_PREFETCH_USED.sum();
-            long reads = ChunkLoadStats.POI_READS.sum();
-            long waits = ChunkLoadStats.POI_WAIT.count();
-            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$simpleRegionStorage(), pos, chunkTag).join();
-            // another tag's load does not get the read
-            PoiPrefetch.enter(second, pos, new CompoundTag());
-            PoiPrefetch.exit();
-            PoiPrefetch.start(second, ((SectionStorageAccessor) second).ga2$simpleRegionStorage(), pos, chunkTag).join();
-            PoiPrefetch.enter(second, pos, chunkTag);
-            Optional<Holder<PoiType>> type;
-            try {
-                type = second.getType(bed);
-            } finally {
-                PoiPrefetch.exit();
-            }
-            assertEquals(home, type.orElseThrow());
-            assertEquals(used + 1, ChunkLoadStats.POI_PREFETCH_USED.sum());
-            assertEquals(reads + 1, ChunkLoadStats.POI_READS.sum());
-            assertEquals(waits, ChunkLoadStats.POI_WAIT.count());
-        }
-    }
 }

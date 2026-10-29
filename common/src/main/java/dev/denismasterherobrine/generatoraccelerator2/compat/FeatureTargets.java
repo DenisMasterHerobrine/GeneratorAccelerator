@@ -92,6 +92,8 @@ public final class FeatureTargets {
     public static final String REGION_READS_UNCHANGED = "regionReadsUnchanged";
     /** The predicate calls of {@code BlockPredicateFilter.shouldPlace} and {@code EnvironmentScanPlacement.getPositions}, asked through the predicate programs. */
     public static final String PREDICATE_CALLS = "predicateCalls";
+    /** The climate methods behind {@code shouldFreeze} and {@code shouldSnow}: biomes too warm for both skip them ({@code WarmBiomes}). */
+    public static final String CLIMATE = "climate";
 
     /** The key of a vanilla placement modifier class the pipeline transcribes, by internal name ({@code placement.BiomeFilter}). */
     public static String modifierKey(String internalName) {

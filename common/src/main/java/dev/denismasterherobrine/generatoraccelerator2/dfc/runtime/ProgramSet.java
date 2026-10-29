@@ -31,7 +31,7 @@ public record ProgramSet(
     List<CellTemplate> cells,
     @Nullable PointTemplate chunkSampler,
     @Nullable PointTemplate globalSampler,
-    /** {@code initial_density_without_jaggedness} for the surface level walk ({@link SurfaceLevels}), or null. */
+    /** The surface level walk's programs ({@link SurfaceLevels}), or null. */
     @Nullable SurfaceLevels.Templates surfaceLevels,
     @Nullable BorderColumnCache borderCache,
     CoverageReport report,

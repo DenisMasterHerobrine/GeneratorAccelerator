@@ -28,16 +28,16 @@ public class ColumnGroupSearchTest {
     @Test
     void overworldColumnsMatchTheWalk() {
         List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters().values();
+            HarnessWorld.registries().biomes).parameters().values();
         FlatClimateTree flat = flat(new Climate.ParameterList<>(entries));
-        int[] keys = keys(flat, entries.size(), id -> ((Holder<?>) flat.leaf(id).value).unwrapKey().orElseThrow().location().hashCode());
+        int[] keys = keys(flat, entries.size(), id -> ((Holder<?>) flat.leaf(id).value).unwrapKey().orElseThrow().identifier().hashCode());
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         Climate.Sampler sampler = world.randomState.sampler();
         List<long[]> queries = new ArrayList<>();
         for (int c = 0; c < 24; c++) {
             int qx0 = (c % 6) * 4 * 53 - 300, qz0 = (c / 6) * 4 * 41 - 200;
             // the biome fill's order: sections bottom to top, per section x, then y, then z
-            for (int s = world.heights.getMinSection(); s < world.heights.getMaxSection(); s++) {
+            for (int s = world.heights.getMinSectionY(); s < world.heights.getMaxSectionY() + 1; s++) {
                 for (int j = 0; j < 4; j++) {
                     for (int k = 0; k < 4; k++) {
                         for (int l = 0; l < 4; l++) {
@@ -127,10 +127,10 @@ public class ColumnGroupSearchTest {
         List<FlatClimateTree> trees = new ArrayList<>();
         List<int[]> keys = new ArrayList<>();
         List<Pair<Climate.ParameterPoint, Holder<Biome>>> overworld = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters().values();
+            HarnessWorld.registries().biomes).parameters().values();
         FlatClimateTree vanilla = flat(new Climate.ParameterList<>(overworld));
         trees.add(vanilla);
-        keys.add(keys(vanilla, 0, id -> ((Holder<?>) vanilla.leaf(id).value).unwrapKey().orElseThrow().location().hashCode()));
+        keys.add(keys(vanilla, 0, id -> ((Holder<?>) vanilla.leaf(id).value).unwrapKey().orElseThrow().identifier().hashCode()));
         while (trees.size() < 4) {
             List<Pair<Climate.ParameterPoint, Integer>> entries = new ArrayList<>();
             int size = 50 + r.nextInt(2000);

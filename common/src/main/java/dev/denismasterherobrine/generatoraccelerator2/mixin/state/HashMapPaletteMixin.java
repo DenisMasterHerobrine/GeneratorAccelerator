@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
+import net.minecraft.core.IdMap;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.CrudeIncrementalIntIdentityHashBiMap;
 import net.minecraft.world.level.chunk.HashMapPalette;
@@ -22,9 +23,6 @@ public abstract class HashMapPaletteMixin<T> {
     private CrudeIncrementalIntIdentityHashBiMap<T> values;
     @Shadow
     @Final
-    private PaletteResize<T> resizeHandler;
-    @Shadow
-    @Final
     private int bits;
 
     @Unique
@@ -34,9 +32,9 @@ public abstract class HashMapPaletteMixin<T> {
     @Unique
     private static final HookTargets.Hook GA2$HOOK = HookTargets.hook(HookTargets.PALETTE);
 
-    /** The body of {@code idFor(state)}. Returns the remembered last answer, or else runs vanilla's lookup. */
+    /** The body of {@code idFor(state, resizeHandler)}. Returns the remembered last answer, or else runs vanilla's lookup. */
     @Unique
-    private int ga2$idFor(T state) {
+    private int ga2$idFor(T state, PaletteResize<T> resizeHandler) {
         if (state == this.ga2$last && (StateFast.ENABLED && GA2$HOOK.allowed())) {
             return this.ga2$lastId;
         }
@@ -44,7 +42,7 @@ public abstract class HashMapPaletteMixin<T> {
         if (i == -1) {
             i = this.values.add(state);
             if (i >= 1 << this.bits) {
-                return this.resizeHandler.onResize(this.bits + 1, state);
+                return resizeHandler.onResize(this.bits + 1, state);
             }
         }
         this.ga2$last = state;
@@ -53,7 +51,7 @@ public abstract class HashMapPaletteMixin<T> {
     }
 
     @Inject(method = "read", at = @At("HEAD"))
-    private void ga2$forget(FriendlyByteBuf buf, CallbackInfo ci) {
+    private void ga2$forget(FriendlyByteBuf buf, IdMap<T> globalMap, CallbackInfo ci) {
         this.ga2$last = null;
     }
 }

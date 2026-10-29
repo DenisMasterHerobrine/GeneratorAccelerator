@@ -58,8 +58,8 @@ public final class BiomeHand {
         this.wg = wg;
         this.r = r;
         this.chunk = chunk;
-        this.qx0 = chunk.getPos().x * 4;
-        this.qz0 = chunk.getPos().z * 4;
+        this.qx0 = chunk.getPos().x() * 4;
+        this.qz0 = chunk.getPos().z() * 4;
         this.qy0 = wg.minY >> 2;
         this.qyn = wg.height >> 2;
         this.points = new Climate.TargetPoint[16 * qyn];

@@ -84,8 +84,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
     private static final List<String> MODIFIER_METHODS = List.of("getPositions", "shouldPlace", "count");
     private static final String CHUNK_STATUS = "Lnet/minecraft/world/level/chunk/status/ChunkStatus;";
     private static final String FEATURE_CTX = "Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;";
-    private static final String CHUNK_READ = "read(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/ai/village/poi/PoiManager;"
-        + "Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/world/level/chunk/ProtoChunk;";
+    private static final String FACTORY_CREATE = "create(Lnet/minecraft/core/RegistryAccess;)Lnet/minecraft/world/level/chunk/PalettedContainerFactory;";
     /** The methods whose work SculkFast does, by name, across the sculk classes. Each class has some of them. */
     private static final List<String> SCULK_METHODS = List.of("updateCursors", "addCursors", "addCursor", "clear", "update", "shouldUpdate", "mergeWith",
         "getBlockBehaviour", "getRandomizedNonCornerNeighbourOffsets", "getValidMovementPos", "isMovementUnobstructed", "isUnobstructed",
@@ -134,6 +133,7 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("PalettedContainerMixin", new FeatureHook(FeatureTargets.DECORATION, List.of("getAll(Ljava/util/function/Consumer;)V"))),
         Map.entry("GeodeFeatureMixin", new FeatureHook("geode", List.of("place(" + FEATURE_CTX + ")Z"))),
         Map.entry("DiskFeatureMixin", new FeatureHook("disk", List.of("place(" + FEATURE_CTX + ")Z", "placeColumn"))),
+        Map.entry("ReplaceBlobsFeatureMixin", new FeatureHook("replaceBlobs", List.of("place(" + FEATURE_CTX + ")Z", "findTarget"))),
         Map.entry("SpringFeatureMixin", new FeatureHook("spring", List.of("place(" + FEATURE_CTX + ")Z"))),
         Map.entry("SnowAndFreezeFeatureMixin", new FeatureHook("snowAndFreeze", List.of("place(" + FEATURE_CTX + ")Z"))),
         Map.entry("SeagrassFeatureMixin", new FeatureHook("seagrass", List.of("place(" + FEATURE_CTX + ")Z"))),
@@ -214,32 +214,33 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.SUPPLEMENTARIES_BARNACLES, List.of("isValidStateForPlacement", "canBeAttachTo"), MergedMethods.Mode.BYPASS))),
         // the template loads (structure.TemplateLoads). GA2 wraps the repository's computeIfAbsent in get. Any other change there counts.
         Map.entry("StructureTemplateLoadsMixin", List.of(
-            new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_LOADS, List.of("get(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;"),
+            new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_LOADS, List.of("get(Lnet/minecraft/resources/Identifier;)Ljava/util/Optional;"),
                 List.of(), MergedMethods.Mode.WRAP, List.of()))),
+        // the kept jigsaw lists (structure.JigsawLists). GA2 wraps the getJigsaws call. A redirect or wrapper of a template call
+        // counts, and so does any change to getJigsaws, whose work a kept list stands in for.
+        Map.entry("SinglePoolElementJigsawsMixin", List.of(
+            new FeatureHook(HookTargets.STRUCTURE_JIGSAW_LISTS, List.of("getShuffledJigsawBlocks"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;")))),
+        Map.entry("StructureTemplateJigsawsMixin", List.of(
+            new FeatureHook(HookTargets.STRUCTURE_JIGSAW_LISTS,
+                List.of("getJigsaws(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Rotation;)Ljava/util/List;"), MergedMethods.Mode.BYPASS))),
         // the POI skip (state.PoiStates). GA2 wraps the call in setBlock. The call and the lookup it relies on count wherever
         // changed.
         Map.entry("PoiSkipMixin", List.of(
             new FeatureHook(HookTargets.STATE_POI_SKIP, List.of("setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z"),
                 List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/server/level/ServerLevel;")))),
         Map.entry("PoiInspectMixin", List.of(
-            new FeatureHook(HookTargets.STATE_POI_SKIP, List.of("onBlockStateChange", "forState"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.STATE_POI_SKIP, List.of("updatePOIOnBlockStateChange", "forState"), MergedMethods.Mode.BYPASS))),
         // the still water skip (fluid.StillWater). GA2 wraps the fluid tick call in postProcessGeneration. The tick it leaves out
         // counts wherever changed.
         Map.entry("PostProcessFluidMixin", List.of(
-            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("postProcessGeneration()V"),
+            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("postProcessGeneration(Lnet/minecraft/server/level/ServerLevel;)V"),
                 List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/world/level/material/FluidState;")))),
         Map.entry("FluidTickInspectMixin", List.of(
-            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("tick", "spread", "spreadToSides", "getSpread", "getNewLiquid", "canSpreadTo",
-                "canPassThrough", "canPassThroughWall", "canHoldFluid", "isSourceBlockOfThisType", "canBeReplacedWith", "sourceNeighborCount",
-                "getDropOff", "isSame"), MergedMethods.Mode.BYPASS))),
-        // the hidden water skip leaves out the renderer's whole method. Any change to the method or its face checks counts, and so
-        // does another mod's redirect or wrapper of the call in renderLiquid.
-        Map.entry("LiquidBlockRendererMixin", List.of(
-            new FeatureHook(HookTargets.FLUID_HIDDEN_WATER, List.of("tesselate", "shouldRenderFace", "isNeighborSameFluid", "isNeighborStateHidingOverlay"),
+            new FeatureHook(HookTargets.FLUID_POST_PROCESS, List.of("tick", "spread", "spreadTo", "spreadToSides", "getSpread", "getNewLiquid",
+                "canPassThrough", "canMaybePassThrough", "canPassThroughWall", "canHoldFluid", "canHoldAnyFluid", "canHoldSpecificFluid",
+                "isSourceBlockOfThisType", "canBeReplacedWith", "sourceNeighborCount", "canConvertToSource", "getSpreadDelay", "getDropOff", "isSame"),
                 MergedMethods.Mode.BYPASS))),
-        Map.entry("LiquidRenderCallMixin", List.of(
-            new FeatureHook(HookTargets.FLUID_HIDDEN_WATER, List.of("renderLiquid"), List.of(), MergedMethods.Mode.WRAP,
-                List.of("Lnet/minecraft/client/renderer/block/LiquidBlockRenderer;")))),
         Map.entry("CarvingContextAccessor", List.of(
             new FeatureHook(HookTargets.CARVER_TOP_MATERIAL, List.of(
                 "topMaterial(Ljava/util/function/Function;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/core/BlockPos;Z)Ljava/util/Optional;")))),
@@ -309,10 +310,6 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("DirectSetMixin", List.of(
             new FeatureHook(HookTargets.DIRECT_SETS, List.of("contains(Lnet/minecraft/core/Holder;)Z"), MergedMethods.Mode.BYPASS))),
         // the height skips getChunk(int, int). It still looks chunks up through getChunk(int, int, ChunkStatus, boolean).
-        // the random patch's repeated tries (features.placement.PatchRepeats). The skip relies on the loop changing no block between
-        // tries, so any change to the method counts
-        Map.entry("RandomPatchRepeatsMixin", List.of(
-            new FeatureHook(HookTargets.PATCH_REPEATS, List.of("place(Lnet/minecraft/world/level/levelgen/feature/FeaturePlaceContext;)Z"), MergedMethods.Mode.BYPASS))),
         Map.entry("WorldGenRegionHeightsMixin", List.of(
             new FeatureHook(HookTargets.REGION_HEIGHTS, List.of("getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I",
                 "getChunk(II)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
@@ -324,19 +321,21 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("PaletteCopyMixin", List.of(
             new FeatureHook(HookTargets.PALETTE_COPY, List.of("copyFrom(Lnet/minecraft/world/level/chunk/Palette;Lnet/minecraft/util/BitStorage;)V"), MergedMethods.Mode.BYPASS))),
         Map.entry("LinearPaletteMixin", List.of(
-            new FeatureHook(HookTargets.PALETTE, List.of("idFor(Ljava/lang/Object;)I", "read(Lnet/minecraft/network/FriendlyByteBuf;)V"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.PALETTE, List.of("idFor(Ljava/lang/Object;Lnet/minecraft/world/level/chunk/PaletteResize;)I",
+                "read(Lnet/minecraft/network/FriendlyByteBuf;Lnet/minecraft/core/IdMap;)V"), MergedMethods.Mode.BYPASS))),
         Map.entry("HashMapPaletteMixin", List.of(
-            new FeatureHook(HookTargets.PALETTE, List.of("idFor(Ljava/lang/Object;)I", "read(Lnet/minecraft/network/FriendlyByteBuf;)V"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.PALETTE, List.of("idFor(Ljava/lang/Object;Lnet/minecraft/world/level/chunk/PaletteResize;)I",
+                "read(Lnet/minecraft/network/FriendlyByteBuf;Lnet/minecraft/core/IdMap;)V"), MergedMethods.Mode.BYPASS))),
         Map.entry("FullBlockShapeMixin", List.of(
             new FeatureHook(HookTargets.FULL_BLOCK_SHAPE, List.of("isShapeFullBlock(Lnet/minecraft/world/phys/shapes/VoxelShape;)Z"), MergedMethods.Mode.BYPASS))),
         Map.entry("FluidStateEmptyMixin", List.of(
             new FeatureHook(HookTargets.FLUID_EMPTY, List.of("isEmpty()Z"), MergedMethods.Mode.BYPASS))),
         Map.entry("ChunkHeightsMixin", List.of(
-            new FeatureHook(HookTargets.CHUNK_HEIGHTS, List.of("getMinBuildHeight()I", "getHeight()I"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.CHUNK_HEIGHTS, List.of("getMinY()I", "getHeight()I"), MergedMethods.Mode.BYPASS))),
         // the GPU's surface computes biome temperatures itself. Any change to them keeps the surface on the CPU.
         Map.entry("BiomeTemperatureAccessor", List.of(
-            new FeatureHook(HookTargets.GPU_SURFACE, List.of("getTemperature(Lnet/minecraft/core/BlockPos;)F", "getHeightAdjustedTemperature(Lnet/minecraft/core/BlockPos;)F",
-                "coldEnoughToSnow(Lnet/minecraft/core/BlockPos;)Z", "warmEnoughToRain(Lnet/minecraft/core/BlockPos;)Z"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.GPU_SURFACE, List.of("getTemperature(Lnet/minecraft/core/BlockPos;I)F", "getHeightAdjustedTemperature(Lnet/minecraft/core/BlockPos;I)F",
+                "coldEnoughToSnow(Lnet/minecraft/core/BlockPos;I)Z", "warmEnoughToRain(Lnet/minecraft/core/BlockPos;I)Z"), MergedMethods.Mode.BYPASS))),
         Map.entry("GpuSurfaceContextMixin", List.of(
             new FeatureHook(HookTargets.GPU_TERRAIN, List.of("getMinSurfaceLevel()I"), List.of(), MergedMethods.Mode.WRAP,
                 List.of("Lnet/minecraft/world/level/levelgen/NoiseChunk;")))),
@@ -369,21 +368,19 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("MaterialRuleListMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of("calculate(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
                 MergedMethods.Mode.BYPASS),
-            new FeatureHook(HookTargets.NOISE_MATERIAL_RULES, List.of("calculate(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;")))),
+            new FeatureHook(HookTargets.NOISE_MATERIAL_RULES, List.of("calculate(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)Lnet/minecraft/world/level/block/state/BlockState;"),
+                MergedMethods.Mode.BYPASS))),
         Map.entry("LevelChunkSectionInspectMixin", List.of(
             new FeatureHook(HookTargets.NOISE_SECTION_WRITES, List.of(
                 "setBlockState(IIILnet/minecraft/world/level/block/state/BlockState;Z)Lnet/minecraft/world/level/block/state/BlockState;"),
-                MergedMethods.Mode.BYPASS))),
-        // the jigsaw block lists of a template palette, cached per rotation (StructureTemplateMixin)
-        Map.entry("StructureTemplateMixin", List.of(
-            new FeatureHook(HookTargets.STRUCTURE_JIGSAW_BLOCKS, List.of(
-                "filterBlocks(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;"
-                    + "Lnet/minecraft/world/level/block/Block;Z)Lit/unimi/dsi/fastutil/objects/ObjectArrayList;"),
                 MergedMethods.Mode.BYPASS))),
         // placeInWorld's processBlockInfos call, clipped to the bounding box (structure.TemplatePlacement). One mixin per loader:
         // NeoForge's call has a sixth argument. A listed method the running loader does not have is never matched.
         Map.entry("StructureTemplatePlaceMixin", TEMPLATE_CLIP_HOOKS),
         Map.entry("StructureTemplatePlaceNeoMixin", TEMPLATE_CLIP_HOOKS),
+        // the capped pass the template clip transcribes for lists with a capped processor (structure.CappedPlacement)
+        Map.entry("CappedProcessorAccessor", List.of(
+            new FeatureHook(HookTargets.STRUCTURE_TEMPLATE_CAPPED, List.of("finalizeProcessing"), MergedMethods.Mode.BYPASS))),
         Map.entry("CacheAllInCellInspectMixin", List.of(
             new FeatureHook(HookTargets.NOISE_FILL_STATE, List.of("compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D"), MergedMethods.Mode.BYPASS))),
         // a change to the vein rule turns off the whole-cell short cut and the rule's transcription (dfc.runtime.VeinRule).
@@ -413,11 +410,12 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/world/level/levelgen/blending/Blender;")),
             new FeatureHook(HookTargets.CARVER_ENTRY, List.of(
                 "applyCarvers(Lnet/minecraft/server/level/WorldGenRegion;JLnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;"
-                    + "Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/GenerationStep$Carving;)V")),
+                    + "Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/chunk/ChunkAccess;)V")),
             // whole-cell air reads the vanilla picker as a function of y alone. A changed picker is asked per block instead.
             new FeatureHook(HookTargets.NOISE_FLUID_PICKER, List.of(
                 "createFluidPicker(Lnet/minecraft/world/level/levelgen/NoiseGeneratorSettings;)Lnet/minecraft/world/level/levelgen/Aquifer$FluidPicker;",
-                "lambda$createFluidPicker$4(ILnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;III)Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"),
+                "lambda$createFluidPicker$0(Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;ILnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"
+                    + "Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;III)Lnet/minecraft/world/level/levelgen/Aquifer$FluidStatus;"),
                 MergedMethods.Mode.BYPASS))),
         // the fossil probe answers for vanilla's placement and biome check. A change to either turns the probe off.
         Map.entry("NetherFossilStructureMixin", List.of(
@@ -435,8 +433,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         // the ring bound follows from how vanilla computes and stores the positions. A change to that computation or storage
         // keeps every check on the positions themselves. So does a wrapper of the positions inside the check, after GA2's callback.
         Map.entry("ChunkGeneratorStructureStateAccessor", List.of(
-            new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of("generatePositions", "lambda$generatePositions$4", "generateRingPositions",
-                "lambda$generateRingPositions$5", "getRingPositionsFor"), MergedMethods.Mode.BYPASS))),
+            new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of("generatePositions", "lambda$generatePositions$0", "lambda$generatePositions$1",
+                "generateRingPositions", "lambda$generateRingPositions$0", "lambda$generateRingPositions$1", "getRingPositionsFor"), MergedMethods.Mode.BYPASS))),
         Map.entry("ConcentricRingsStructurePlacementMixin", List.of(
             new FeatureHook(HookTargets.STRUCTURE_RING_BOUND, List.of(
                 "isPlacementChunk(Lnet/minecraft/world/level/chunk/ChunkGeneratorStructureState;II)Z")))),
@@ -448,10 +446,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.SURFACE_STEP, List.of("generateSurface"), "!ga2$surfaceStep"),
             new FeatureHook(HookTargets.SURFACE_STEP_BODY, List.of("generateSurface"), "ga2$surfaceStep"),
             new FeatureHook(HookTargets.CARVER_STEP, List.of("generateCarvers")))),
-        // the join wait decides the spawn area loop through its count. Another mod that changes that loop (callbacks aside)
+        // the join wait decides through the check of vanilla's load. Another mod that changes the preparation (callbacks aside)
         // keeps its own wait.
-        Map.entry("MinecraftServerJoinMixin", List.of(
-            new FeatureHook(HookTargets.JOIN_SPAWN_WAIT, List.of("prepareLevels(Lnet/minecraft/server/level/progress/ChunkProgressListener;)V"),
+        Map.entry("PrepareSpawnJoinMixin", List.of(
+            new FeatureHook(HookTargets.JOIN_SPAWN_WAIT, List.of("tick()Lnet/minecraft/server/network/config/PrepareSpawnTask$Ready;"),
                 List.of(), MergedMethods.Mode.WRAP, List.of()))),
         Map.entry("CarverClassesInspectMixin", List.of(
             // everything the carver runner simulates or carves itself, by name (each class has some of them)
@@ -460,8 +458,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 "canReach", "isDebugEnabled", "getDebugState"), MergedMethods.Mode.BYPASS))),
         Map.entry("PalettedContainerPackMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_PACK, List.of(
-                "pack(Lnet/minecraft/core/IdMap;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;)Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;",
-                "swapPalette([ILjava/util/function/IntUnaryOperator;)V"),
+                "pack(Lnet/minecraft/world/level/chunk/Strategy;)Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;",
+                "reencodeContents(Lnet/minecraft/util/BitStorage;Lnet/minecraft/world/level/chunk/Palette;Lnet/minecraft/world/level/chunk/Palette;)[I"),
                 // the fast path takes the container's lock itself (FerriteCore and Lithium replace the threading detector)
                 List.of("acquire()V", "release()V")),
             // chunk packets' block data is written on GA2's packet threads. Another mod's change to the writes may expect the server thread.
@@ -490,8 +488,8 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("LightEngineMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("getChunk(II)Lnet/minecraft/world/level/chunk/LightChunk;", "clearChunkCache()V", "propagateIncreases()I",
                 "getState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
-                "shapeOccludes(JLnet/minecraft/world/level/block/state/BlockState;JLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Z",
-                "getOcclusionShape(Lnet/minecraft/world/level/block/state/BlockState;JLnet/minecraft/core/Direction;)Lnet/minecraft/world/phys/shapes/VoxelShape;")))),
+                "shapeOccludes(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Z",
+                "getOcclusionShape(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Lnet/minecraft/world/phys/shapes/VoxelShape;")))),
         Map.entry("SkyLightEngineMixin", List.of(
             new FeatureHook(HookTargets.LIGHT_ENGINE, List.of("propagateIncrease(JJI)V")))),
         Map.entry("BlockLightEngineMixin", List.of(
@@ -507,9 +505,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.LIGHT_PARALLEL, List.of("runLightUpdates()I", "propagateIncreases()I", "propagateDecreases()I",
                 "getChunk(II)Lnet/minecraft/world/level/chunk/LightChunk;",
                 "getState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;",
-                "getOpacity(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)I",
-                "shapeOccludes(JLnet/minecraft/world/level/block/state/BlockState;JLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Z",
-                "getOcclusionShape(Lnet/minecraft/world/level/block/state/BlockState;JLnet/minecraft/core/Direction;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
+                "getOpacity(Lnet/minecraft/world/level/block/state/BlockState;)I",
+                "shapeOccludes(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Z",
+                "getOcclusionShape(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
                 "enqueueIncrease(JJ)V", "enqueueDecrease(JJ)V"),
                 // called through the engine as vanilla calls them
                 List.of("checkNode(J)V", "clearChunkCache()V"), MergedMethods.Mode.REPLACE, List.of()))),
@@ -533,20 +531,6 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             // a parallel read does read's work itself (region file lookup, stream, parse) instead of calling it
             new FeatureHook(HookTargets.STORAGE_PARALLEL_READ, List.of("read(Lnet/minecraft/world/level/ChunkPos;)Lnet/minecraft/nbt/CompoundTag;"),
                 List.of("getRegionFile(Lnet/minecraft/world/level/ChunkPos;)Lnet/minecraft/world/level/chunk/storage/RegionFile;"), MergedMethods.Mode.BYPASS, List.of()))),
-        // the palette decodes, section constructor and tick loaders inside read are wrapped. The rest of read runs as vanilla's.
-        Map.entry("ChunkSerializerReadMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_LOAD_PREP, List.of(CHUNK_READ),
-                List.of(), MergedMethods.Mode.WRAP, List.of("Lcom/mojang/serialization/", "LevelChunkSection", "PalettedContainer", "ChunkTicks", "ListTag", "Heightmap")),
-            // any change at all to read counts. A callback could edit the tag before a prepared result is taken.
-            new FeatureHook(HookTargets.STORAGE_LOAD_PREP_UNCHANGED, List.of(CHUNK_READ), MergedMethods.Mode.BYPASS))),
-        // the load's tag passes through scheduleChunkLoad's stages between the preparation and read
-        Map.entry("ChunkMapLoadMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_LOAD_PREP_UNCHANGED, List.of("scheduleChunkLoad(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"),
-                MergedMethods.Mode.BYPASS))),
-        // a POI column's read is taken from the read made ahead. tryRead's error handling still applies to it.
-        Map.entry("SectionStoragePoiMixin", List.of(
-            new FeatureHook(HookTargets.CHUNK_POI_PREFETCH, List.of("tryRead(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;",
-                "readColumn(Lnet/minecraft/world/level/ChunkPos;)V"), MergedMethods.Mode.BYPASS))),
         // the packet's block data is taken in place of the two calls. The rest of the constructor runs as vanilla's.
         Map.entry("ChunkPacketDataMixin", List.of(
             new FeatureHook(HookTargets.CHUNK_PACKET_PREP, List.of("<init>(Lnet/minecraft/world/level/chunk/LevelChunk;)V"), List.of(), MergedMethods.Mode.WRAP,
@@ -565,50 +549,31 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         // a loaded section's palettes are decoded entry by entry, then built by unpack, as the codecs would
         Map.entry("PaletteCodecInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(
-                "codecRW(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
-                "codecRO(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
-                "codec(Lnet/minecraft/core/IdMap;Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Ljava/lang/Object;"
+                "codecRW(Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
+                "codecRO(Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/Strategy;Ljava/lang/Object;)Lcom/mojang/serialization/Codec;",
+                "codec(Lcom/mojang/serialization/Codec;Lnet/minecraft/world/level/chunk/Strategy;Ljava/lang/Object;"
                     + "Lnet/minecraft/world/level/chunk/PalettedContainerRO$Unpacker;)Lcom/mojang/serialization/Codec;",
-                "unpack(Lnet/minecraft/core/IdMap;Lnet/minecraft/world/level/chunk/PalettedContainer$Strategy;Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;)"
+                "unpack(Lnet/minecraft/world/level/chunk/Strategy;Lnet/minecraft/world/level/chunk/PalettedContainerRO$PackedData;)"
                     + "Lcom/mojang/serialization/DataResult;"), MergedMethods.Mode.BYPASS))),
-        Map.entry("ChunkSerializerCodecInspectMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of("<clinit>()V", "makeBiomeCodec(Lnet/minecraft/core/Registry;)Lcom/mojang/serialization/Codec;"),
-                MergedMethods.Mode.BYPASS))),
-        Map.entry("HeightmapPrimeInspectMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_PRIME_HEIGHTMAPS, List.of("primeHeightmaps(Lnet/minecraft/world/level/chunk/ChunkAccess;Ljava/util/Set;)V"),
-                MergedMethods.Mode.BYPASS))),
+        // the factory's two codec calls are wrapped. The rest of create runs as vanilla's.
+        Map.entry("PalettedContainerFactoryMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(FACTORY_CREATE), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lcom/mojang/serialization/Codec;", "PalettedContainer")),
+            new FeatureHook(HookTargets.STORAGE_SECTION_CODEC, List.of(FACTORY_CREATE), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lcom/mojang/serialization/Codec;", "PalettedContainer")))),
         Map.entry("RegionFileAccessor", List.of(
             new FeatureHook(HookTargets.STORAGE_REGION_WRITE, List.of("getChunkDataOutputStream(Lnet/minecraft/world/level/ChunkPos;)Ljava/io/DataOutputStream;")))),
         // region files synced in batches (storage.RegionSync): any other change to how the file is written or flushed keeps vanilla's write-through
         Map.entry("RegionFileSyncMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_REGION_SYNC, List.of("write(Lnet/minecraft/world/level/ChunkPos;Ljava/nio/ByteBuffer;)V",
                 "clear(Lnet/minecraft/world/level/ChunkPos;)V", "flush()V", "close()V", "writeHeader()V", "padToFullSector()V")))),
-        // the section tags are made inside write by wrapping the two codec calls. The rest of write runs as vanilla's.
-        Map.entry("ChunkSerializerMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_SECTION_CODEC, List.of("write(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;)Lnet/minecraft/nbt/CompoundTag;",
-                "makeBiomeCodec(Lnet/minecraft/core/Registry;)Lcom/mojang/serialization/Codec;"), List.of(), MergedMethods.Mode.WRAP,
-                // the wrapped calls are the codecs' encodeStart. C2ME's redirects of the block entity calls in write do not touch them
-                List.of("Lcom/mojang/serialization/", "PalettedContainer")))),
-        // the unload task is queued through a wrapped executor. The task itself runs as vanilla's. processUnloads and tick get
-        // a callback at their head and a wrapper.
-        Map.entry("ChunkMapSavePrepMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_SAVE_PREP, List.of("scheduleUnload(JLnet/minecraft/server/level/ChunkHolder;)V",
-                "processUnloads(Ljava/util/function/BooleanSupplier;)V", "tick(Ljava/util/function/BooleanSupplier;)V"),
-                List.of(), MergedMethods.Mode.WRAP, List.of("Ljava/util/concurrent/CompletableFuture;")))),
-        // the tick lists. When encoded ahead, they are taken in place of the containers' save calls. The encoding writes what
-        // vanilla's save methods write, so a change to those methods leaves the save to them.
-        Map.entry("ChunkSerializerTicksMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_SAVE_PREP_TICKS, List.of("saveTicks(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/world/level/chunk/ChunkAccess$TicksToSave;)V"),
-                List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/world/ticks/SerializableTickContainer;")))),
-        Map.entry("LevelChunkTicksPrepMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_SAVE_PREP_TICKS, List.of("save(JLjava/util/function/Function;)Lnet/minecraft/nbt/ListTag;"), MergedMethods.Mode.BYPASS))),
-        Map.entry("ProtoChunkTicksPrepMixin", List.of(
-            new FeatureHook(HookTargets.STORAGE_SAVE_PREP_TICKS, List.of("save(JLjava/util/function/Function;)Lnet/minecraft/nbt/Tag;"), MergedMethods.Mode.BYPASS))),
         Map.entry("IOWorkerMixin", List.of(
             // loadAsync's task is vanilla's up to the parse. submitTask and the pending writes are used as vanilla uses them.
             new FeatureHook(HookTargets.STORAGE_PARALLEL_READ, List.of("loadAsync(Lnet/minecraft/world/level/ChunkPos;)Ljava/util/concurrent/CompletableFuture;"),
-                List.of("submitTask(Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;")),
-            new FeatureHook(HookTargets.STORAGE_PRECOMPRESS, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "store(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Ljava/util/concurrent/CompletableFuture;",
+                List.of("submitTask(Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;",
+                    "submitThrowingTask(Lnet/minecraft/world/level/chunk/storage/IOWorker$ThrowingSupplier;)Ljava/util/concurrent/CompletableFuture;")),
+            new FeatureHook(HookTargets.STORAGE_PRECOMPRESS, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V",
+                "store(Lnet/minecraft/world/level/ChunkPos;Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;",
                 "runStore(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/storage/IOWorker$PendingStore;)V")),
             // the scan asks the worker's own isOldChunk (Tectonic's version check there keeps working)
             new FeatureHook(HookTargets.STORAGE_OLD_CHUNK_SCAN, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "createOldDataForRegion(II)Ljava/util/concurrent/CompletableFuture;",

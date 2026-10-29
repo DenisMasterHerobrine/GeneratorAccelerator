@@ -21,6 +21,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -48,6 +49,9 @@ import java.lang.reflect.Method;
  */
 public final class TreeFast {
     private TreeFast() {}
+
+    /** The flags of the tree's own writes: {@code TreeFeature.setBlockKnownShape}. */
+    private static final int KNOWN_SHAPE = Block.UPDATE_ALL | Block.UPDATE_KNOWN_SHAPE;
 
     private static final Direction[] DIRECTIONS = Direction.values();
     /** Trunk placer classes (and their supertypes up to the base) that declare neither isFree nor validTreePos. */
@@ -100,11 +104,11 @@ public final class TreeFast {
                                  Set<BlockPos> roots, Set<BlockPos> logs, Set<BlockPos> leaves, LongOpenHashSet leafKeys, Set<BlockPos> decorations) {
         BiConsumer<BlockPos, BlockState> rootSetter = (pos, state) -> {
             roots.add(pos.immutable());
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, KNOWN_SHAPE);
         };
         BiConsumer<BlockPos, BlockState> logSetter = (pos, state) -> {
             logs.add(pos.immutable());
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, KNOWN_SHAPE);
         };
         FoliagePlacer.FoliageSetter foliageSetter = new FoliagePlacer.FoliageSetter() {
             @Override
@@ -114,7 +118,7 @@ public final class TreeFast {
                 } else {
                     leafKeys.add(pos.asLong());
                 }
-                RegionWriter.setBlock(region, pos, state);
+                RegionWriter.setBlock(region, pos, state, KNOWN_SHAPE);
             }
 
             @Override
@@ -124,7 +128,7 @@ public final class TreeFast {
         };
         BiConsumer<BlockPos, BlockState> decorationSetter = (pos, state) -> {
             decorations.add(pos.immutable());
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, KNOWN_SHAPE);
         };
         boolean placed = doPlace(level, cursor, random, origin, rootSetter, logSetter, foliageSetter, config);
         if (placed && (!logs.isEmpty() || (leaves != null ? !leaves.isEmpty() : !leafKeys.isEmpty()))) {
@@ -254,14 +258,14 @@ public final class TreeFast {
         outside.set(x + d.getStepX(), y + d.getStepY(), z + d.getStepZ());
         BlockState state = cursor.read(x, y, z);
         BlockState neighbour = cursor.read(outside.getX(), outside.getY(), outside.getZ());
-        BlockState updated = edge != null ? edge.update(state, d, neighbour, level, inside, outside) : state.updateShape(d, neighbour, level, inside, outside);
+        BlockState updated = edge != null ? edge.update(state, d, neighbour, level, inside, outside) : state.updateShape(level, level, inside, d, outside, neighbour, level.getRandom());
         if (state != updated) {
-            RegionWriter.setBlock(region, inside, updated);
+            RegionWriter.setBlock(region, inside, updated, Block.UPDATE_CLIENTS);
         }
         BlockState neighbourUpdated = edge != null ? edge.update(neighbour, d.getOpposite(), updated, level, outside, inside)
-            : neighbour.updateShape(d.getOpposite(), updated, level, outside, inside);
+            : neighbour.updateShape(level, level, outside, d.getOpposite(), inside, updated, level.getRandom());
         if (neighbour != neighbourUpdated) {
-            RegionWriter.setBlock(region, outside, neighbourUpdated);
+            RegionWriter.setBlock(region, outside, neighbourUpdated, Block.UPDATE_CLIENTS);
         }
     }
 
@@ -275,7 +279,7 @@ public final class TreeFast {
         BlockPos trunkOrigin = config.rootPlacer.<BlockPos>map(placer -> placer.getTrunkOrigin(origin, random)).orElse(origin);
         int minY = Math.min(origin.getY(), trunkOrigin.getY());
         int maxY = Math.max(origin.getY(), trunkOrigin.getY()) + height + 1;
-        if (minY >= level.getMinBuildHeight() + 1 && maxY <= level.getMaxBuildHeight()) {
+        if (minY >= level.getMinY() + 1 && maxY <= level.getMaxY() + 1) {
             OptionalInt clipped = config.minimumSize.minClippedHeight();
             int free = getMaxFreeTreeHeight(level, cursor, height, trunkOrigin, config);
             if (free >= height || !clipped.isEmpty() && free >= clipped.getAsInt()) {
@@ -359,8 +363,8 @@ public final class TreeFast {
                 if (box.isInside(x, y, z)) {
                     if (k1 != 0) {
                         BlockState state = cursor.read(x, y, z);
-                        // the writer keeps no position (ServerLevel.onBlockStateChange copies its own)
-                        RegionWriter.setBlock(region, at.set(x, y, z), state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)));
+                        // the writer keeps no position (ServerLevel.updatePOIOnBlockStateChange copies its own)
+                        RegionWriter.setBlock(region, at.set(x, y, z), state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)), KNOWN_SHAPE);
                     }
                     shape.fill(x - minX, y - minY, z - minZ);
                     for (Direction direction : DIRECTIONS) {
@@ -412,7 +416,7 @@ public final class TreeFast {
                 if (box.isInside(pos)) {
                     if (k1 != 0) {
                         BlockState state = cursor.read(pos);
-                        RegionWriter.setBlock(region, pos, state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)));
+                        RegionWriter.setBlock(region, pos, state.setValue(BlockStateProperties.DISTANCE, Integer.valueOf(k1)), KNOWN_SHAPE);
                     }
                     shape.fill(pos.getX() - box.minX(), pos.getY() - box.minY(), pos.getZ() - box.minZ());
                     for (Direction direction : DIRECTIONS) {

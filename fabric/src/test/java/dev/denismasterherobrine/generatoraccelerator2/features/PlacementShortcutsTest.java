@@ -124,7 +124,7 @@ public class PlacementShortcutsTest {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         WorldGenLevel level = (WorldGenLevel) Proxy.newProxyInstance(WorldGenLevel.class.getClassLoader(), new Class<?>[] { WorldGenLevel.class },
             (proxy, method, args) -> switch (method.getName()) {
-                case "getMinBuildHeight" -> world.heights.getMinBuildHeight();
+                case "getMinY" -> world.heights.getMinY();
                 case "getHeight" -> args == null || args.length == 0 ? world.heights.getHeight() : 0;
                 case "hashCode" -> System.identityHashCode(proxy);
                 case "equals" -> proxy == args[0];
@@ -176,7 +176,7 @@ public class PlacementShortcutsTest {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         WorldGenLevel level = (WorldGenLevel) Proxy.newProxyInstance(WorldGenLevel.class.getClassLoader(), new Class<?>[] { WorldGenLevel.class },
             (proxy, method, args) -> switch (method.getName()) {
-                case "getMinBuildHeight" -> world.heights.getMinBuildHeight();
+                case "getMinY" -> world.heights.getMinY();
                 case "getHeight" -> args == null || args.length == 0 ? world.heights.getHeight() : 0;
                 case "hashCode" -> System.identityHashCode(proxy);
                 case "equals" -> proxy == args[0];

@@ -21,7 +21,7 @@ public class NoiseChunkBuildBench {
         RandomState state = world.randomState;
         NoiseRouter router = state.router();
         DensityFunction[] fields = { router.finalDensity(), router.continents(), router.erosion(), router.depth(), router.ridges(), router.temperature(),
-            router.vegetation(), router.initialDensityWithoutJaggedness(), router.veinToggle(), router.veinRidged(), router.veinGap(), router.barrierNoise() };
+            router.vegetation(), router.preliminarySurfaceLevel(), router.veinToggle(), router.veinRidged(), router.veinGap(), router.barrierNoise() };
         int origin = 0;
         for (int round = 0; round < 8; round++) {
             long t0 = System.nanoTime();

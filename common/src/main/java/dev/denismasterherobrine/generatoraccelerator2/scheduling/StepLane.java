@@ -5,7 +5,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.util.StaticCache2D;
@@ -65,12 +65,40 @@ public final class StepLane {
         STEPS.increment();
     }
 
+    /**
+     * Steps granted area locks ({@link AreaLocks}). They hold the locks while they wait here, so every chunk around them waits too. They
+     * run before every bucket. A decoration once waited seconds behind more urgent noise steps while its neighbours waited for it.
+     */
+    private static final ConcurrentLinkedQueue<Runnable> HOLDING = new ConcurrentLinkedQueue<>();
+
+    /** Queues {@code task}, which holds area locks, ahead of every bucket ({@link #HOLDING}). */
+    public static void executeHolding(Runnable task) {
+        if (!ENABLED) {
+            Util.backgroundExecutor().execute(task);
+            STEPS.increment();
+            return;
+        }
+        HOLDING.add(task);
+        try {
+            Util.backgroundExecutor().execute(StepLane::runOne);
+        } catch (RejectedExecutionException e) {
+            HOLDING.remove(task);
+            throw e;
+        }
+        STEPS.increment();
+    }
+
     /** An executor queueing at {@code level}, for {@code CompletableFuture.supplyAsync}. */
     public static Executor executor(int level) {
         return task -> execute(level, task);
     }
 
     private static void runOne() {
+        Runnable holding = HOLDING.poll();
+        if (holding != null) {
+            holding.run();
+            return;
+        }
         for (ConcurrentLinkedQueue<Runnable> bucket : BUCKETS) {
             Runnable task = bucket.poll();
             if (task != null) {
@@ -85,7 +113,7 @@ public final class StepLane {
         ChunkPos pos = chunk.getPos();
         GenerationChunkHolder holder;
         try {
-            holder = cache.get(pos.x, pos.z);
+            holder = cache.get(pos.x(), pos.z());
         } catch (RuntimeException e) {
             return UNKNOWN;
         }

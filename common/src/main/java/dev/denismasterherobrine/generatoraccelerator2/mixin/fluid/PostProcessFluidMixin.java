@@ -7,7 +7,8 @@ import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.FluidState;
 import org.spongepowered.asm.mixin.Mixin;
@@ -32,11 +33,11 @@ public abstract class PostProcessFluidMixin {
     }
 
     @WrapOperation(method = "postProcessGeneration", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/world/level/material/FluidState;tick(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"),
+        target = "Lnet/minecraft/world/level/material/FluidState;tick(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)V"),
         require = 0)
-    private void ga2$skipStillWater(FluidState fluid, Level level, BlockPos pos, Operation<Void> original) {
+    private void ga2$skipStillWater(FluidState fluid, ServerLevel level, BlockPos pos, BlockState state, Operation<Void> original) {
         if (!StillWater.tickDoesNothing((LevelChunk) (Object) this, level, pos, fluid)) {
-            original.call(fluid, level, pos);
+            original.call(fluid, level, pos, state);
         }
     }
 }

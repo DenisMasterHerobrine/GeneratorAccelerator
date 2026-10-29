@@ -4,5 +4,7 @@ Generator Accelerator 2 is a low-level optimization mod for Minecraft world gene
 
 This is a rewrite of the original Generator Accelerator mod, with a focus on stability and performance. It should be much more compatible with most mods that add new structures or biomes, and it can be used in both single-player and multiplayer worlds.
 
+This branch builds for Minecraft 26.1.2 on NeoForge and Fabric.
+
 > [!WARNING]
-> This mod is in the ALPHA stage. Always make backups of your worlds before installing and enabling experimental features!
+> This mod is in the ALPHA stage.  Always make backups of your worlds before installing and enabling experimental features!

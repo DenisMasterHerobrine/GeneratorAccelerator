@@ -44,10 +44,10 @@ public abstract class HeightmapMixin implements FillHeights.Ga2Heightmap {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$cacheMinY(ChunkAccess chunk, Heightmap.Types type, CallbackInfo ci) {
-        this.ga2$minY = chunk.getMinBuildHeight();
+        this.ga2$minY = chunk.getMinY();
     }
 
-    @Redirect(method = { "getFirstAvailable(I)I", "setHeight" }, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/chunk/ChunkAccess;getMinBuildHeight()I"))
+    @Redirect(method = { "getFirstAvailable(I)I", "setHeight" }, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/chunk/ChunkAccess;getMinY()I"))
     private int ga2$minY(ChunkAccess chunk) {
         return this.ga2$minY;
     }

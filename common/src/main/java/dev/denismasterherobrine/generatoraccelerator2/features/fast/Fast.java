@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.region.SectionCur
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 /** Shared transcriptions of the {@code Feature} helpers the fast paths use. */
@@ -14,10 +15,10 @@ final class Fast {
     /** Returned by a fast path when vanilla must run this call. */
     static final Object FALLBACK = new Object();
 
-    /** Exact {@code Feature.safeSetBlock}: read, test, write with flags the region ignores. */
+    /** Exact {@code Feature.safeSetBlock}: read, test, write with its flags. */
     static void safeSetBlock(SectionCursor cursor, BlockPos pos, BlockState state, Predicate<BlockState> predicate) {
         if (predicate.test(cursor.read(pos))) {
-            RegionWriter.setBlock(cursor.region(), pos, state);
+            RegionWriter.setBlock(cursor.region(), pos, state, Block.UPDATE_CLIENTS);
         }
     }
 

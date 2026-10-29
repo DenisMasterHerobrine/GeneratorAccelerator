@@ -18,16 +18,14 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(targets = "dev.worldgen.lithostitched.impl.worldgen.biomeinjector.internal.InjectorBiomeSource")
 public abstract class InjectorBiomeSourceGpuMixin {
     private static final String NOISE_BIOME = "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
-    // the override's intermediary name in a Fabric game (see InjectorBiomeSourceMixin)
-    private static final String NOISE_BIOME_INTERMEDIARY = "method_38109(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
 
-    @WrapOperation(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
+    @WrapOperation(method = NOISE_BIOME, at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/biome/Climate$Sampler;sample(III)Lnet/minecraft/world/level/biome/Climate$TargetPoint;"), require = 0)
     private Climate.TargetPoint ga2$gpuPoint(Climate.Sampler sampler, int x, int y, int z, Operation<Climate.TargetPoint> original) {
         return LithostitchedGpuBiomes.point(sampler, x, y, z, original);
     }
 
-    @WrapOperation(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
+    @WrapOperation(method = NOISE_BIOME, at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/biome/BiomeResolver;getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;"),
         require = 0)
     private Holder<Biome> ga2$gpuBase(BiomeResolver resolver, int x, int y, int z, Climate.Sampler sampler, Operation<Holder<Biome>> original) {

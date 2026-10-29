@@ -167,7 +167,7 @@ public class CaveFeaturesFuzzTest {
     private static FeatureRun.Result run(HarnessWorld.Registries2 r, FeatureRun.ConfiguredCase c, long terrainSeed, int t, boolean vanilla) {
         LevelHeightAccessor heights = HarnessWorld.heights(r, c.kind());
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), terrainSeed), heights);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(Biomes.DEEP_DARK);
+        Holder<Biome> biome = r.biomes.getOrThrow(Biomes.DEEP_DARK);
         for (ProtoChunk chunk : chunks) {
             chunk.fillBiomesFromNoise((x, y, z, sampler) -> biome, Climate.empty());
         }
@@ -182,7 +182,7 @@ public class CaveFeaturesFuzzTest {
             for (int k = 0; k < 2; k++) {
                 int x = FeatureRun.CENTER_X * 16 + (t * 7 + k * 3) % 16;
                 int z = FeatureRun.CENTER_Z * 16 + (t * 11 + 3 + k * 2) % 16;
-                origins.add(caveFloor(level, x, z, t + k, heights.getMinBuildHeight()));
+                origins.add(caveFloor(level, x, z, t + k, heights.getMinY()));
             }
         } else {
             int x = FeatureRun.CENTER_X * 16 + (t * 7) % 16;

@@ -2,12 +2,15 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.ConfigFiles;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 
 /**
@@ -28,8 +31,15 @@ public final class Takeover {
 
     private static final Logger LOGGER = Ga2Log.get("Compat");
 
-    /** A cancelled mixin (exact class name, or a package prefix ending in '.') and why GA2 replaces it. */
-    private record Rule(String mod, String mixin, String reason) {
+    /**
+     * A cancelled mixin (exact class name, or a package prefix ending in '.') and why GA2 replaces it. {@code when} says whether GA2's
+     * replacement is set up. The mixin is only cancelled then.
+     */
+    private record Rule(String mod, String mixin, String reason, BooleanSupplier when) {
+        Rule(String mod, String mixin, String reason) {
+            this(mod, mixin, reason, () -> true);
+        }
+
         boolean matches(String className) {
             return mixin.endsWith(".") ? className.startsWith(mixin) : className.equals(mixin);
         }
@@ -73,6 +83,10 @@ public final class Takeover {
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.optimize_surface_rules.", "Replaced by GA2's compiled surface rules."),
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.MaterialRuleListMixin",
             "Replaced by GA2's faster terrain fill."),
+        // ModernFix's soft template cache. A later ModernFix also changes the repository's get, which turned GA2's template loads off.
+        // GA2 makes the same soft cache itself (structure.TemplateLoads), so templates still leave memory as with ModernFix
+        new Rule("modernfix", ModernFixMixins.DYNAMIC_STRUCTURES,
+            "Replaced by GA2's template loads. Loaded templates are still kept the soft way ModernFix keeps them, so memory use stays the same."),
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.ClimateParameterListMixin",
             "Replaced by GA2's exact biome search, which uses the biome tree this tweak delays."),
         // Lithium: only Lithium's section packing goes. The packing reuses the order of a hash palette, so the saved bytes
@@ -88,13 +102,36 @@ public final class Takeover {
         // Noisium (NoisiumForked): Noisium's generator mixin replaces the fill's section writes, and GA2's fill and GPU noise hooks
         // stood down for it. The results are vanilla's either way. Noisium's material rule, biome section fill and cell size caches
         // also give vanilla's results. All of Noisium's mixins go
-        new Rule("noisium", "io.github.steveplays28.noisium.mixin.", "Replaced by GA2's faster terrain fill and GPU terrain."));
+        new Rule("noisium", "io.github.steveplays28.noisium.mixin.", "Replaced by GA2's faster terrain fill and GPU terrain."),
+        // GA2 does the same step itself (compat.yungscavebiomes.FrostedCaves)
+        new Rule("yungscavebiomes", YungsCaveBiomesMixins.AQUIFER,
+            "Replaced by GA2's own Frosted Caves water, so the faster underground water and lava keep running.", YungsCaveBiomesMixins::frostedReplaced));
 
     private static final Map<String, String> CANCELLED = new ConcurrentHashMap<>();
     private static volatile Boolean enabled;
+    /** Set once MixinSquared asks about any mixin. Without MixinSquared nothing is taken over. */
+    private static volatile boolean consulted;
+    private static volatile boolean consultChecked;
+
+    /**
+     * Whether GA2 cancels {@code mixinClassName} when its target class loads. Mixin asks {@link #shouldCancel} only then, often well
+     * into worldgen, so code that replaces a cancelled mixin's work asks this at mod construction instead.
+     */
+    public static boolean willCancel(String mixinClassName) {
+        if (!enabled()) {
+            return false;
+        }
+        for (Rule rule : RULES) {
+            if (rule.matches(mixinClassName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** Called by MixinSquared for every mixin of every config. */
     public static boolean shouldCancel(List<String> targets, String mixinClassName) {
+        consulted = true;
         if (mixinClassName.startsWith("dev.denismasterherobrine.generatoraccelerator2.")) {
             return false;
         }
@@ -102,7 +139,7 @@ public final class Takeover {
             return false;
         }
         for (Rule rule : RULES) {
-            if (rule.matches(mixinClassName)) {
+            if (rule.matches(mixinClassName) && rule.when().getAsBoolean()) {
                 if (CANCELLED.putIfAbsent(mixinClassName, rule.mod + ": " + rule.reason) == null) {
                     LOGGER.info("takeover {}: cancelled {} on {} ({})", rule.mod, mixinClassName, targets, rule.reason);
                 }
@@ -110,6 +147,20 @@ public final class Takeover {
             }
         }
         return false;
+    }
+
+    /**
+     * Warns once if MixinSquared never asked about a mixin. MixinSquared asks when a mixin's target class loads. By the time a server
+     * starts, many targets of GA2's own mixins have loaded. A jar built without the bundled MixinSquared shows up here.
+     */
+    public static void checkConsulted() {
+        if (consultChecked) {
+            return;
+        }
+        consultChecked = true;
+        if (enabled() && !consulted) {
+            LOGGER.warn("MixinSquared never consulted -> no takeover, other mods' mixins on GA2's code stay and GA2 hooks may stand down");
+        }
     }
 
     /** Cancelled mixin class name to "mod: reason", for {@code /ga2 compat report}. */

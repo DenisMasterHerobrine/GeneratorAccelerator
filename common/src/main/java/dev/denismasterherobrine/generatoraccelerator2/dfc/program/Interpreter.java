@@ -166,6 +166,7 @@ public final class Interpreter {
             case CUBE -> v * v * v;
             case HALF_NEGATIVE -> v > 0.0 ? v : v * 0.5;
             case QUARTER_NEGATIVE -> v > 0.0 ? v : v * 0.25;
+            case INVERT -> 1.0 / v;
             case SQUEEZE -> {
                 double d0 = clamp(v, -1.0, 1.0);
                 yield d0 / 2.0 - d0 * d0 * d0 / 24.0;
@@ -178,7 +179,7 @@ public final class Interpreter {
         return v < lo ? lo : Math.min(v, hi);
     }
 
-    /** {@code Mth.clampedMap} = {@code clampedLerp(from, to, inverseLerp(v, a, b))}. */
+    /** {@code Mth.clampedMap} = {@code clampedLerp(inverseLerp(v, a, b), from, to)}. */
     public static double clampedMap(double v, double a, double b, double from, double to) {
         double t = (v - a) / (b - a);
         if (t < 0.0) {

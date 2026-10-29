@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
-import net.minecraft.core.IdMap;
 import net.minecraft.util.BitStorage;
 import net.minecraft.util.SimpleBitStorage;
 import net.minecraft.util.ZeroBitStorage;
@@ -16,6 +15,7 @@ import net.minecraft.world.level.chunk.GlobalPalette;
 import net.minecraft.world.level.chunk.Palette;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
+import net.minecraft.world.level.chunk.Strategy;
 
 /**
  * Vanilla's {@code PalettedContainer.pack}. Every saved section runs it twice: for block states and for biomes.
@@ -24,7 +24,7 @@ import net.minecraft.world.level.chunk.PalettedContainerRO;
  * once per run of equal entries. It then packs the new ids at the bit width the new palette needs. The new palette lists
  * the values in the order they first occur in the section. This class does the same with an array from old ids to new
  * ids. Each old id is looked up once per section, and the first occurrences give the same order. The bit width comes from
- * the same strategy method, and the same loop packs the ids. Old ids map to distinct values, so the result is identical.
+ * the same strategy configuration, and the same loop packs the ids. Old ids map to distinct values, so the result is identical.
  * A single, linear or hash palette never holds a value twice. A global palette is keyed by value instead.
  *
  * <p>{@code -Dgeneratoraccelerator2.fastPack=false} turns it off.
@@ -47,13 +47,13 @@ public final class FastPack {
     }
 
     /**
-     * The values {@link #pack} wraps in vanilla's types: the new palette's entries and the packed longs. The longs are null at
-     * zero bits, where vanilla has no data. Otherwise they are a fresh array the caller may keep. The section codec puts that
-     * array in its tag without the stream's copy.
+     * The values {@link #pack} wraps in vanilla's types: the new palette's entries, the packed longs and their bit width. The
+     * longs are null at zero bits, where vanilla has no data. Otherwise they are a fresh array the caller may keep. The section
+     * codec puts that array in its tag without the stream's copy.
      */
-    public record Raw<T>(List<T> entries, @Nullable long[] data) {
+    public record Raw<T>(List<T> entries, @Nullable long[] data, int bits) {
         public PalettedContainerRO.PackedData<T> packedData() {
-            return new PalettedContainerRO.PackedData<>(entries, data == null ? Optional.empty() : Optional.of(Arrays.stream(data)));
+            return new PalettedContainerRO.PackedData<>(entries, data == null ? Optional.empty() : Optional.of(Arrays.stream(data)), bits);
         }
     }
 
@@ -62,15 +62,15 @@ public final class FastPack {
      * (vanilla then packs it)
      */
     @Nullable
-    public static <T> PalettedContainerRO.PackedData<T> pack(PalettedContainer.Data<T> data, IdMap<T> registry, PalettedContainer.Strategy strategy) {
-        Raw<T> raw = packRaw(data, registry, strategy);
+    public static <T> PalettedContainerRO.PackedData<T> pack(PalettedContainer.Data<T> data, Strategy<T> strategy) {
+        Raw<T> raw = packRaw(data, strategy);
         return raw == null ? null : raw.packedData();
     }
 
     /** {@link #pack} before its result is wrapped in a stream ({@link Raw}), or null when vanilla packs it. */
     @Nullable
-    public static <T> Raw<T> packRaw(PalettedContainer.Data<T> data, IdMap<T> registry, PalettedContainer.Strategy strategy) {
-        int size = strategy.size();
+    public static <T> Raw<T> packRaw(PalettedContainer.Data<T> data, Strategy<T> strategy) {
+        int size = strategy.entryCount();
         BitStorage storage = data.storage();
         if (storage.getSize() != size) {
             return null;
@@ -84,19 +84,18 @@ public final class FastPack {
                 return null;
             }
             entries.add(value);
-            int newBits = strategy.calculateBitsForSerialization(registry, 1);
+            int newBits = strategy.getConfigurationForPaletteSize(1).bitsInStorage();
             PACKED.increment();
-            return new Raw<>(entries, newBits != 0 ? new long[(size + 64 / newBits - 1) / (64 / newBits)] : null);
+            return new Raw<>(entries, newBits != 0 ? new long[(size + 64 / newBits - 1) / (64 / newBits)] : null, newBits);
+        }
+        int bits = storage.getBits();
+        if (!(palette instanceof GlobalPalette) && bits <= MAX_LOCAL_BITS && storage instanceof SimpleBitStorage simple) {
+            return packLocal(simple.getRaw(), bits, size, palette, strategy);
         }
         int[] ids = size <= 4096 ? IDS.get() : new int[size];
-        int bits = storage.getBits();
         if (palette instanceof GlobalPalette || bits > MAX_LOCAL_BITS) {
             storage.unpack(ids);
             if (!remapByValue(ids, size, palette, entries)) {
-                return null;
-            }
-        } else if (storage instanceof SimpleBitStorage simple) {
-            if (!remapPacked(simple.getRaw(), bits, ids, size, palette, entries)) {
                 return null;
             }
         } else {
@@ -105,44 +104,150 @@ public final class FastPack {
                 return null;
             }
         }
-        int newBits = strategy.calculateBitsForSerialization(registry, entries.size());
+        int newBits = strategy.getConfigurationForPaletteSize(entries.size()).bitsInStorage();
         PACKED.increment();
-        return new Raw<>(entries, newBits != 0 ? packValues(ids, size, newBits) : null);
+        return new Raw<>(entries, newBits != 0 ? packValues(ids, size, newBits) : null, newBits);
     }
 
-    /** Unpacks {@code raw} (SimpleBitStorage layout) and remaps every entry in the same pass. */
-    private static <T> boolean remapPacked(long[] raw, int bits, int[] ids, int size, Palette<T> palette, List<T> entries) {
+    /**
+     * A local palette's container straight from its storage's longs ({@code raw}, SimpleBitStorage layout). The first pass maps each
+     * old id to its new id in first-occurrence order and writes nothing else. When that order is the palette's own and the width
+     * stays, the new longs are the old ones ({@link #cleanCopy}). Otherwise the second pass packs the new ids straight from the old
+     * longs ({@link #repack}). Either way the longs equal vanilla's. Returns null when vanilla packs it.
+     */
+    @Nullable
+    private static <T> Raw<T> packLocal(long[] raw, int bits, int size, Palette<T> palette, Strategy<T> strategy) {
         int[] remap = REMAP.get();
         Arrays.fill(remap, 0, 1 << bits, -1);
+        // the new palette holds at most the old one's values, so the list never grows
+        List<T> entries = new ArrayList<>(Math.max(1, Math.min(palette.getSize(), 1 << bits)));
         int perLong = 64 / bits;
         long mask = (1L << bits) - 1L;
+        boolean identity = true;
         int lastOld = -1;
-        int lastNew = -1;
         int k = 0;
         for (int w = 0; w < raw.length && k < size; w++) {
             long word = raw[w];
             int end = Math.min(size, k + perLong);
             for (; k < end; k++) {
                 int old = (int) (word & mask);
-                word >>= bits;
+                word >>>= bits;
                 if (old != lastOld) {
                     lastOld = old;
-                    int id = remap[old];
-                    if (id < 0) {
+                    if (remap[old] < 0) {
                         T value = palette.valueFor(old);
                         if (value == null) {
-                            return false;
+                            return null;
                         }
-                        id = entries.size();
+                        int id = entries.size();
+                        identity &= id == old;
                         remap[old] = id;
                         entries.add(value);
                     }
-                    lastNew = id;
                 }
-                ids[k] = lastNew;
             }
         }
-        return k == size;
+        if (k != size) {
+            return null;
+        }
+        int newBits = strategy.getConfigurationForPaletteSize(entries.size()).bitsInStorage();
+        PACKED.increment();
+        if (newBits == 0) {
+            return new Raw<>(entries, null, 0);
+        }
+        long[] data = identity && newBits == bits ? cleanCopy(raw, bits, size) : repack(raw, bits, size, remap, newBits);
+        return new Raw<>(entries, data, newBits);
+    }
+
+    /**
+     * {@code raw}'s longs as vanilla would pack the same ids: a copy with the bits past each long's last entry cleared. A storage made
+     * from saved longs keeps whatever those bits held, and vanilla's packing writes zeros there.
+     */
+    static long[] cleanCopy(long[] raw, int bits, int size) {
+        int perLong = 64 / bits;
+        int longs = (size + perLong - 1) / perLong;
+        long[] out = Arrays.copyOf(raw, longs);
+        int used = perLong * bits;
+        if (used < 64) {
+            long keep = (1L << used) - 1L;
+            for (int i = 0; i < longs; i++) {
+                out[i] &= keep;
+            }
+        }
+        int rest = size - (longs - 1) * perLong;
+        if (rest < perLong) {
+            out[longs - 1] &= (1L << rest * bits) - 1L;
+        }
+        return out;
+    }
+
+    /**
+     * The new ids of {@code raw}'s entries ({@code remap}, which maps every old id present) packed at {@code newBits}, as
+     * {@link #packValues} packs them. Reads the old longs once and writes the new ones, without an id per entry in between.
+     */
+    static long[] repack(long[] raw, int bits, int size, int[] remap, int newBits) {
+        int perLong = 64 / bits;
+        int newPerLong = 64 / newBits;
+        long[] out = new long[(size + newPerLong - 1) / newPerLong];
+        if (bits == newBits && (bits == 4 || bits == 8) && size % perLong == 0) {
+            return repackBytes(raw, bits, size / perLong, remap, out);
+        }
+        long mask = (1L << bits) - 1L;
+        int o = 0;
+        int filled = 0;
+        int shift = 0;
+        long word = 0L;
+        int k = 0;
+        for (int w = 0; k < size; w++) {
+            long in = raw[w];
+            int end = Math.min(size, k + perLong);
+            for (; k < end; k++) {
+                word |= (long) remap[(int) (in & mask)] << shift;
+                in >>>= bits;
+                shift += newBits;
+                if (++filled == newPerLong) {
+                    out[o++] = word;
+                    word = 0L;
+                    shift = 0;
+                    filled = 0;
+                }
+            }
+        }
+        if (filled > 0) {
+            out[o] = word;
+        }
+        return out;
+    }
+
+    private static final ThreadLocal<long[]> BYTE_TABLE = ThreadLocal.withInitial(() -> new long[256]);
+
+    /**
+     * {@link #repack} where both widths are 4 or both are 8 and the longs hold no padding. A table maps each byte of an old long to the
+     * byte of the new long (two 4-bit ids, or one 8-bit id), so a long takes 8 lookups instead of an id at a time.
+     */
+    private static long[] repackBytes(long[] raw, int bits, int longs, int[] remap, long[] out) {
+        long[] table = BYTE_TABLE.get();
+        if (bits == 4) {
+            for (int b = 0; b < 256; b++) {
+                table[b] = (remap[b & 15] & 15) | (remap[b >>> 4] & 15) << 4;
+            }
+        } else {
+            for (int b = 0; b < 256; b++) {
+                table[b] = remap[b] & 255;
+            }
+        }
+        for (int w = 0; w < longs; w++) {
+            long in = raw[w];
+            out[w] = table[(int) in & 255]
+                | table[(int) (in >>> 8) & 255] << 8
+                | table[(int) (in >>> 16) & 255] << 16
+                | table[(int) (in >>> 24) & 255] << 24
+                | table[(int) (in >>> 32) & 255] << 32
+                | table[(int) (in >>> 40) & 255] << 40
+                | table[(int) (in >>> 48) & 255] << 48
+                | table[(int) (in >>> 56) & 255] << 56;
+        }
+        return out;
     }
 
     private static <T> boolean remapUnpacked(int[] ids, int size, int bits, Palette<T> palette, List<T> entries) {

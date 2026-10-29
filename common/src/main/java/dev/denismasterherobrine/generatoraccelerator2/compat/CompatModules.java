@@ -26,11 +26,22 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.Ecl
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbevolutioncompanion.FtbEvolutionCompanionMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedFunctions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedProcessors;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.magnumtorch.MagnumTorchMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.magnumtorch.MagnumTorchPoi;
+import dev.denismasterherobrine.generatoraccelerator2.compat.malisisswitches.MalisisSwitchesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.malisisswitches.MalisisTemplates;
+import dev.denismasterherobrine.generatoraccelerator2.compat.moogs.MoogsProcessors;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritSurface;
@@ -39,6 +50,8 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoOres;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraLight;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredCarvers;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
@@ -58,6 +71,10 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.witchery.WitcheryProcessors;
+import dev.denismasterherobrine.generatoraccelerator2.compat.xycraft.XyCraftMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 
 /**
@@ -70,6 +87,10 @@ public final class CompatModules {
     private CompatModules() {}
 
     public static void init() {
+        if (Compat.isLoaded(SodiumExtraMixins.MOD_ID)) {
+            // the layers check Sodium Extra's light updates option on every update
+            CompatAdapters.register(HookTargets.LIGHT_LAYERS, SodiumExtraMixins.LIGHT_ENGINE, SodiumExtraLight::register);
+        }
         if (Compat.isLoaded(ChunkyRequests.MOD_ID)) {
             ChunkyRequests.register();
         }
@@ -108,6 +129,7 @@ public final class CompatModules {
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
             LithostitchedDensity.register();
             LithostitchedFunctions.register();
+            LithostitchedProcessors.register();
             // nothing to set up: the fossil probe's early answer leaves Lithostitched's wrapped call to vanilla's method
             CompatAdapters.register(HookTargets.STRUCTURE_FOSSIL_PROBE, LithostitchedMixins.NETHER_FOSSIL, () -> true);
             // nothing to set up: GPU biomes are for a plain multi-noise source only, which the wrapping passes through
@@ -135,12 +157,19 @@ public final class CompatModules {
             CompatAdapters.register(HookTargets.STRUCTURE_RING_BOUND, ModernFixMixins.STRONGHOLD_CACHE, () -> true);
             // nothing to set up: without ModernFix's cache, a temperature is still getHeightAdjustedTemperature's. The GPU computes that
             CompatAdapters.register(HookTargets.GPU_SURFACE, ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // the same for the freeze and snow skip, which reads only the base temperature and the climate settings
+            CompatAdapters.register(FeatureTargets.compatKey("climate"), ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // nothing to set up: ModernFix's answer runs on the server thread only, GA2's off it
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK, () -> true);
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK_FORGE, () -> true);
+        }
+        if (Compat.isLoaded(FtbChunksMixins.MOD_ID)) {
+            // nothing to set up: FTB Chunks only removes directions from vanilla's spread
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, FtbChunksMixins.FLUID_SPREAD, () -> true);
         }
         if (Compat.isLoaded(OwoMixins.MOD_ID)) {
             OwoOres.register();
         }
-        // mods whose changes to ChunkSerializer.read leave alone the tags that the prepared parts of a loaded chunk come from
-        ChunkLoadMixins.register();
         if (Compat.isLoaded(CobblemonMixins.MOD_ID)) {
             CobblemonFeatures.register();
         }
@@ -189,6 +218,38 @@ public final class CompatModules {
             }
             // nothing to set up: TerraBlender's lookup answers from the position and the regions of the world's seed
             CompatAdapters.register(HookTargets.BIOME_ANSWERS, TerraBlenderMixins.BIOME_SOURCE, () -> true);
+        }
+        if (Compat.isLoaded(FtbEvolutionCompanionMixins.MOD_ID)) {
+            // nothing to set up: the pyramid biome is decided by the position, in a box set when the level loads
+            for (KnownMixins.Entry e : FtbEvolutionCompanionMixins.ENTRIES) {
+                CompatAdapters.register(e.hook(), e.mixin(), () -> true);
+            }
+        }
+        if (Compat.isLoaded(LootrMixins.MOD_ID)) {
+            // nothing to set up: GA2 asks forState, which runs Lootr's handler
+            CompatAdapters.register(HookTargets.STATE_POI_SKIP, LootrMixins.POI_TYPES, () -> true);
+        }
+        if (Compat.isLoaded(MagnumTorchMixins.MOD_ID)) {
+            MagnumTorchPoi.register();
+        }
+        if (Compat.isLoaded(GtceuMixins.MOD_ID)) {
+            GtceuVeins.register();
+        }
+        if (Compat.isLoaded(MalisisSwitchesMixins.MOD_ID)) {
+            MalisisTemplates.register();
+        }
+        if (Compat.isLoaded(MoogsProcessors.MOD_ID)) {
+            MoogsProcessors.register();
+        }
+        if (Compat.isLoaded(WitcheryProcessors.MOD_ID)) {
+            WitcheryProcessors.register();
+        }
+        if (Compat.isLoaded(YungsCaveBiomesMixins.MOD_ID)) {
+            // before any aquifer: the takeover cancels the mod's handler only once this is set up
+            FrostedCaves.register();
+        }
+        if (Compat.isLoaded(XyCraftMixins.MOD_ID)) {
+            CompatAdapters.register(FeatureTargets.compatKey(FeatureTargets.CLIMATE), XyCraftMixins.SHOULD_FREEZE, XyCraftMixins::codeKnown);
         }
         if (Compat.isLoaded(TwilightForestCoremods.MOD_ID)) {
             TwilightForestSurface.register();

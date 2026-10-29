@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
 import net.minecraft.server.level.ThreadedLevelLightEngine;
-import net.minecraft.util.thread.ProcessorMailbox;
+import net.minecraft.util.thread.ConsecutiveExecutor;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -31,7 +31,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
     @SuppressWarnings("rawtypes")
     @Shadow @Final private ObjectList lightTasks;
-    @Shadow @Final private ProcessorMailbox<Runnable> taskMailbox;
+    @Shadow @Final private ConsecutiveExecutor consecutiveExecutor;
     @Shadow @Final private AtomicBoolean scheduled;
 
     @Unique private final ConcurrentLinkedQueue<Pair<Object, Runnable>> ga2$queue = new ConcurrentLinkedQueue<>();
@@ -61,7 +61,7 @@ public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
     @Unique
     private void ga2$schedule() {
         if (this.scheduled.compareAndSet(false, true)) {
-            this.taskMailbox.tell(this::ga2$update);
+            this.consecutiveExecutor.schedule(this::ga2$update);
         }
     }
 

@@ -13,6 +13,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -98,7 +99,7 @@ public final class MonsterRoomFast {
                     BlockState state = cursor.read(pos);
                     if (dx == minX || dy == -1 || dz == minZ || dx == maxX || dy == 4 || dz == maxZ) {
                         if (pos.getY() >= minBuild && !cursor.read(pos.getX(), pos.getY() - 1, pos.getZ()).isSolid()) {
-                            RegionWriter.setBlock(region, pos, AIR);
+                            RegionWriter.setBlock(region, pos, AIR, Block.UPDATE_CLIENTS);
                         } else if (state.isSolid() && !state.is(Blocks.CHEST)) {
                             // one write site for both stones (the floor's draw as vanilla's)
                             BlockState wall = dy == -1 && random.nextInt(4) != 0 ? Blocks.MOSSY_COBBLESTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();

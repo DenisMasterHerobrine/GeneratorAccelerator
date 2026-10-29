@@ -17,11 +17,11 @@ import net.minecraft.world.level.levelgen.blending.Blender;
 /**
  * {@code NoiseChunk.preliminarySurfaceLevel} shared between chunks. Aquifer statuses sample it at
  * 13 columns spread over 5 x 3 chunks around each aquifer cell. Every chunk keeps its own map, so
- * many neighbouring chunks scan each column. A scan is one density evaluation per cell height, from
- * the top of the world down to the surface.
+ * many neighbouring chunks scan each column. A scan is usually a {@code find_top_surface}: one density evaluation per
+ * cell height, from its upper bound down to the surface.
  *
  * <p>Values are shared only between chunks of the same RandomState and vertical layout, without
- * old-chunk blending. They are shared only when {@code initial_density_without_jaggedness} cannot
+ * old-chunk blending. They are shared only when the surface level function cannot
  * depend on the chunk (see {@code StateDependence.chunkIndependent}). Each slot of a direct-mapped
  * table holds the quart column and its level in one long, written atomically. A racing reader thus
  * sees either the whole entry or a different column. A collision only costs a recomputation.

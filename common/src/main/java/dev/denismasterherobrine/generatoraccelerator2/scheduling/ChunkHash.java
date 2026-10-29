@@ -10,7 +10,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -47,7 +47,7 @@ public final class ChunkHash {
         List<String> names = new ArrayList<>();
         for (String id : blocks.split("[, ]+")) {
             if (!id.isBlank()) {
-                kinds.add(BuiltInRegistries.BLOCK.get(ResourceLocation.parse(id)));
+                kinds.add(BuiltInRegistries.BLOCK.getValue(Identifier.parse(id)));
                 names.add(id);
             }
         }
@@ -74,7 +74,7 @@ public final class ChunkHash {
                         }
                     }
                 }
-                LOGGER.info("hash {} {} {} {}", level.dimension().location(), x, z, Long.toHexString(h));
+                LOGGER.info("hash {} {} {} {}", level.dimension().identifier(), x, z, Long.toHexString(h));
                 total = total * 31 + h;
                 n++;
             }
@@ -83,7 +83,7 @@ public final class ChunkHash {
         for (int k = 0; k < counts.length; k++) {
             sb.append(k == 0 ? "" : ", ").append(names.get(k)).append(' ').append(counts[k]);
         }
-        String line = "hash " + level.dimension().location() + " " + n + " chunks around " + cx + ", " + cz + ": " + Long.toHexString(total)
+        String line = "hash " + level.dimension().identifier() + " " + n + " chunks around " + cx + ", " + cz + ": " + Long.toHexString(total)
             + (counts.length > 0 ? "; " + sb : "");
         LOGGER.info("{}", line);
         source.sendSuccess(() -> Component.literal(line), false);

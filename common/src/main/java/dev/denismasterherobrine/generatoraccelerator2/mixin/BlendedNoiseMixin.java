@@ -117,7 +117,7 @@ public abstract class BlendedNoiseMixin {
             d11 /= 2.0;
         }
 
-        // Mth.clampedLerp(d8 / 512.0, d9 / 512.0, d16) / 128.0
+        // Mth.clampedLerp(d16, d8 / 512.0, d9 / 512.0) / 128.0
         double lo = d8 / 512.0;
         double hi = d9 / 512.0;
         double r;

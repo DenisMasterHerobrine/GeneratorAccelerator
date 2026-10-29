@@ -9,7 +9,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
@@ -101,7 +101,7 @@ public final class Precompress {
      * hash is equal along whole diagonals. Plain positions would pile into a few bins, which the map turns into locked trees.
      */
     private static long key(ChunkPos pos) {
-        return pos.toLong() * 0x9E3779B97F4A7C15L;
+        return pos.pack() * 0x9E3779B97F4A7C15L;
     }
     private final AtomicInteger mismatches = new AtomicInteger();
     private volatile boolean stopped;

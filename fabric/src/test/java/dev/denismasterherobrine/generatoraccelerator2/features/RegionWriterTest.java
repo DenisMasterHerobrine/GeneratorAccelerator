@@ -46,8 +46,8 @@ public class RegionWriterTest {
         };
         Random rng = new Random(seed);
         List<String> mismatches = new ArrayList<>();
-        int minY = heights.getMinBuildHeight();
-        int maxY = heights.getMaxBuildHeight();
+        int minY = heights.getMinY();
+        int maxY = heights.getMaxY() + 1;
         for (int i = 0; i < 40000; i++) {
             int x = FeatureRun.CENTER_X * 16 + rng.nextInt(80) - 32;
             int z = FeatureRun.CENTER_Z * 16 + rng.nextInt(80) - 32;
@@ -58,7 +58,7 @@ public class RegionWriterTest {
             BlockState state = states[rng.nextInt(states.length)];
             BlockPos pos = new BlockPos(x, y, z);
             boolean expected = vanilla.setBlock(pos, state, 3);
-            boolean actual = RegionWriter.setBlock(fast, pos, state);
+            boolean actual = RegionWriter.setBlock(fast, pos, state, 3);
             if (expected != actual) {
                 mismatches.add("write " + i + " at " + pos + " of " + state + ": expected " + expected + " got " + actual);
             }

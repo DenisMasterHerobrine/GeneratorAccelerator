@@ -9,6 +9,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.biome.Biome;
@@ -153,9 +154,9 @@ public final class FeatureWraps {
         IceWrite wrap = ice;
         BlockState state = Blocks.ICE.defaultBlockState();
         if (wrap == null) {
-            RegionWriter.setBlock(region, pos, state);
+            RegionWriter.setBlock(region, pos, state, Block.UPDATE_CLIENTS);
             return;
         }
-        wrap.setIce(feature, level, pos, state, 2, args -> RegionWriter.setBlock(region, (BlockPos) args[1], (BlockState) args[2]));
+        wrap.setIce(feature, level, pos, state, Block.UPDATE_CLIENTS, args -> RegionWriter.setBlock(region, (BlockPos) args[1], (BlockState) args[2], (int) args[3]));
     }
 }

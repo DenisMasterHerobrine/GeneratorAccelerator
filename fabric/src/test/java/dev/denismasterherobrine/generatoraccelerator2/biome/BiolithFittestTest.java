@@ -32,15 +32,15 @@ public class BiolithFittestTest {
     @Test
     void overworldMatchesBiolith() {
         List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters().values();
-        compare(new Climate.ParameterList<>(entries), h -> h.unwrapKey().orElseThrow().location(), 400_000);
+            HarnessWorld.registries().biomes).parameters().values();
+        compare(new Climate.ParameterList<>(entries), h -> h.unwrapKey().orElseThrow().identifier(), 400_000);
     }
 
     @Test
     void netherMatchesBiolith() {
         List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.NETHER,
-            HarnessWorld.registries().biomes.asLookup()).parameters().values();
-        compare(new Climate.ParameterList<>(entries), h -> h.unwrapKey().orElseThrow().location(), 100_000);
+            HarnessWorld.registries().biomes).parameters().values();
+        compare(new Climate.ParameterList<>(entries), h -> h.unwrapKey().orElseThrow().identifier(), 100_000);
     }
 
     @Test

@@ -25,7 +25,7 @@ public class DirectSetsTest {
     void sameAsVanillaMembership() {
         HarnessWorld.registries();
         assertEquals(DirectSets.IDENTITY, DirectSets.MODE, "Fabric's reference holders compare by identity");
-        List<Holder.Reference<Block>> blocks = BuiltInRegistries.BLOCK.holders().toList();
+        List<Holder.Reference<Block>> blocks = BuiltInRegistries.BLOCK.listElements().toList();
         Random r = new Random(7);
         List<String> wrong = new ArrayList<>();
         long checked = 0;
@@ -46,7 +46,7 @@ public class DirectSetsTest {
                 // the same key in another holder object: not the same holder for vanilla
                 if (!list.isEmpty()) {
                     Holder.Reference<Block> member = (Holder.Reference<Block>) list.get(0);
-                    Holder.Reference<Block> other = Holder.Reference.createStandAlone(BuiltInRegistries.BLOCK.holderOwner(), member.key());
+                    Holder.Reference<Block> other = Holder.Reference.createStandAlone(BuiltInRegistries.BLOCK, member.key());
                     if (set.contains(other)) {
                         wrong.add(n + " entries, stand-alone " + member.getRegisteredName() + ": true");
                     }
@@ -60,7 +60,7 @@ public class DirectSetsTest {
     @Test
     void bitsAnswerByKey() {
         HarnessWorld.registries();
-        List<Holder.Reference<Block>> blocks = BuiltInRegistries.BLOCK.holders().toList();
+        List<Holder.Reference<Block>> blocks = BuiltInRegistries.BLOCK.listElements().toList();
         List<Holder<Block>> list = List.of(blocks.get(3), blocks.get(10), blocks.get(200));
         long[] bits = DirectSets.bits(list);
         for (Holder.Reference<Block> b : blocks) {
@@ -76,7 +76,7 @@ public class DirectSetsTest {
     @Test
     void containsIsGa2s() throws Exception {
         HarnessWorld.registries();
-        Holder.Reference<Block> stone = BuiltInRegistries.BLOCK.holders().toList().get(1);
+        Holder.Reference<Block> stone = BuiltInRegistries.BLOCK.listElements().toList().get(1);
         HolderSet<Block> set = HolderSet.direct(List.of(stone));
         Field bits = HolderSet.Direct.class.getDeclaredField("ga2$bits");
         bits.setAccessible(true);

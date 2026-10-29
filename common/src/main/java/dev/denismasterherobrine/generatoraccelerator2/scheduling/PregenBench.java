@@ -16,7 +16,6 @@ import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -48,7 +47,8 @@ public final class PregenBench {
     private PregenBench() {}
 
     private static final Logger LOGGER = Ga2Log.get("Bench");
-    private static final TicketType<ChunkPos> TICKET = TicketType.create("ga2_bench", Comparator.comparingLong(ChunkPos::toLong));
+    /** Loads, without a timeout, and is not saved. Tickets compare their types by identity. */
+    private static final TicketType TICKET = new TicketType(TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING);
 
     private static Run current;
     private static boolean listening;
@@ -133,7 +133,7 @@ public final class PregenBench {
 
     // ---- latency probe: how long a chunk a player stands in waits while other generation is going on
 
-    private static final TicketType<ChunkPos> PROBE_TICKET = TicketType.create("ga2_probe", Comparator.comparingLong(ChunkPos::toLong));
+    private static final TicketType PROBE_TICKET = new TicketType(TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING);
     /** Ticket distance 2: level 31, a player's own chunks. */
     private static final int PROBE_DISTANCE = 2;
     private static Probe probe;
@@ -179,17 +179,17 @@ public final class PregenBench {
             this.index++;
             this.pos = new ChunkPos(this.cx + this.index * this.spacing, this.cz);
             this.t0 = System.nanoTime();
-            this.level.getChunkSource().addRegionTicket(PROBE_TICKET, this.pos, PROBE_DISTANCE, this.pos);
+            this.level.getChunkSource().addTicketWithRadius(PROBE_TICKET, this.pos, PROBE_DISTANCE);
         }
 
         /** @return true when every probe is done */
         boolean poll() {
-            if (this.level.getChunkSource().getChunkNow(this.pos.x, this.pos.z) == null) {
+            if (this.level.getChunkSource().getChunkNow(this.pos.x(), this.pos.z()) == null) {
                 return false;
             }
             this.millis[this.index] = (System.nanoTime() - this.t0) / 1_000_000L;
-            this.level.getChunkSource().removeRegionTicket(PROBE_TICKET, this.pos, PROBE_DISTANCE, this.pos);
-            send(this.source, String.format(Locale.ROOT, "probe %d/%d: chunk %d,%d full after %d ms", this.index + 1, this.count, this.pos.x, this.pos.z,
+            this.level.getChunkSource().removeTicketWithRadius(PROBE_TICKET, this.pos, PROBE_DISTANCE);
+            send(this.source, String.format(Locale.ROOT, "probe %d/%d: chunk %d,%d full after %d ms", this.index + 1, this.count, this.pos.x(), this.pos.z(),
                 this.millis[this.index]));
             if (this.index + 1 >= this.count) {
                 long[] sorted = this.millis.clone();
@@ -293,7 +293,7 @@ public final class PregenBench {
             int limit = inFlight > 0 ? inFlight : Integer.MAX_VALUE;
             while (next < total && pending < limit) {
                 ChunkPos pos = pos(next);
-                chunks.addRegionTicket(TICKET, pos, distance, pos);
+                chunks.addTicketWithRadius(TICKET, pos, distance);
                 state[next] = 1;
                 next++;
                 pending++;
@@ -305,7 +305,7 @@ public final class PregenBench {
             for (int i = 0; i < total; i++) {
                 if (state[i] == 1 || (state[i] == 2 && inFlight == 0)) {
                     ChunkPos pos = pos(i);
-                    chunks.removeRegionTicket(TICKET, pos, distance, pos);
+                    chunks.removeTicketWithRadius(TICKET, pos, distance);
                 }
             }
         }
@@ -316,12 +316,12 @@ public final class PregenBench {
             for (int i = 0; i < next; i++) {
                 if (state[i] == 1) {
                     ChunkPos pos = pos(i);
-                    if (chunks.getChunkNow(pos.x, pos.z) != null) {
+                    if (chunks.getChunkNow(pos.x(), pos.z()) != null) {
                         state[i] = 2;
                         done++;
                         pending--;
                         if (inFlight > 0) {
-                            chunks.removeRegionTicket(TICKET, pos, distance, pos);
+                            chunks.removeTicketWithRadius(TICKET, pos, distance);
                         }
                     }
                 }

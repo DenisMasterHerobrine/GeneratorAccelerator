@@ -102,7 +102,7 @@ public class LiquidRegionsTest {
 
     /** Synthetic regions: an altitude per chunk around the sea, lava, water or nothing per column. */
     public static LiquidRegions.Table table(ChunkPos pos) {
-        Random r = new Random(pos.toLong() * 31 + 7);
+        Random r = new Random(pos.pack() * 31 + 7);
         BlockState[] blocks = new BlockState[256];
         for (int i = 0; i < 256; i++) {
             int k = r.nextInt(10);

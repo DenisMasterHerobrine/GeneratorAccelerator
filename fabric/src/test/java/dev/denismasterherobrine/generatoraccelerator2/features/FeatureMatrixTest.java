@@ -104,7 +104,7 @@ public class FeatureMatrixTest {
         }
         System.out.println("FeatureMatrixTest: direct configured runs " + directCompared + ", placed " + directPlaced);
         assertTrue(FeatureStats.PLACEMENTS_FAST.sum() > 0, "the placement pipeline was never used");
-        for (String fast : new String[] { "OreFeature", "GeodeFeature", "DiskFeature", "SpringFeature", "SnowAndFreezeFeature", "SeagrassFeature", "KelpFeature", "MultifaceGrowthFeature", "SimpleBlockFeature", "MonsterRoomFeature", "TreeFeature", "SculkPatchFeature" }) {
+        for (String fast : new String[] { "OreFeature", "GeodeFeature", "DiskFeature", "SpringFeature", "SnowAndFreezeFeature", "SeagrassFeature", "KelpFeature", "MultifaceGrowthFeature", "SimpleBlockFeature", "MonsterRoomFeature", "TreeFeature", "SculkPatchFeature", "ReplaceBlobsFeature" }) {
             LongAdder hits = FeatureStats.fastByFeature().get(fast);
             assertTrue(hits != null && hits.sum() > 0, "fast path never used: " + fast);
         }

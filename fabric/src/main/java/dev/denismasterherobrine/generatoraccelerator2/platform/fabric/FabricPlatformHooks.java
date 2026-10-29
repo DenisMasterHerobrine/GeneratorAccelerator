@@ -6,7 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
@@ -61,7 +61,7 @@ public final class FabricPlatformHooks implements PlatformHooks.Service {
 
     /**
      * Vanilla counts a state as empty by {@code isAir()}. Fabric API, which every Fabric game has, replaces that test in
-     * {@code setBlockState} with a check for the three air blocks. The replacement is Fabric API's {@code ChunkSectionMixin}.
+     * {@code setBlockState} with a check for the three air blocks. The replacement is Fabric API's {@code LevelChunkSectionMixin}.
      * Both tests select the same states for every vanilla block.
      */
     @Override

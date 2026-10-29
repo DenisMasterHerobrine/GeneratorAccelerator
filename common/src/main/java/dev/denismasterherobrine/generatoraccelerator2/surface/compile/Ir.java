@@ -82,7 +82,7 @@ public final class Ir {
     /** {@code blockY >= minSurfaceLevel}. */
     public record AboveSurface(int id) implements Cond {}
 
-    /** {@code biome.coldEnoughToSnow(pos)}. */
+    /** {@code biome.coldEnoughToSnow(pos, seaLevel)}. */
     public record Temperature(int id) implements Cond {}
 
     public record Not(int id, Cond target) implements Cond {}

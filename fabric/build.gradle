@@ -1,3 +1,5 @@
+import net.fabricmc.loom.configuration.IncludeConfigurations
+
 plugins {
     id 'com.gradleup.shadow'
 }
@@ -27,13 +29,13 @@ configurations {
 }
 
 dependencies {
-    modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:$rootProject.fabric_api_version"
+    implementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
+    implementation "net.fabricmc.fabric-api:fabric-api:$rootProject.fabric_api_version"
 
     // Bundled: lets GA2 cancel the mixins it takes over from other performance mods (see compat/Takeover)
     include(implementation("com.github.bawnorton.mixinsquared:mixinsquared-fabric:$rootProject.mixinsquared_version"))
 
-    common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
+    common(project(path: ':common')) { transitive = false }
     shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
 }
 
@@ -41,20 +43,37 @@ processResources {
     inputs.property 'version', project.version
 
     filesMatching('fabric.mod.json') {
-        expand version: project.version
+        expand version: inputs.properties.version
     }
+}
+
+// Minecraft is not obfuscated on this version, so there is no remapJar task.
+// The shaded jar is the mod jar that ships.
+jar {
+    archiveClassifier = 'dev'
 }
 
 shadowJar {
     configurations = [project.configurations.shadowBundle]
-    archiveClassifier = 'dev-shadow'
+    archiveClassifier = null
 }
 
-remapJar {
-    input.set shadowJar.archiveFile
-}
+assemble.dependsOn shadowJar
 
-apply from: file('names.gradle')
+// Loom nests the `include` jars only into the `jar` task's output on this version. The shadow jar is the jar that ships, so it
+// nests them too. GA2's takeovers need the bundled MixinSquared (see compat/Takeover).
+IncludeConfigurations.nestJars(project, tasks.named('shadowJar', Jar), configurations.named('include'))
+
+configurations {
+    apiElements {
+        outgoing.artifacts.clear()
+        outgoing.artifact(shadowJar)
+    }
+    runtimeElements {
+        outgoing.artifacts.clear()
+        outgoing.artifact(shadowJar)
+    }
+}
 
 // The tests run inside Fabric Loader (fabric-loader-junit), so GA2's mixins are applied to the game they test, as they were
 // in NeoForge's unit test environment. The game is bootstrapped once by testutil.GameBootstrap.
@@ -90,6 +109,9 @@ test {
         jvmArgs "-XX:StartFlightRecording=filename=${System.getProperty('ga2.jfr')},settings=profile,method-profiling=max,allocation-profiling=maximum", '-XX:FlightRecorderOptions:stackdepth=256'
     }
     maxHeapSize = '4G'
+    // the test classes spread over several test JVMs, each with its own game, so each JVM keeps its own global state.
+    // -Pga2.testForks=1 runs them all in one JVM
+    maxParallelForks = (project.findProperty('ga2.testForks') ?: Math.max(1, Math.min(4, Runtime.runtime.availableProcessors().intdiv(4)))) as int
     // tests seed the JDK's shared shuffle random (Collections.r), which vanilla's beehive decorator draws from
     jvmArgs '--add-opens', 'java.base/java.util=ALL-UNNAMED'
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full'; showStandardStreams = true }

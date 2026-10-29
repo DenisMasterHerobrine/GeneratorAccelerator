@@ -1,14 +1,14 @@
 plugins {
-    id 'dev.architectury.loom' version '1.17-SNAPSHOT' apply false
+    // Minecraft 26.1 is not obfuscated, so Loom is set up without remapping.
+    id 'dev.architectury.loom-no-remap' version '1.17-SNAPSHOT' apply false
     id 'architectury-plugin' version '3.5-SNAPSHOT'
     id 'com.gradleup.shadow' version '9.6.1' apply false
 }
-
 architectury {
     minecraft = project.minecraft_version
 }
 
-// Full version is `<minecraft_version>-<mod_version>.<build_number>`, e.g. 1.21.1-2.0.19.143.
+// Full version is `<minecraft_version>-<mod_version>.<build_number>`, e.g. 26.1.2-2.0.19.143.
 // The build number lives in build_number.properties and is bumped after every successful local `build`.
 // CI builds use the committed number as-is.
 def isCi = providers.environmentVariable('CI').map { it.toBoolean() }.getOrElse(false)
@@ -53,7 +53,7 @@ if (!isCi && file('.git').exists()) {
 }
 
 subprojects {
-    apply plugin: 'dev.architectury.loom'
+    apply plugin: 'dev.architectury.loom-no-remap'
     apply plugin: 'architectury-plugin'
     apply plugin: 'maven-publish'
 
@@ -72,33 +72,29 @@ subprojects {
         mavenCentral()
         // MixinSquared (cancels other performance mods' mixins on the code GA2 takes over)
         maven {
-            url = 'https://jitpack.io'
+            url = 'https://maven.bawnorton.com/releases'
             content { includeGroup 'com.github.bawnorton.mixinsquared' }
         }
     }
 
     dependencies {
         minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
-        mappings loom.officialMojangMappings()
     }
 
-    // Compile against NeoForge's Mixin, not the newer one Fabric Loader brings: Mixin 0.17.4 made @Redirect's `at` an array,
-    // so javac writes it as one, and MixinExtras (and older Mixin) read it as a single @At and crash on every class GA2 redirects in.
+    // Compile against NeoForge's Mixin, the older of the two loaders' Mixins, so GA2 uses no Mixin API only Fabric's has.
     configurations.named('compileClasspath') {
         resolutionStrategy.force "net.fabricmc:sponge-mixin:$rootProject.compile_mixin_version"
     }
 
     java {
-        // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task if it is present.
         withSourcesJar()
 
-        // compiled by a Java 21 compiler, as FNR was: Mixin reads a mixin's field initialisers from its constructor by line number,
-        // and newer compilers number the implicit constructor differently (the initialisers are then not applied)
-        toolchain.languageVersion = JavaLanguageVersion.of(21)
+        // Minecraft 26.1 is compiled for Java 25
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
     }
 
     tasks.withType(JavaCompile).configureEach {
-        it.options.release = 21
+        it.options.release = 25
     }
 
     tasks.named('build') {

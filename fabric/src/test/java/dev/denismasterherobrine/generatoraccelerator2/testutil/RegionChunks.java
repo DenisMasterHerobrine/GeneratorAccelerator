@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.Strategy;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.ticks.ProtoChunkTicks;
@@ -39,7 +40,7 @@ public final class RegionChunks {
     private RegionChunks() {}
 
     private static final Codec<PalettedContainer<BlockState>> STATES =
-        PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
+        PalettedContainer.codecRW(BlockState.CODEC, Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY), Blocks.AIR.defaultBlockState());
 
     @Nullable
     public static Path defaultRegion() {
@@ -85,7 +86,7 @@ public final class RegionChunks {
     public static ProtoChunk[] load(Path region, int rx, int rz, int side, TerrainHarness.World world) throws IOException {
         ProtoChunk[] out = new ProtoChunk[side * side];
         ChunkPos origin = origin(region);
-        Holder<Biome> plains = world.registries.biomes.getHolderOrThrow(Biomes.PLAINS);
+        Holder<Biome> plains = world.registries.biomes.getOrThrow(Biomes.PLAINS);
         try (RandomAccessFile raf = new RandomAccessFile(region.toFile(), "r")) {
             byte[] header = new byte[4096];
             raf.readFully(header);
@@ -106,27 +107,27 @@ public final class RegionChunks {
                     byte[] data = new byte[length - 1];
                     raf.readFully(data);
                     CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.unlimitedHeap());
-                    if (!"minecraft:full".equals(tag.getString("Status"))) {
+                    if (!"minecraft:full".equals(tag.getStringOr("Status", ""))) {
                         return null;
                     }
                     LevelChunkSection[] sections = new LevelChunkSection[world.heights.getSectionsCount()];
-                    for (Tag t : tag.getList("sections", Tag.TAG_COMPOUND)) {
+                    for (Tag t : tag.getListOrEmpty("sections")) {
                         CompoundTag s = (CompoundTag) t;
-                        int index = s.getByte("Y") - world.heights.getMinSection();
-                        if (index >= 0 && index < sections.length && s.contains("block_states", Tag.TAG_COMPOUND)) {
-                            PalettedContainer<BlockState> states = STATES.parse(NbtOps.INSTANCE, s.getCompound("block_states")).getOrThrow();
+                        int index = s.getByteOr("Y", (byte) 0) - world.heights.getMinSectionY();
+                        if (index >= 0 && index < sections.length && s.getCompound("block_states").isPresent()) {
+                            PalettedContainer<BlockState> states = STATES.parse(NbtOps.INSTANCE, s.getCompoundOrEmpty("block_states")).getOrThrow();
                             sections[index] = new LevelChunkSection(states,
-                                new PalettedContainer<>(world.registries.biomes.asHolderIdMap(), plains, PalettedContainer.Strategy.SECTION_BIOMES));
+                                new PalettedContainer<>(plains, Strategy.createForBiomes(world.registries.biomes.asHolderIdMap())));
                         }
                     }
                     for (int k = 0; k < sections.length; k++) {
                         if (sections[k] == null) {
-                            sections[k] = new LevelChunkSection(world.registries.biomes);
+                            sections[k] = new LevelChunkSection(world.registries.containers);
                         }
                     }
-                    ChunkPos pos = new ChunkPos(origin.x + rx + dx, origin.z + rz + dz);
+                    ChunkPos pos = new ChunkPos(origin.x() + rx + dx, origin.z() + rz + dz);
                     ProtoChunk chunk = new ProtoChunk(pos, UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(), world.heights,
-                        world.registries.biomes, null);
+                        world.registries.containers, null);
                     chunk.setPersistedStatus(ChunkStatus.FEATURES);
                     out[dx + dz * side] = chunk;
                 }

@@ -20,7 +20,7 @@ public final class FabricApiMixins {
      * Replaces the air test in the block count of {@code LevelChunkSection.setBlockState} with a test for the three air
      * blocks. On Fabric, GA2's section writes count blocks with the same test ({@code platform.PlatformHooks.isEmpty}).
      */
-    public static final String SECTION_AIR = "net.fabricmc.fabric.mixin.block.ChunkSectionMixin";
+    public static final String SECTION_AIR = "net.fabricmc.fabric.mixin.block.LevelChunkSectionMixin";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.NOISE_SECTION_WRITES, SECTION_AIR, Set.of("modifyAirCheck"),

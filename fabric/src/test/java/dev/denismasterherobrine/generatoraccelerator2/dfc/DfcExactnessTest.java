@@ -8,6 +8,8 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.CoverageReport;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -24,6 +26,13 @@ import org.junit.jupiter.api.Test;
 
 /** The IR + reference interpreter must reproduce every vanilla router field bit for bit, on every built-in preset. */
 public class DfcExactnessTest {
+    /** The router roots the compiler makes of the surface level function ({@link SurfaceLevels#fields}). */
+    static Map<String, DensityFunction> surfaceRoots(NoiseRouter router) {
+        SurfaceLevels.Top top = SurfaceLevels.Top.of(router.preliminarySurfaceLevel());
+        return top != null ? Map.of(SurfaceLevels.DENSITY, top.density(), SurfaceLevels.UPPER_BOUND, top.upperBound())
+            : Map.of(SurfaceLevels.WHOLE, router.preliminarySurfaceLevel());
+    }
+
     private static final List<ResourceKey<NoiseGeneratorSettings>> PRESETS = List.of(
         NoiseGeneratorSettings.OVERWORLD, NoiseGeneratorSettings.AMPLIFIED, NoiseGeneratorSettings.LARGE_BIOMES,
         NoiseGeneratorSettings.NETHER, NoiseGeneratorSettings.END, NoiseGeneratorSettings.CAVES, NoiseGeneratorSettings.FLOATING_ISLANDS);
@@ -35,15 +44,16 @@ public class DfcExactnessTest {
         HolderLookup.Provider lookup = VanillaRegistries.createLookup();
         Random rng = new Random(0xF00DL);
         long comparisons = 0;
+        long expectedComparisons = 0;
         for (ResourceKey<NoiseGeneratorSettings> preset : PRESETS) {
             for (long seed : SEEDS) {
                 NoiseGeneratorSettings settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(preset).value();
                 RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), seed);
                 ProgramSet set = ((Ga2RandomState) (Object) state).ga2$programs();
-                assertNotNull(set, "RandomState mixin did not compile " + preset.location());
+                assertNotNull(set, "RandomState mixin did not compile " + preset.identifier());
                 NoiseRouter router = state.router();
                 Climate.Sampler sampler = state.sampler();
-                Map<String, DensityFunction> vanilla = Map.ofEntries(
+                Map<String, DensityFunction> vanilla = new HashMap<>(Map.ofEntries(
                     Map.entry("barrier", router.barrierNoise()),
                     Map.entry("fluid_level_floodedness", router.fluidLevelFloodednessNoise()),
                     Map.entry("fluid_level_spread", router.fluidLevelSpreadNoise()),
@@ -54,7 +64,6 @@ public class DfcExactnessTest {
                     Map.entry("erosion", router.erosion()),
                     Map.entry("depth", router.depth()),
                     Map.entry("ridges", router.ridges()),
-                    Map.entry("initial_density_without_jaggedness", router.initialDensityWithoutJaggedness()),
                     Map.entry("final_density", router.finalDensity()),
                     Map.entry("vein_toggle", router.veinToggle()),
                     Map.entry("vein_ridged", router.veinRidged()),
@@ -64,7 +73,10 @@ public class DfcExactnessTest {
                     Map.entry("sampler.continentalness", sampler.continentalness()),
                     Map.entry("sampler.erosion", sampler.erosion()),
                     Map.entry("sampler.depth", sampler.depth()),
-                    Map.entry("sampler.weirdness", sampler.weirdness()));
+                    Map.entry("sampler.weirdness", sampler.weirdness())));
+                vanilla.putAll(surfaceRoots(router));
+                // a find_top_surface gives two roots, any other surface level function one
+                expectedComparisons += (long) vanilla.size() * POINTS;
                 for (Map.Entry<String, DensityFunction> e : vanilla.entrySet()) {
                     Node root = set.root(e.getKey());
                     assertNotNull(root, "no IR root for " + e.getKey());
@@ -80,18 +92,18 @@ public class DfcExactnessTest {
                         double expected = e.getValue().compute(ctx);
                         double actual = set.interpreter().eval(root, ctx);
                         if (Double.doubleToRawLongBits(expected) != Double.doubleToRawLongBits(actual)) {
-                            throw new AssertionError(preset.location() + " seed " + seed + " field " + e.getKey() + " at (" + x + "," + y + "," + z + "): vanilla=" + expected + " dfc=" + actual);
+                            throw new AssertionError(preset.identifier() + " seed " + seed + " field " + e.getKey() + " at (" + x + "," + y + "," + z + "): vanilla=" + expected + " dfc=" + actual);
                         }
                         comparisons++;
                     }
                 }
                 for (CoverageReport.Entry entry : set.report().entries()) {
                     boolean endIslandsPending = entry.kind == CoverageReport.Kind.PENDING_PORT;
-                    assertTrue(endIslandsPending, "unexpected coverage entry on " + preset.location() + ": " + entry.line());
+                    assertTrue(endIslandsPending, "unexpected coverage entry on " + preset.identifier() + ": " + entry.line());
                 }
             }
         }
         System.out.println("DFC exactness: " + comparisons + " comparisons bit-identical across " + PRESETS.size() + " presets x " + SEEDS.length + " seeds");
-        assertEquals(PRESETS.size() * SEEDS.length * 21L * POINTS, comparisons);
+        assertEquals(expectedComparisons, comparisons);
     }
 }

@@ -19,10 +19,8 @@ import org.spongepowered.asm.mixin.injection.Coerce;
 @Mixin(targets = "dev.worldgen.lithostitched.impl.worldgen.biomeinjector.internal.InjectorBiomeSource")
 public abstract class InjectorBiomeSourceVerifyMixin {
     private static final String NOISE_BIOME = "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
-    // the override's intermediary name in a Fabric game (see InjectorBiomeSourceMixin)
-    private static final String NOISE_BIOME_INTERMEDIARY = "method_38109(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
 
-    @WrapOperation(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
+    @WrapOperation(method = NOISE_BIOME, at = @At(value = "INVOKE",
         target = "Ldev/worldgen/lithostitched/impl/worldgen/biomeinjector/ReplacePartially;matches(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;Lnet/minecraft/world/level/biome/Climate$TargetPoint;Ljava/util/HashMap;Lnet/minecraft/core/Holder;Lnet/minecraft/resources/ResourceKey;)Z"),
         require = 0)
     private boolean ga2$checkNotedBiome(@Coerce Object injector, DensityFunction.FunctionContext context, Climate.TargetPoint target, HashMap<?, ?> densities,

@@ -12,7 +12,7 @@ public final class AquiferCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("ga2")
-            .requires(source -> source.hasPermission(2))
+            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
             .then(Commands.literal("aquifer")
                 .then(Commands.literal("stats").executes(ctx -> stats(ctx.getSource())))));
     }

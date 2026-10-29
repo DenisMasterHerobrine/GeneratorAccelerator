@@ -23,12 +23,7 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(targets = "dev.worldgen.lithostitched.impl.worldgen.biomeinjector.internal.InjectorBiomeSource")
 public abstract class InjectorBiomeSourceMixin {
     private static final String NOISE_BIOME = "getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
-    // Lithostitched's override of vanilla's method. In a Fabric game, the override has the method's intermediary name. The build
-    // cannot rename the name, because Lithostitched's classes are not on the build's class path. The build does rename the
-    // descriptor. Each injector names both forms. The form that does not apply matches nothing.
-    private static final String NOISE_BIOME_INTERMEDIARY = "method_38109(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;";
-
-    @WrapMethod(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, require = 0)
+    @WrapMethod(method = NOISE_BIOME, require = 0)
     private Holder<Biome> ga2$keepCallerBiome(int x, int y, int z, Climate.Sampler sampler, Operation<Holder<Biome>> original) {
         Holder<?> caller = LithostitchedInjectors.currentBiome();
         try {
@@ -39,7 +34,7 @@ public abstract class InjectorBiomeSourceMixin {
     }
 
     // The results are only noted, with no wrapper around the calls. A wrapped call boxes its arguments on every biome lookup.
-    @ModifyExpressionValue(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
+    @ModifyExpressionValue(method = NOISE_BIOME, at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/biome/BiomeResolver;getNoiseBiome(IIILnet/minecraft/world/level/biome/Climate$Sampler;)Lnet/minecraft/core/Holder;"),
         require = 0)
     private Holder<Biome> ga2$noteBase(Holder<Biome> biome) {
@@ -47,7 +42,7 @@ public abstract class InjectorBiomeSourceMixin {
         return biome;
     }
 
-    @ModifyExpressionValue(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE",
+    @ModifyExpressionValue(method = NOISE_BIOME, at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/biome/Climate$ParameterList;findValue(Lnet/minecraft/world/level/biome/Climate$TargetPoint;)Ljava/lang/Object;"),
         require = 0)
     private Object ga2$noteAlternate(Object biome) {
@@ -55,7 +50,7 @@ public abstract class InjectorBiomeSourceMixin {
         return biome;
     }
 
-    @WrapOperation(method = { NOISE_BIOME, NOISE_BIOME_INTERMEDIARY }, at = @At(value = "INVOKE", target = "Ljava/util/Map;getOrDefault(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"),
+    @WrapOperation(method = NOISE_BIOME, at = @At(value = "INVOKE", target = "Ljava/util/Map;getOrDefault(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"),
         require = 0)
     private Object ga2$injectorsFor(Map<?, ?> map, Object type, Object fallback, Operation<Object> original) {
         return LithostitchedInjectors.candidates(type, original.call(map, type, fallback));

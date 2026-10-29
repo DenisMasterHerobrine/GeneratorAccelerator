@@ -27,6 +27,12 @@ public abstract class StructureTemplatePlaceNeoMixin {
                                                                    List<StructureTemplate.StructureBlockInfo> blocks, StructureTemplate template,
                                                                    Operation<List<StructureTemplate.StructureBlockInfo>> original) {
         List<StructureTemplate.StructureBlockInfo> clipped = TemplatePlacement.clipped(level, offset, pivot, settings, blocks, template);
-        return clipped != null ? clipped : original.call(level, offset, pivot, settings, blocks, template);
+        if (clipped == null) {
+            return original.call(level, offset, pivot, settings, blocks, template);
+        }
+        if (TemplatePlacement.VERIFY.sample()) {
+            TemplatePlacement.verify(settings, clipped, original.call(level, offset, pivot, settings, blocks, template));
+        }
+        return clipped;
     }
 }

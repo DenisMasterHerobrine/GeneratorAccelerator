@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
 import java.util.function.Supplier;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs;
+import net.minecraft.SharedConstants;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.levelgen.blending.Blender;
 
@@ -96,5 +97,34 @@ public final class StepThreads {
         synchronized (STOPPED) {
             return body.get();
         }
+    }
+
+    /**
+     * {@code body} with the thread named {@code name} while it runs, in development runs only, as vanilla named its step threads
+     * before 1.21.2.
+     */
+    /** {@link #named(String, Supplier)} for a task without a result. */
+    public static Runnable named(String name, Runnable body) {
+        Supplier<Void> named = named(name, () -> {
+            body.run();
+            return null;
+        });
+        return SharedConstants.IS_RUNNING_IN_IDE ? named::get : body;
+    }
+
+    public static <T> Supplier<T> named(String name, Supplier<T> body) {
+        if (!SharedConstants.IS_RUNNING_IN_IDE) {
+            return body;
+        }
+        return () -> {
+            Thread thread = Thread.currentThread();
+            String old = thread.getName();
+            thread.setName(name);
+            try {
+                return body.get();
+            } finally {
+                thread.setName(old);
+            }
+        };
     }
 }

@@ -63,7 +63,7 @@ public final class GpuVerify {
             return null;
         }
         try {
-            ProtoChunk copy = ChunkCopy.copy(proto, level.registryAccess().registryOrThrow(Registries.BIOME));
+            ProtoChunk copy = ChunkCopy.copy(proto, level.registryAccess().lookupOrThrow(Registries.BIOME));
             GpuSteps.cpuOnly(() -> {
                 SurfaceHooks.runVanilla(() -> cpuSurface.accept(copy));
                 return null;
@@ -106,7 +106,7 @@ public final class GpuVerify {
             return;
         }
         try {
-            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.registryAccess().registryOrThrow(Registries.BIOME), null);
+            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.palettedContainerFactory(), null);
             var after = wg.lastResults();
             wg.setLastResults(start);
             GpuSteps.cpuOnly(() -> {
@@ -188,7 +188,7 @@ public final class GpuVerify {
             return;
         }
         try {
-            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.registryAccess().registryOrThrow(Registries.BIOME), null);
+            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.palettedContainerFactory(), null);
             Object[] after = handState(wg);
             restoreHandState(wg, start);
             GpuSteps.cpuOnly(() -> {
@@ -220,7 +220,7 @@ public final class GpuVerify {
             return;
         }
         try {
-            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.registryAccess().registryOrThrow(Registries.BIOME), null);
+            ProtoChunk cpu = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, level, level.palettedContainerFactory(), null);
             Beardifier beard = Beardifier.forStructuresInChunk(structures, chunk.getPos());
             cpu.getOrCreateNoiseChunk(c -> NoiseChunk.forChunk(c, randomState, beard, settings.value(), picker.get(), Blender.empty()));
             GpuSteps.cpuOnly(() -> generator.fillFromNoise(Blender.empty(), randomState, structures, cpu)).join();

@@ -3,7 +3,6 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.c2me;
 import it.unimi.dsi.fastutil.shorts.ShortList;
 import it.unimi.dsi.fastutil.shorts.ShortListIterator;
 import java.util.function.Supplier;
-import net.minecraft.nbt.ListTag;
 
 /**
  * Keeps C2ME's fluid filter and the chunk save from using a chunk's post-processing lists at the same time.
@@ -12,10 +11,10 @@ import net.minecraft.nbt.ListTag;
  * option {@code chunkSystem.filterFluidPostProcessing}). The filter runs on a C2ME worker. It removes the fluids that cannot
  * flow from the lists. C2ME's autosave may save the same chunk on the server thread meanwhile. The chunk is full and nothing
  * generates around it, so the chunk counts as ready for saving. The save's walk over a list that got shorter then fails
- * ({@code NoSuchElementException} in {@code ChunkSerializer.packOffsets}). The chunk is not saved.
+ * (the copy of a list in {@code SerializableChunkData.copyOf} sees it change). The chunk is not saved.
  *
  * <p>Each step of the filter's walk holds the list's monitor. The save holds the monitors of all of the chunk's lists while it
- * packs them. The save therefore sees every list between two steps of the filter. The filter holds one monitor at a time and
+ * copies them. The save therefore sees every list between two steps of the filter. The filter holds one monitor at a time and
  * takes no other lock while holding it. The two cannot deadlock. A proto chunk and its LevelChunk share the list objects, so
  * the lists themselves are the monitors.
  */
@@ -28,11 +27,11 @@ public final class PostProcessingLocks {
     }
 
     /** Runs {@code pack} while holding the monitors of all non-null {@code lists}, in index order. */
-    public static ListTag pack(ShortList[] lists, Supplier<ListTag> pack) {
+    public static <T> T pack(ShortList[] lists, Supplier<T> pack) {
         return pack(lists, 0, pack);
     }
 
-    private static ListTag pack(ShortList[] lists, int from, Supplier<ListTag> pack) {
+    private static <T> T pack(ShortList[] lists, int from, Supplier<T> pack) {
         for (int i = from; i < lists.length; i++) {
             ShortList list = lists[i];
             if (list != null) {

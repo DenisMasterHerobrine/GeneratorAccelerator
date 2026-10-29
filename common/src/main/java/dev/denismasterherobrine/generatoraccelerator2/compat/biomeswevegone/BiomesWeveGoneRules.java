@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
-import net.minecraft.util.random.SimpleWeightedRandomList;
-import net.minecraft.util.random.WeightedEntry;
+import net.minecraft.util.random.Weighted;
+import net.minecraft.util.random.WeightedList;
 import net.minecraft.util.valueproviders.IntProvider;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -59,17 +59,17 @@ public final class BiomesWeveGoneRules {
         if (name.equals(BANDS)) {
             Object[] c = Reflect.components(source, BANDS, "bandStates", "bandSizeProvider", "bandsCountProvider", "frequency", "noiseScale");
             Class<?> bandsContext = Reflect.type(BANDS_CONTEXT);
-            if (c == null || bandsContext == null || !(c[0] instanceof SimpleWeightedRandomList<?> states) || !(c[1] instanceof IntProvider size)
+            if (c == null || bandsContext == null || !(c[0] instanceof WeightedList<?> states) || !(c[1] instanceof IntProvider size)
                 || !(c[2] instanceof IntProvider count) || !(c[3] instanceof Float frequency) || !(c[4] instanceof Integer scale)) {
                 return null;
             }
             @SuppressWarnings("unchecked")
-            SimpleWeightedRandomList<BlockState> bandStates = (SimpleWeightedRandomList<BlockState>) states;
+            WeightedList<BlockState> bandStates = (WeightedList<BlockState>) states;
             return ctx.extern(new Bands(source, bandsContext, bandStates, size, count, frequency, scale));
         }
         if (name.equals(WEIGHTED)) {
             Object[] c = Reflect.components(source, WEIGHTED, "ruleSources");
-            if (c == null || !(c[0] instanceof SimpleWeightedRandomList<?> list)) {
+            if (c == null || !(c[0] instanceof WeightedList<?> list)) {
                 return null;
             }
             return weighted(source, list, ctx);
@@ -83,9 +83,9 @@ public final class BiomesWeveGoneRules {
     /** Band tables per surface system and rule. The mod also keeps one table per surface system and rule. */
     private static final ConcurrentMap<SurfaceSystem, ConcurrentMap<Object, BlockState[]>> TABLES = new MapMaker().weakKeys().makeMap();
 
-    private record Bands(Object source, Class<?> bandsContext, SimpleWeightedRandomList<BlockState> bandStates, IntProvider bandSizeProvider,
+    private record Bands(Object source, Class<?> bandsContext, WeightedList<BlockState> bandStates, IntProvider bandSizeProvider,
                          IntProvider bandsCountProvider, float frequency, int noiseScale, int slot) implements SurfaceExtern.Rule, SurfaceExtern.Gpu {
-        Bands(Object source, Class<?> bandsContext, SimpleWeightedRandomList<BlockState> bandStates, IntProvider size, IntProvider count, float frequency,
+        Bands(Object source, Class<?> bandsContext, WeightedList<BlockState> bandStates, IntProvider size, IntProvider count, float frequency,
               int noiseScale) {
             this(source, bandsContext, bandStates, size, count, frequency, noiseScale, SLOTS.getAndIncrement());
         }
@@ -142,7 +142,7 @@ public final class BiomesWeveGoneRules {
             int bandsCount = bandsCountProvider.sample(random);
             for (int bandIdx = 0; bandIdx < bandsCount; bandIdx++) {
                 int bandSize = bandSizeProvider.sample(random);
-                BlockState state = bandStates.getRandomValue(random).orElseThrow();
+                BlockState state = bandStates.getRandom(random).orElseThrow();
                 for (int size = 0; size < bandSize; size++) {
                     states.add(state);
                 }
@@ -160,10 +160,10 @@ public final class BiomesWeveGoneRules {
      * One test per distinct rule, in list order, on the column's draw, followed by that rule. Vanilla applies the drawn
      * rule per column.
      */
-    private static Ir.Rule weighted(SurfaceRules.RuleSource source, SimpleWeightedRandomList<?> list, SurfaceExtern.Context ctx) {
+    private static Ir.Rule weighted(SurfaceRules.RuleSource source, WeightedList<?> list, SurfaceExtern.Context ctx) {
         List<SurfaceRules.RuleSource> rules = new ArrayList<>();
-        for (WeightedEntry.Wrapper<?> entry : list.unwrap()) {
-            if (!(entry.data() instanceof SurfaceRules.RuleSource r)) {
+        for (Weighted<?> entry : list.unwrap()) {
+            if (!(entry.value() instanceof SurfaceRules.RuleSource r)) {
                 return null;
             }
             if (!rules.contains(r)) {
@@ -174,7 +174,7 @@ public final class BiomesWeveGoneRules {
             return null;
         }
         @SuppressWarnings("unchecked")
-        SimpleWeightedRandomList<SurfaceRules.RuleSource> weights = (SimpleWeightedRandomList<SurfaceRules.RuleSource>) list;
+        WeightedList<SurfaceRules.RuleSource> weights = (WeightedList<SurfaceRules.RuleSource>) list;
         List<Ir.Rule> tests = new ArrayList<>(rules.size());
         for (int i = 0; i < rules.size(); i++) {
             tests.add(new Ir.Test(ctx.extern(new Drawn(source, weights, rules, i)), ctx.rule(rules.get(i))));
@@ -185,7 +185,7 @@ public final class BiomesWeveGoneRules {
     /** Draw tables per surface system. Each entry is the index, into the distinct rules, of the rule drawn for a chunk column. */
     private static final ConcurrentMap<SurfaceSystem, ConcurrentMap<Object, byte[]>> DRAWS = new MapMaker().weakKeys().makeMap();
 
-    private record Drawn(Object source, SimpleWeightedRandomList<SurfaceRules.RuleSource> weights, List<SurfaceRules.RuleSource> rules, int index)
+    private record Drawn(Object source, WeightedList<SurfaceRules.RuleSource> weights, List<SurfaceRules.RuleSource> rules, int index)
         implements SurfaceExtern.Cond, SurfaceExtern.Gpu {
         /** The same test in OpenCL. The int table holds the world's draw table: the rule drawn at each position in a chunk. */
         @Override
@@ -211,7 +211,7 @@ public final class BiomesWeveGoneRules {
             byte[] out = new byte[256];
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
-                    out[x * 16 + z] = (byte) rules.indexOf(weights.getRandomValue(random.at(x, 0, z)).get());
+                    out[x * 16 + z] = (byte) rules.indexOf(weights.getRandom(random.at(x, 0, z)).get());
                 }
             }
             return out;

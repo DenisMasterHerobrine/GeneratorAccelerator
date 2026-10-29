@@ -39,8 +39,8 @@ public class RepeatedWarningsTest {
 
     @Test
     void poiMismatchesCountedPerTypePair() {
-        Holder<PoiType> armorer = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.ARMORER);
-        Holder<PoiType> butcher = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getHolderOrThrow(PoiTypes.BUTCHER);
+        Holder<PoiType> armorer = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getOrThrow(PoiTypes.ARMORER);
+        Holder<PoiType> butcher = BuiltInRegistries.POINT_OF_INTEREST_TYPE.getOrThrow(PoiTypes.BUTCHER);
         PoiSection section = new PoiSection(() -> {});
         String pair = armorer.getRegisteredName() + " -> " + butcher.getRegisteredName();
         for (int i = 0; i < 3; i++) {
@@ -104,7 +104,7 @@ public class RepeatedWarningsTest {
         Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
         theUnsafe.setAccessible(true);
         WorldGenRegion region = (WorldGenRegion) ((Unsafe) theUnsafe.get(null)).allocateInstance(WorldGenRegion.class);
-        ProtoChunk chunk = new ProtoChunk(center, UpgradeData.EMPTY, LevelHeightAccessor.create(-64, 384), HarnessWorld.registries().biomes, null);
+        ProtoChunk chunk = new ProtoChunk(center, UpgradeData.EMPTY, LevelHeightAccessor.create(-64, 384), HarnessWorld.registries().containers, null);
         set(region, "center", chunk);
         set(region, "generatingStep", ChunkPyramid.GENERATION_PYRAMID.getStepTo(ChunkStatus.FEATURES));
         set(region, "currentlyGenerating", generating);

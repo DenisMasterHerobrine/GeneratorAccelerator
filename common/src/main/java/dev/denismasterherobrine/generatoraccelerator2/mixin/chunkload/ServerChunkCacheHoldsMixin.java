@@ -5,10 +5,10 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
 import java.util.function.BooleanSupplier;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.ChunkMap;
-import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.TicketStorage;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -25,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ServerChunkCacheHoldsMixin implements ChunkyHolds.Owner {
     @Shadow
     @Final
-    private DistanceManager distanceManager;
+    private TicketStorage ticketStorage;
 
     @Shadow
     @Final
@@ -38,17 +38,17 @@ public abstract class ServerChunkCacheHoldsMixin implements ChunkyHolds.Owner {
     @Unique
     private ChunkyHolds ga2$holds;
 
-    @Inject(method = "addRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;)V", at = @At("TAIL"))
-    private void ga2$chunkyAsked(TicketType<?> type, ChunkPos pos, int distance, Object value, CallbackInfo ci) {
+    @Inject(method = "addTicketWithRadius", at = @At("TAIL"))
+    private void ga2$chunkyAsked(TicketType type, ChunkPos pos, int distance, CallbackInfo ci) {
         if (distance == 0 && ChunkyHolds.isChunky(type) && Thread.currentThread() == this.mainThread) {
-            this.ga2$holds().asked(pos.x, pos.z, System.nanoTime());
+            this.ga2$holds().asked(pos.x(), pos.z(), System.nanoTime());
         }
     }
 
-    @Inject(method = "removeRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;)V", at = @At("TAIL"))
-    private void ga2$chunkyDone(TicketType<?> type, ChunkPos pos, int distance, Object value, CallbackInfo ci) {
+    @Inject(method = "removeTicketWithRadius", at = @At("TAIL"))
+    private void ga2$chunkyDone(TicketType type, ChunkPos pos, int distance, CallbackInfo ci) {
         if (distance == 0 && this.ga2$holds != null && ChunkyHolds.isChunky(type) && Thread.currentThread() == this.mainThread) {
-            this.ga2$holds.done(pos.x, pos.z, System.nanoTime());
+            this.ga2$holds.done(pos.x(), pos.z(), System.nanoTime());
         }
     }
 
@@ -68,7 +68,7 @@ public abstract class ServerChunkCacheHoldsMixin implements ChunkyHolds.Owner {
     private ChunkyHolds ga2$holds() {
         ChunkyHolds holds = this.ga2$holds;
         if (holds == null) {
-            holds = new ChunkyHolds(new ChunkyHoldTickets(this.distanceManager, this.chunkMap), ChunkLevel.RADIUS_AROUND_FULL_CHUNK, ChunkyHolds.cap());
+            holds = new ChunkyHolds(new ChunkyHoldTickets(this.ticketStorage, this.chunkMap), ChunkLevel.RADIUS_AROUND_FULL_CHUNK, ChunkyHolds.cap());
             this.ga2$holds = holds;
         }
         return holds;

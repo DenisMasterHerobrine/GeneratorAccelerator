@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.StructureManagerLevelAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.QuietWait;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
@@ -79,6 +80,47 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     public static final LongAdder APPLIED = new LongAdder();
     public static final LongAdder CPU = new LongAdder();
     public static final LongAdder LATE = new LongAdder();
+
+    /** Why {@link #ask} left a chunk's surface to the CPU. Counted for {@code /ga2 gpu}. */
+    enum Decline {
+        NOT_BUILT("no surface program"),
+        NOT_ALLOWED("another mod in the step"),
+        NOT_A_REGION("no generation region"),
+        STALE("tags or rules changed since the build"),
+        NO_NEIGHBOUR("a neighbour without biomes"),
+        OTHER_BIOME("a biome another mod writes in or the program lacks");
+
+        final String what;
+
+        Decline(String what) {
+            this.what = what;
+        }
+    }
+
+    private static final LongAdder[] DECLINED = new LongAdder[Decline.values().length];
+
+    static {
+        for (int i = 0; i < DECLINED.length; i++) {
+            DECLINED[i] = new LongAdder();
+        }
+    }
+
+    private static boolean decline(Decline why) {
+        DECLINED[why.ordinal()].increment();
+        return false;
+    }
+
+    /** The chunks {@link #ask} left to the CPU, by reason, e.g. "stale 1,234". Empty when there were none. */
+    public static String declines() {
+        StringBuilder sb = new StringBuilder();
+        for (Decline d : Decline.values()) {
+            long n = DECLINED[d.ordinal()].sum();
+            if (n > 0) {
+                sb.append(sb.isEmpty() ? "" : ", ").append(d.what).append(' ').append(String.format(Locale.ROOT, "%,d", n));
+            }
+        }
+        return sb.toString();
+    }
     private static final HookTargets.Hook SURFACE_ENTRY = HookTargets.hook(HookTargets.SURFACE_ENTRY);
     private static final HookTargets.Hook SURFACE_STEP = HookTargets.hook(HookTargets.SURFACE_STEP);
     private static final HookTargets.Hook SURFACE_STEP_BODY = HookTargets.hook(HookTargets.SURFACE_STEP_BODY);
@@ -140,8 +182,11 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
     static boolean ask(GpuWorldgen wg, ChunkAccess chunk, StructureManager structures, GpuTerrain terrain, GpuWorldgen.NoiseResult res) {
         SurfaceBatches batches = wg.surfaces;
         Ga2GpuChunk gc = Ga2GpuChunk.of(chunk);
-        if (batches == null || terrain == null || gc == null || !allowed() || structures == null || cpuNow()) {
-            return false;
+        if (batches == null || terrain == null || gc == null) {
+            return decline(Decline.NOT_BUILT);
+        }
+        if (!allowed() || structures == null || cpuNow()) {
+            return decline(Decline.NOT_ALLOWED);
         }
         if (GpuWorldgen.SHARE && batches.behind()) {
             // the GPU's surface batches are behind: the SURFACE step builds this one on the CPU
@@ -150,11 +195,11 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         }
         LevelAccessor level = ((StructureManagerLevelAccessor) structures).ga2$level();
         if (!(level instanceof WorldGenRegion region)) {
-            return false;
+            return decline(Decline.NOT_A_REGION);
         }
         var spec = wg.surfaceSpec;
         if (!spec.current()) {
-            return false;
+            return decline(Decline.STALE);
         }
         ChunkPos pos = chunk.getPos();
         // The stored quart biomes the zoom reads: quart columns 4x - 1 .. 4x + 4 on both axes, every quart layer. Each neighbour is
@@ -163,15 +208,15 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         ChunkAccess[] around = new ChunkAccess[9];
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
-                ChunkAccess c = dx == 0 && dz == 0 ? chunk : region.getChunk(pos.x + dx, pos.z + dz, ChunkStatus.BIOMES, false);
+                ChunkAccess c = dx == 0 && dz == 0 ? chunk : region.getChunk(pos.x() + dx, pos.z() + dz, ChunkStatus.BIOMES, false);
                 if (c == null) {
-                    return false;
+                    return decline(Decline.NO_NEIGHBOUR);
                 }
                 around[(dz + 1) * 3 + dx + 1] = c;
             }
         }
         short[] win = new short[spec.windowInts];
-        int qy0 = wg.minY >> 2, qx0 = pos.x * 4 - 1, qz0 = pos.z * 4 - 1;
+        int qy0 = wg.minY >> 2, qx0 = pos.x() * 4 - 1, qz0 = pos.z() * 4 - 1;
         Holder<Biome> last = null;
         int lastIndex = 0;
         // A chunk's window holds few biomes. Remember them, so the index map is queried once per biome rather than per change.
@@ -182,7 +227,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         for (int iz = 0; iz < 6; iz++) {
             for (int ix = 0; ix < 6; ix++) {
                 int qx = qx0 + ix, qz = qz0 + iz;
-                ChunkAccess c = around[((qz >> 2) - pos.z + 1) * 3 + (qx >> 2) - pos.x + 1];
+                ChunkAccess c = around[((qz >> 2) - pos.z() + 1) * 3 + (qx >> 2) - pos.x() + 1];
                 for (int iy = 0; iy < spec.quartsY; iy++) {
                     Holder<Biome> h = c.getNoiseBiome(qx, qy0 + iy, qz);
                     if (h != last) {
@@ -197,7 +242,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
                             Integer b = wg.biomeIndex.get(h);
                             if (b == null || spec.stepWriter(b)) {
                                 // another mod writes this chunk before its surface (SurfaceSpec.declareStepWriter): the CPU builds it after that
-                                return false;
+                                return decline(Decline.OTHER_BIOME);
                             }
                             found = b;
                             seen[seenNext] = h;
@@ -220,7 +265,7 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
             tops[(col & 15) * 16 + (col >> 4)] = top == Integer.MIN_VALUE ? wg.minY : top + 1;
         }
         int bx = pos.getMinBlockX(), bz = pos.getMinBlockZ();
-        int[] cpar = { pos.x, pos.z, terrain.preliminarySurfaceLevel(bx, bz), terrain.preliminarySurfaceLevel(bx + 16, bz), terrain.preliminarySurfaceLevel(bx, bz + 16),
+        int[] cpar = { pos.x(), pos.z(), terrain.preliminarySurfaceLevel(bx, bz), terrain.preliminarySurfaceLevel(bx + 16, bz), terrain.preliminarySurfaceLevel(bx, bz + 16),
             terrain.preliminarySurfaceLevel(bx + 16, bz + 16), 0, 0 };
         gc.ga2$setGpuSurface(new GpuSurfaceJob(wg, batches.submit(pos, res.storage(), res.meta(), tops, win, cpar), new AtomicBoolean()));
         ASKED.increment();

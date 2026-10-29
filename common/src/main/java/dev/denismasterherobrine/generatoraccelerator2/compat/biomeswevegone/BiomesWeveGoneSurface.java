@@ -9,7 +9,7 @@ import java.util.List;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.BlockColumn;
 
@@ -36,7 +36,7 @@ public final class BiomesWeveGoneSurface {
 
     private static ResourceKey<Biome> biome(String path) {
         return ResourceKey.create(Registries.BIOME,
-            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+            Identifier.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     private static List<ColumnHooks.Hook> hooks() throws ReflectiveOperationException {

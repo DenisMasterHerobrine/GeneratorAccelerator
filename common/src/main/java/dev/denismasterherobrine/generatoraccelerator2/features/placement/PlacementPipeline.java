@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.features.placement;
 
-import com.llamalad7.mixinextras.sugar.ref.LocalLongRef;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.VerifyCounter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureCensus;
@@ -16,13 +15,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import it.unimi.dsi.fastutil.HashCommon;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.placement.BiomeFilter;
@@ -137,7 +133,7 @@ public final class PlacementPipeline {
     /**
      * {@link #kind} of each modifier of {@code modifiers}. {@code readsOnly}: every modifier is a transcribed one that draws no
      * random number and only reads (heightmaps, noise, vanilla's block predicates). Such modifiers give the same positions at the
-     * same position until a block changes ({@link PatchRepeats}).
+     * same position until a block changes.
      */
     public record KindsOf(List<PlacementModifier> modifiers, byte[] kinds, boolean readsOnly) {}
 
@@ -197,23 +193,8 @@ public final class PlacementPipeline {
     private static final class Runs {
         Run[] runs = new Run[4];
         int depth;
-        /** Placements since the last top-level one ended. Counted when it ends: a random patch makes thousands per chunk. */
+        /** Placements since the last top-level one ended. Counted when it ends: a patch makes dozens per chunk. */
         long placements;
-        /** Random patch tries watched (patchTry), and those answered at once. Counted with the placements. */
-        long patchTries, patchSkipped;
-
-        // a random patch's try (patchTry): the placement under it, and how that placement went
-        PlacedFeature watched;
-        long watchedAt;
-        int watchedDepth;
-        boolean skip;
-        /** {@link #GAVE_NONE}, {@link #GAVE_SOME}, or 0 when the watched placement did not reach the pipeline. */
-        byte report;
-
-        // tries that gave no position, by position, each with the stamp it was found under (PatchRepeats)
-        final long[] noneAt = new long[REPEAT_SLOTS];
-        final long[] noneStamp = new long[REPEAT_SLOTS];
-        long stamps;
 
         Run take() {
             if (depth == runs.length) {
@@ -230,86 +211,20 @@ public final class PlacementPipeline {
 
     private static final ThreadLocal<Runs> RUNS = ThreadLocal.withInitial(Runs::new);
 
-    /** The watched placement's modifiers gave no position and only read, or it reached its feature or other code. */
-    private static final byte GAVE_NONE = 1, GAVE_SOME = 2;
-    private static final int REPEAT_SLOTS = 1 << 10;
-
-    /**
-     * A random patch's try: {@code inner.place(level, generator, random, pos)} ({@link PatchRepeats}). Called while no other mod
-     * changes the patch's method, so the wrapped call is that call: calling it directly boxes no arguments, where the wrapper's
-     * operation made an array per try. {@code stamp} is the patch's stamp: tries that gave no position under it still hold. 0 before
-     * its first try.
-     */
-    static boolean patchTry(PlacedFeature inner, WorldGenLevel level, ChunkGenerator generator,
-                            RandomSource random, BlockPos pos, LocalLongRef stamp) {
-        Runs runs = RUNS.get();
-        long s = stamp.get();
-        if (s == 0) {
-            stamp.set(s = ++runs.stamps);
-        }
-        long key = pos.asLong();
-        int slot = (int) HashCommon.mix(key) & (REPEAT_SLOTS - 1);
-        boolean known = runs.noneStamp[slot] == s && runs.noneAt[slot] == key;
-        runs.patchTries++;
-        boolean verify = known && PatchRepeats.VERIFY.sample();
-        runs.watched = inner;
-        runs.watchedAt = key;
-        runs.watchedDepth = runs.depth;
-        runs.skip = known && !verify;
-        runs.report = 0;
-        boolean placed;
-        try {
-            placed = inner.place(level, generator, random, pos);
-        } finally {
-            runs.watched = null;
-        }
-        byte report = runs.report;
-        if (verify) {
-            PatchRepeats.VERIFY.result(report != GAVE_SOME, pos.immutable(), "no position, as before", "a position");
-        }
-        if (report == GAVE_NONE) {
-            runs.noneAt[slot] = key;
-            runs.noneStamp[slot] = s;
-        } else {
-            // a feature or code GA2 did not see may have changed blocks: what earlier tries found no longer holds
-            stamp.set(++runs.stamps);
-        }
-        return placed;
-    }
-
     /** The pipeline itself. */
     public static boolean pipeline(PlacedFeature placed, PlacementContext ctx, RandomSource random, BlockPos origin) {
         Runs runs = RUNS.get();
-        // the placement directly under a random patch's try (patchTry)
-        boolean watched = runs.watched == placed && runs.watchedDepth == runs.depth && runs.watchedAt == origin.asLong();
-        if (watched) {
-            runs.watched = null;
-            if (runs.skip) {
-                // the same try gave no position before, and nothing ran since
-                runs.patchSkipped++;
-                runs.report = GAVE_NONE;
-                return false;
-            }
-        }
         Run run = runs.take();
         try {
             run.start(placed, placed.placement(), placed.feature().value(), ctx, random, position);
             run.walk(0, origin);
             runs.placements++;
-            if (watched) {
-                runs.report = run.readsOnly && !run.fed ? GAVE_NONE : GAVE_SOME;
-            }
             return run.placed || run.success != null && run.success.isTrue();
         } finally {
             run.end();
             if (--runs.depth == 0 && runs.placements > 0) {
                 FeatureStats.PLACEMENTS_FAST.add(runs.placements);
                 runs.placements = 0;
-                if (runs.patchTries > 0) {
-                    PatchRepeats.TRIED.add(runs.patchTries);
-                    PatchRepeats.SKIPPED.add(runs.patchSkipped);
-                    runs.patchTries = runs.patchSkipped = 0;
-                }
             }
         }
     }
@@ -457,7 +372,7 @@ public final class PlacementPipeline {
                 walk(i + 1, nx, y, nz, null);
             } else if (kind == HEIGHTMAP) {
                 int ny = ctx.getHeight(((HeightmapPlacement) m).heightmap, x, z);
-                if (ny > ctx.getMinBuildHeight()) {
+                if (ny > ctx.getMinY()) {
                     walk(i + 1, x, ny, z, null);
                 }
             } else if (kind == HEIGHT_RANGE) {

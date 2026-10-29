@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ChunkBinding;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.CacheAllInCellAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseInterpolatorAccessor;
@@ -182,6 +183,7 @@ public class GpuProbe {
 
         ClGen gen(ClGen.Prec prec, boolean hoist) {
             ClGen g = new ClGen(prec, hoist, set.specs(), set.blendedSpecs(), rootMarkers, cellRoot, set.routerRoots(), cellWidth, cellHeight, minY, height, seaLevel);
+            g.surfaceTop = SurfaceLevels.Top.of(world.randomState.router().preliminarySurfaceLevel());
             g.tables = Boolean.parseBoolean(System.getProperty("ga2.gpu.tables", "true"));
             g.noinline = Boolean.parseBoolean(System.getProperty("ga2.gpu.noinline", "true"));
             return g;
@@ -881,7 +883,7 @@ public class GpuProbe {
                                 }
                                 if (shown++ < 8) {
                                     log("  biome differs at quart %d,%d,%d: cpu %s gpu %s%s", cx * 4 + qx, (s.minY >> 2) + qy, cz * 4 + qz,
-                                        expected.unwrapKey().map(k -> k.location().toString()).orElse("?"), actual.unwrapKey().map(k -> k.location().toString()).orElse("?"),
+                                        expected.unwrapKey().map(k -> k.identifier().toString()).orElse("?"), actual.unwrapKey().map(k -> k.identifier().toString()).orElse("?"),
                                         tie ? " (tie)" : "");
                                 }
                             }
@@ -913,7 +915,7 @@ public class GpuProbe {
      */
     static void consume(Setup s, ProtoChunk chunk, byte[] blocks, int[] biomes, Run run, int i, int j) {
         int quartsY = s.height / 4;
-        int cx = chunk.getPos().x, cz = chunk.getPos().z;
+        int cx = chunk.getPos().x(), cz = chunk.getPos().z();
         int qx0 = cx * 4, qz0 = cz * 4, qy0 = s.minY >> 2;
         int base = (i * run.h + j) * 16 * quartsY;
         LevelChunkSection[] secs = chunk.getSections();
@@ -1003,7 +1005,7 @@ public class GpuProbe {
      */
     static void consumePacked(Setup s, ProtoChunk chunk, Packed p, Run run, int i, int j) {
         int quartsY = s.height / 4;
-        int cx = chunk.getPos().x, cz = chunk.getPos().z;
+        int cx = chunk.getPos().x(), cz = chunk.getPos().z();
         int qx0 = cx * 4, qz0 = cz * 4, qy0 = s.minY >> 2;
         int b = i * run.h + j;
         int base = b * 16 * quartsY;
@@ -1027,11 +1029,11 @@ public class GpuProbe {
             PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container)
                 .ga2$createOrReuseData(null, Mth.ceillog2(psize));
             var palette = data.palette();
-            palette.idFor(air);
+            palette.idFor(air, container);
             int nonEmpty = 0, ticking = 0, fluids = 0;
             for (int a = 1; a < psize; a++) {
                 BlockState state = s.states[p.meta()[m + a]];
-                palette.idFor(state);
+                palette.idFor(state, container);
             }
             for (int id = 1; id < s.states.length; id++) {
                 int c = p.meta()[m + 16 + id];

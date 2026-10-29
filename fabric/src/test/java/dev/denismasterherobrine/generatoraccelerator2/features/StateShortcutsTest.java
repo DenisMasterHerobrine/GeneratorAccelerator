@@ -18,7 +18,9 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.HashMapPalette;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.LinearPalette;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.BooleanOp;
@@ -36,17 +38,19 @@ public class StateShortcutsTest {
      * the section write hook stands down there, as it does for any other mod's change. This is the platform's own change, not a
      * broken shortcut.
      */
-    private static final String FABRIC_API_SECTION = "net.fabricmc.fabric.mixin.block.ChunkSectionMixin";
+    private static final String FABRIC_API_SECTION = "net.fabricmc.fabric.mixin.block.LevelChunkSectionMixin";
 
     @Test
     void shortcutsAreOn() {
         HarnessWorld.registries();
+        // a hook is decided when its class loads and is inspected
+        List.of(LevelChunkSection.class, LinearPalette.class, HashMapPalette.class);
         assertTrue(StateFast.ENABLED, "run with the shortcuts on");
         for (String key : new String[] { HookTargets.TAG_BITS, HookTargets.SECTION_WRITE, HookTargets.PALETTE, HookTargets.FLUID_EMPTY, HookTargets.FULL_BLOCK_SHAPE }) {
             if (key.equals(HookTargets.SECTION_WRITE) && HookTargets.foreign(key).equals(List.of(FABRIC_API_SECTION))) {
                 continue;
             }
-            assertTrue(HookTargets.hook(key).allowed(), key + " is not in use (another mod's change, or not inspected)");
+            assertTrue(HookTargets.hook(key).allowed(), key + " is not in use (another mod's change, or not inspected): " + HookTargets.foreign(key));
         }
     }
 
@@ -59,10 +63,10 @@ public class StateShortcutsTest {
         }
         Random random = new Random(20261010L);
         for (int round = 0; round < 4; round++) {
-            LevelChunkSection section = new LevelChunkSection(r.biomes);
+            LevelChunkSection section = new LevelChunkSection(r.containers);
             BlockState[] expected = new BlockState[4096];
             Arrays.fill(expected, Blocks.AIR.defaultBlockState());
-            int nonEmpty = 0, ticking = 0, fluids = 0;
+            int nonEmpty = 0, ticking = 0, fluids = 0, tickingFluids = 0;
             // a few states at first (single, linear palette), then more (hash map), then many (global)
             int kinds = round == 0 ? 6 : round == 1 ? 40 : round == 2 ? 300 : 4000;
             List<BlockState> states = new ArrayList<>();
@@ -83,23 +87,30 @@ public class StateShortcutsTest {
                     if (old.isRandomlyTicking()) {
                         ticking--;
                     }
-                }
-                if (!fluidEmpty(old)) {
-                    fluids--;
+                    if (!fluidEmpty(old)) {
+                        fluids--;
+                        if (old.getFluidState().isRandomlyTicking()) {
+                            tickingFluids--;
+                        }
+                    }
                 }
                 if (!PlatformHooks.isEmpty(state)) {
                     nonEmpty++;
                     if (state.isRandomlyTicking()) {
                         ticking++;
                     }
-                }
-                if (!fluidEmpty(state)) {
-                    fluids++;
+                    if (!fluidEmpty(state)) {
+                        fluids++;
+                        if (state.getFluidState().isRandomlyTicking()) {
+                            tickingFluids++;
+                        }
+                    }
                 }
                 expected[i] = state;
                 assertEquals((short) nonEmpty, section.nonEmptyBlockCount, "non-empty count after write " + w);
                 assertEquals((short) ticking, section.tickingBlockCount, "ticking count after write " + w);
-                assertEquals((short) fluids, section.tickingFluidCount, "fluid count after write " + w);
+                assertEquals((short) fluids, section.fluidCount, "fluid count after write " + w);
+                assertEquals((short) tickingFluids, section.tickingFluidCount, "ticking fluid count after write " + w);
             }
             for (int i = 0; i < 4096; i++) {
                 assertTrue(section.getBlockState(i & 15, i >> 8, (i >> 4) & 15) == expected[i], "block " + i + " of round " + round);

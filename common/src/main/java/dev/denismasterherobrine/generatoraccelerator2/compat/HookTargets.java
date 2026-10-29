@@ -125,13 +125,13 @@ public final class HookTargets {
      */
     public static final String STRUCTURE_TEMPLATE_LOADS = "structures.templateLoads";
     /**
-     * {@code RandomPatchFeature.place}'s call of {@code PlacedFeature.place}. A try at a position where the inner feature's modifiers
-     * gave no position, with no feature run since, gives none again ({@code features.placement.PatchRepeats}). Any change to the
-     * call keeps every try.
+     * {@code SinglePoolElement.getShuffledJigsawBlocks}'s call of {@code StructureTemplate.getJigsaws}, and that method. At position
+     * zero the call answers from lists kept per template and rotation ({@code structure.JigsawLists}). A redirect or wrapper of
+     * the call, or any change to {@code getJigsaws}, keeps vanilla's lists.
      */
-    public static final String PATCH_REPEATS = "features.patchRepeats";
+    public static final String STRUCTURE_JIGSAW_LISTS = "structures.jigsawLists";
     /**
-     * {@code ServerLevel.onBlockStateChange}, {@code PoiTypes.forState} and the call in {@code WorldGenRegion.setBlock}. When a generation
+     * {@code ServerLevel.updatePOIOnBlockStateChange}, {@code PoiTypes.forState} and the call in {@code WorldGenRegion.setBlock}. When a generation
      * region writes between two states without a POI type, the write leaves the call out ({@code state.PoiStates}). Any change to these
      * methods keeps every call.
      */
@@ -201,30 +201,25 @@ public final class HookTargets {
      * {@code WaterFluid}). The tick of water that cannot flow is left out ({@code fluid.StillWater}). Any change keeps every tick.
      */
     public static final String FLUID_POST_PROCESS = "fluids.postProcess";
-    /**
-     * {@code LiquidBlockRenderer.tesselate} and its face checks, and its call in {@code BlockRenderDispatcher.renderLiquid}. Water
-     * with water on all six sides is not passed to the renderer ({@code fluid.StillWater}). Any change keeps vanilla's whole method.
-     */
-    public static final String FLUID_HIDDEN_WATER = "fluids.hiddenWater";
-    /** {@code ChunkAccess.getMinBuildHeight} and {@code getHeight} read from the height accessor once per chunk. */
+    /** {@code ChunkAccess.getMinY} and {@code getHeight} read from the height accessor once per chunk. */
     public static final String CHUNK_HEIGHTS = "state.chunkHeights";
     /** {@code Block.isShapeFullBlock} remembered on the shape. */
     public static final String FULL_BLOCK_SHAPE = "state.fullBlockShape";
     /** The per-block state FastFill computes in place ({@code getInterpolatedState} and what that runs). When changed, FastFill asks the real method. */
     public static final String NOISE_FILL_STATE = "noise.fillState";
-    /** {@code MaterialRuleList.calculate} walked by index. */
+    /** {@code MaterialRuleList.calculate}, which the GPU fill answers itself. When changed, the fill stays on the CPU. */
     public static final String NOISE_MATERIAL_RULES = "noise.materialRules";
     /** Vanilla's ore vein rule ({@code OreVeinifier}). When changed, FastFill runs the rule for every solid block instead of skipping whole cells. */
     public static final String NOISE_VEIN_RULE = "noise.veinRule";
     /** {@code LevelChunkSection.setBlockState}, whose work the noise fill's section writes do ({@code SectionWriter}). When changed, the fill writes block by block. */
     public static final String NOISE_SECTION_WRITES = "noise.sectionWrites";
-    /** {@code StructureTemplate.filterBlocks}, answered from a per-palette cache for jigsaw blocks. When changed, every call runs the method. */
-    public static final String STRUCTURE_JIGSAW_BLOCKS = "structures.jigsawBlocks";
     /**
      * {@code StructureTemplate.placeInWorld}'s call of {@code processBlockInfos}, that method and the position transform, whose work
      * {@code structure.TemplatePlacement} does for the blocks inside the bounding box only. When changed, every placement processes the whole template.
      */
     public static final String STRUCTURE_TEMPLATE_CLIP = "structures.templateClip";
+    /** {@code CappedProcessor.finalizeProcessing}, transcribed by {@code structure.CappedPlacement}. When changed, lists with a capped processor process the whole template. */
+    public static final String STRUCTURE_TEMPLATE_CAPPED = "structures.templateCapped";
     /** Nether fossil placement ({@code NetherFossilStructure.findGenerationPoint} and the biome check behind it). When changed, every probe runs. */
     public static final String STRUCTURE_FOSSIL_PROBE = "structures.fossilProbe";
     /** Where ring placements (strongholds) can put positions ({@code RingBounds}). When the ring computation or the check is changed, every check waits for the positions. */
@@ -240,29 +235,13 @@ public final class HookTargets {
     public static final String STORAGE_OLD_CHUNK_SCAN = "storage.oldChunkScan";
     public static final String STORAGE_PRECOMPRESS = "storage.precompress";
     public static final String STORAGE_SECTION_CODEC = "storage.sectionCodec";
-    /** {@code ChunkMap.scheduleUnload}, {@code processUnloads} and {@code tick}: unloading chunks' sections encoded on the worker pool before their save ({@code storage.SavePrep}). */
-    public static final String STORAGE_SAVE_PREP = "storage.savePrep";
-    /**
-     * The tick lists' save methods ({@code ChunkSerializer.saveTicks}, {@code LevelChunkTicks.save}, {@code ProtoChunkTicks.save}). Another
-     * mod's change to these methods leaves the ticks to the save. The sections are still encoded ahead ({@link #STORAGE_SAVE_PREP}). An
-     * example is Lithium's tick scheduler, which keeps its own queues and writes them in its own order.
-     */
-    public static final String STORAGE_SAVE_PREP_TICKS = "storage.savePrepTicks";
     /** {@code IOWorker.loadAsync} and {@code RegionFileStorage.read}: a loaded chunk's bytes read by the IO thread, decompressed and parsed on the worker pool ({@code storage.ParallelRead}). */
     public static final String STORAGE_PARALLEL_READ = "storage.parallelRead";
-    /** {@code ChunkSerializer.read}: section palettes, sections and tick lists of a loaded chunk prepared on the worker pool ({@code storage.LoadPrep}). */
-    public static final String STORAGE_LOAD_PREP = "storage.loadPrep";
-    /** {@code ChunkSerializer.read} and {@code ChunkMap.scheduleChunkLoad} changed by no other mod at all. Nothing can then edit a loaded chunk's tag between preparation and {@code read}. */
-    public static final String STORAGE_LOAD_PREP_UNCHANGED = "storage.loadPrepUnchanged";
     /**
-     * {@code PalettedContainer}'s codec builders and {@code unpack}, and the section codecs of {@code ChunkSerializer}: a loaded section's
+     * {@code PalettedContainer}'s codec builders and {@code unpack}, and {@code PalettedContainerFactory}, which makes the section codecs: a loaded section's
      * palettes decoded without the codecs' records and lists, each entry by the element codec ({@code storage.FastPalettes}).
      */
     public static final String STORAGE_FAST_PALETTES = "storage.fastPalettes";
-    /** {@code Heightmap.primeHeightmaps}, skipped by {@code read} when there is nothing to prime. */
-    public static final String STORAGE_PRIME_HEIGHTMAPS = "storage.primeHeightmaps";
-    /** {@code SectionStorage.tryRead}: a POI column's read taken from the read made ahead with its chunk ({@code chunkload.PoiPrefetch}). */
-    public static final String CHUNK_POI_PREFETCH = "chunkLoad.poiPrefetch";
     /** The chunk packet's block data ({@code ClientboundLevelChunkPacketData}, the section writes): written ahead in parallel ({@code chunkload.ChunkPackets}). */
     public static final String CHUNK_PACKET_PREP = "chunkLoad.packetPrep";
     /** {@code PersistentEntitySectionManager.processPendingLoads}: loaded chunks' entities added within a budget per tick. */
@@ -292,7 +271,7 @@ public final class HookTargets {
      * block light and sky light of an update at once ({@code light.LightLayers}). When changed, the layers update one after the other.
      */
     public static final String LIGHT_LAYERS = "light.layers";
-    /** {@code MinecraftServer.prepareLevels}: the spawn area the server waits for before players can join ({@code join.JoinWait}). */
+    /** {@code PrepareSpawnTask$Preparing.tick}: the area around a joining player that they wait for ({@code join.JoinWait}). */
     public static final String JOIN_SPAWN_WAIT = "join.spawnWait";
 
     /** Handled mixins of each hook ({@link KnownMixins}), with their changes in execution order. */

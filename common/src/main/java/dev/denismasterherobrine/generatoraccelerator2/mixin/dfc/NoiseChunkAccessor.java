@@ -27,7 +27,7 @@ public interface NoiseChunkAccessor {
     @Accessor("cellCaches") List<DensityFunction> ga2$cellCaches();
     @Accessor("beardifier") DensityFunctions.BeardifierOrMarker ga2$beardifier();
     /** The chunk's preliminary surface level memo, keyed by quart-aligned {@code ColumnPos}. */
-    @Accessor("preliminarySurfaceLevel") Long2IntMap ga2$surfaceLevelMemo();
+    @Accessor("preliminarySurfaceLevelCache") Long2IntMap ga2$surfaceLevelMemo();
     @Invoker("wrap") DensityFunction ga2$wrap(DensityFunction fn);
     @Invoker("cachedClimateSampler") Climate.Sampler ga2$cachedClimateSampler(NoiseRouter router, List<Climate.ParameterPoint> spawnTarget);
     @Invoker("getInterpolatedState") BlockState ga2$getInterpolatedState();

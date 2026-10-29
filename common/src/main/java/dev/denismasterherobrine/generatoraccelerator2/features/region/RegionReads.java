@@ -88,7 +88,7 @@ public final class RegionReads {
         ChunkAccess c = region.ga2$chunk(cx, cz);
         chunks[s] = c;
         sections[s] = c.getSections();
-        kinds[s] = (byte) (c.getClass() == ProtoChunk.class && c.getMinBuildHeight() == minY && c.getMaxBuildHeight() == maxY ? 1 : 2);
+        kinds[s] = (byte) (c.getClass() == ProtoChunk.class && c.getMinY() == minY && c.getMaxY() + 1 == maxY ? 1 : 2);
     }
 
     private static void verified(boolean same, BlockPos pos, String what) {

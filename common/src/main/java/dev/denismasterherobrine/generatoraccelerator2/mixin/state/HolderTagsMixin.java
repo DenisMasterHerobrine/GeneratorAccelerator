@@ -23,6 +23,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(value = Holder.Reference.class, priority = 5000)
 public abstract class HolderTagsMixin<T> implements DirectSets.Keyed {
+    @Unique
+    private static final HookTargets.Hook GA2$HOOK = HookTargets.hook(HookTargets.TAG_BITS);
+
     @Shadow
     private Set<TagKey<T>> tags;
 
@@ -37,8 +40,6 @@ public abstract class HolderTagsMixin<T> implements DirectSets.Keyed {
         return this.key;
     }
 
-    @Unique
-    private static final HookTargets.Hook GA2$HOOK = HookTargets.hook(HookTargets.TAG_BITS);
 
     @Inject(method = "bindTags", at = @At("TAIL"))
     private void ga2$bindBits(Collection<TagKey<T>> tags, CallbackInfo ci) {

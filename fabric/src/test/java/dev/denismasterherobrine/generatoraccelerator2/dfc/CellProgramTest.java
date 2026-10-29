@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.CacheAllInCellAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.NoiseChunkAccessor;
+import dev.denismasterherobrine.generatoraccelerator2.testutil.FillHarness;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import net.minecraft.core.HolderLookup;
@@ -64,7 +65,7 @@ public class CellProgramTest {
                 List<DensityFunction> cc = ((NoiseChunkAccessor) compiled).ga2$cellCaches();
                 assertEquals(vc.size(), cc.size());
                 for (DensityFunction cache : cc) {
-                    assertTrue(binding.handlesCell(((DensityFunctions.MarkerOrMarked) cache).wrapped()), "cell cache not covered on " + preset.location());
+                    assertTrue(binding.handlesCell(((DensityFunctions.MarkerOrMarked) cache).wrapped()), "cell cache not covered on " + preset.identifier());
                 }
                 int cellCountY = ((NoiseChunkAccessor) compiled).ga2$cellCountY();
 
@@ -81,7 +82,7 @@ public class CellProgramTest {
                             double[] actual = ((CacheAllInCellAccessor) cc.get(i)).ga2$values();
                             for (int k = 0; k < expected.length; k++) {
                                 if (Double.doubleToRawLongBits(expected[k]) != Double.doubleToRawLongBits(actual[k])) {
-                                    throw new AssertionError(preset.location() + (withPieces ? " with pieces" : "") + " cell y=" + cellY + " z=" + cellZ + " cache " + i + " index " + k + ": vanilla=" + expected[k] + " dfc=" + actual[k]);
+                                    throw new AssertionError(preset.identifier() + (withPieces ? " with pieces" : "") + " cell y=" + cellY + " z=" + cellZ + " cache " + i + " index " + k + ": vanilla=" + expected[k] + " dfc=" + actual[k]);
                                 }
                                 compared++;
                             }
@@ -109,6 +110,6 @@ public class CellProgramTest {
         ObjectArrayList<JigsawJunction> junctions = new ObjectArrayList<>();
         junctions.add(new JigsawJunction(minX + 6, 64, minZ + 6, 0, StructureTemplatePool.Projection.RIGID));
         junctions.add(new JigsawJunction(minX - 40, 64, minZ - 40, 0, StructureTemplatePool.Projection.TERRAIN_MATCHING));
-        return new Beardifier(pieces.iterator(), junctions.iterator());
+        return FillHarness.beardifier(pieces, junctions);
     }
 }

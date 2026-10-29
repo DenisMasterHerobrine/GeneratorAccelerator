@@ -42,18 +42,18 @@ public class GlobalSamplerTest {
             RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 20261005L);
             Climate.Sampler sampler = state.sampler();
             BoundSampler bound = BoundSampler.lookup(sampler);
-            assertNotNull(bound, "global sampler not bound on " + preset.location());
-            assertNotNull(bound.sharedSamples, "global sampler bound as a chunk sampler on " + preset.location());
+            assertNotNull(bound, "global sampler not bound on " + preset.identifier());
+            assertNotNull(bound.sharedSamples, "global sampler bound as a chunk sampler on " + preset.identifier());
             long before = bound.sharedSamples.sum();
-            compared += compare(sampler, preset.location().toString(), new Random(preset.location().hashCode()), POINTS);
+            compared += compare(sampler, preset.identifier().toString(), new Random(preset.identifier().hashCode()), POINTS);
 
             // the stronghold ring search samples from up to a hundred pool tasks at once
             ExecutorService pool = Executors.newFixedThreadPool(THREADS);
             try {
                 List<Future<Long>> futures = new ArrayList<>();
                 for (int t = 0; t < THREADS; t++) {
-                    long seed = preset.location().hashCode() * 31L + t;
-                    futures.add(pool.submit(() -> compare(sampler, preset.location() + " (threads)", new Random(seed), POINTS)));
+                    long seed = preset.identifier().hashCode() * 31L + t;
+                    futures.add(pool.submit(() -> compare(sampler, preset.identifier() + " (threads)", new Random(seed), POINTS)));
                 }
                 for (Future<Long> f : futures) {
                     compared += f.get();
@@ -61,7 +61,7 @@ public class GlobalSamplerTest {
             } finally {
                 pool.shutdown();
             }
-            assertTrue(bound.sharedSamples.sum() - before >= (long) POINTS * (THREADS + 1), "compiled global sampler was not used on " + preset.location());
+            assertTrue(bound.sharedSamples.sum() - before >= (long) POINTS * (THREADS + 1), "compiled global sampler was not used on " + preset.identifier());
         }
         System.out.println("GlobalSamplerTest: compared " + compared + " target points");
     }

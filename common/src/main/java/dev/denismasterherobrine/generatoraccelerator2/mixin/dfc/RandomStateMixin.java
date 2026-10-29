@@ -9,6 +9,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BoundSampler;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -47,7 +48,8 @@ public abstract class RandomStateMixin implements Ga2RandomState {
             this.ga2$sharedSampler = BoundSampler.bindShared(this.sampler, this.ga2$programs.globalSampler());
         }
         Map<String, Node> roots = this.ga2$programs != null ? this.ga2$programs.routerRoots() : null;
-        boolean classifySafe = roots != null && StateDependence.orderIndependent(roots, AquiferFastPath.STATUS_FIELDS);
+        String[] statusFields = roots != null ? AquiferFastPath.statusFields(roots) : null;
+        boolean classifySafe = roots != null && StateDependence.orderIndependent(roots, statusFields);
         // a cache_2d over y below the floodedness alone (Regions Unexplored's inferno weight) is ruled out aquifer by aquifer,
         // over the columns of the aquifer's cells. The other fields decide the mode as if the cache were not there.
         Map<Node, DensityFunction> cellCaches = classifySafe || roots == null ? null : StateDependence.cellCentreCaches(roots);
@@ -56,7 +58,7 @@ public abstract class RandomStateMixin implements Ga2RandomState {
         }
         Set<Node> checked = cellCaches != null ? cellCaches.keySet() : Set.of();
         if (!classifySafe && cellCaches != null) {
-            classifySafe = StateDependence.orderIndependent(roots, checked, AquiferFastPath.STATUS_FIELDS);
+            classifySafe = StateDependence.orderIndependent(roots, checked, statusFields);
         }
         // the surface levels a status reads go through the chunk's memo. Once the memo holds every column a status needs,
         // computing the status reads only the point fields. A router whose order-sensitive state is in the surface level
@@ -72,10 +74,10 @@ public abstract class RandomStateMixin implements Ga2RandomState {
                         + (mode == AquiferFastPath.COLUMNS ? "after surface levels" : "ahead")
                         + ", per-chunk column-sharing check (order dep: {})"
                     : "neighbourhoods classified after surface levels (order dep: {})",
-                StateDependence.orderDependence(roots, AquiferFastPath.STATUS_FIELDS));
+                StateDependence.orderDependence(roots, statusFields));
         }
         SurfaceLevelCache.register((RandomState) (Object) this,
-            this.ga2$programs != null && StateDependence.chunkIndependent(this.ga2$programs.routerRoots(), "initial_density_without_jaggedness"));
+            this.ga2$programs != null && StateDependence.chunkIndependent(roots, SurfaceLevels.fields(roots)));
     }
 
     @Override

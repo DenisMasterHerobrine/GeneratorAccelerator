@@ -51,10 +51,10 @@ class ChunkyHoldsTest {
         world.finishOne(0, 0);
         world.holds.done(0, 0, world.now);
         world.settle();
-        assertTrue(world.holds.isKept(ChunkPos.asLong(3, -4)), "a chunk next to the request is kept");
-        assertTrue(!world.holds.isKept(ChunkPos.asLong(40, 0)), "a chunk far from it is not");
+        assertTrue(world.holds.isKept(ChunkPos.pack(3, -4)), "a chunk next to the request is kept");
+        assertTrue(!world.holds.isKept(ChunkPos.pack(40, 0)), "a chunk far from it is not");
         world.finish();
-        assertTrue(!world.holds.isKept(ChunkPos.asLong(3, -4)), "let go after Chunky stopped");
+        assertTrue(!world.holds.isKept(ChunkPos.pack(3, -4)), "let go after Chunky stopped");
     }
 
     @Test
@@ -166,7 +166,7 @@ class ChunkyHoldsTest {
         void ask(int x, int z) {
             for (int dx = -R; dx <= R; dx++) {
                 for (int dz = -R; dz <= R; dz++) {
-                    long q = ChunkPos.asLong(x + dx, z + dz);
+                    long q = ChunkPos.pack(x + dx, z + dz);
                     this.cover.addTo(q, 1);
                     if (this.dropped.remove(q)) {
                         this.readBack++;
@@ -181,7 +181,7 @@ class ChunkyHoldsTest {
         void finishOne(int x, int z) {
             for (int dx = -R; dx <= R; dx++) {
                 for (int dz = -R; dz <= R; dz++) {
-                    long q = ChunkPos.asLong(x + dx, z + dz);
+                    long q = ChunkPos.pack(x + dx, z + dz);
                     if (this.cover.addTo(q, -1) == 1) {
                         this.cover.remove(q);
                         this.uncovered.add(q);
@@ -201,6 +201,15 @@ class ChunkyHoldsTest {
             this.uncovered.clear();
             this.maxKept = Math.max(this.maxKept, this.tickets.kept.size());
             assertEquals(this.tickets.kept.size(), this.holds.keptCount(), "GA2's tickets against the chunks it keeps");
+            if (this.now % 16 == 0) {
+                // the holds' per-tile bits name the same chunks as GA2's tickets
+                for (long q : this.tickets.kept) {
+                    assertTrue(this.holds.isKept(q), "kept without its bit: " + ChunkPos.unpack(q));
+                }
+                for (long q : this.loaded) {
+                    assertEquals(this.tickets.kept.contains(q), this.holds.isKept(q), "bit of " + ChunkPos.unpack(q));
+                }
+            }
             assertTrue(this.cap <= 0 || this.tickets.kept.size() <= this.cap, "over the cap: " + this.tickets.kept.size());
         }
 
@@ -233,13 +242,13 @@ class ChunkyHoldsTest {
             if (!this.world.loaded.contains(pos)) {
                 return false;
             }
-            assertTrue(this.kept.add(pos), "kept twice: " + new ChunkPos(pos));
+            assertTrue(this.kept.add(pos), "kept twice: " + ChunkPos.unpack(pos));
             return true;
         }
 
         @Override
         public void letGo(long pos) {
-            assertTrue(this.kept.remove(pos), "let go without a ticket: " + new ChunkPos(pos));
+            assertTrue(this.kept.remove(pos), "let go without a ticket: " + ChunkPos.unpack(pos));
             if (this.world.cover.get(pos) == 0) {
                 this.world.drop(pos);
             }

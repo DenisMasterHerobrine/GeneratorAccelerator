@@ -15,14 +15,14 @@ description = '''
 [[dependencies.generatoraccelerator2]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21.1,)"
+versionRange = "[26.1.2,)"
 ordering = "NONE"
 side = "BOTH"
 
 [[dependencies.generatoraccelerator2]]
 modId = "minecraft"
 type = "required"
-versionRange = "[1.21.1,1.21.2)"
+versionRange = "[26.1.2,26.1.3)"
 ordering = "NONE"
 side = "BOTH"
 
@@ -50,6 +50,9 @@ config = "generatoraccelerator2.compat.quark.mixins.json"
 config = "generatoraccelerator2.compat.spelunkery.mixins.json"
 [[mixins]]
 config = "generatoraccelerator2.compat.supplementaries.mixins.json"
+
+[[mixins]]
+config = "generatoraccelerator2.compat.productivebees.mixins.json"
 
 [[mixins]]
 config = "generatoraccelerator2.parallellight.mixins.json"

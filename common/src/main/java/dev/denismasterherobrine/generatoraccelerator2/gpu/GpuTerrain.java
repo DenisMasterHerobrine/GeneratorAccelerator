@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.AquiferStatusInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
@@ -10,6 +11,7 @@ import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -119,7 +121,7 @@ public final class GpuTerrain {
                 return null;
             }
             return new Spec(cellsPerChunk, minGridY, minY, height, cellHeight, fluid, picker, randomState.router().barrierNoise(),
-                randomState.router().initialDensityWithoutJaggedness());
+                randomState.router().preliminarySurfaceLevel());
         }
 
         /**
@@ -130,7 +132,7 @@ public final class GpuTerrain {
             if (!pointTransparent(randomState.router().barrierNoise(), !barrierFlatsXz)) {
                 return barrierFlatsXz ? "the barrier noise holds the beardifier" : "the barrier noise holds a flat cache of a function that reads y, or the beardifier";
             }
-            if (!pointTransparent(randomState.router().initialDensityWithoutJaggedness(), false)) {
+            if (!pointTransparent(randomState.router().preliminarySurfaceLevel(), false)) {
                 return "the surface level function reads the beardifier";
             }
             return null;
@@ -311,13 +313,48 @@ public final class GpuTerrain {
                 return "aquifer cell " + gx + ", " + gy + ", " + gz + " centre: CPU " + x + ", " + y + ", " + z + ", GPU " + (gx * 16 + offsetX(cell)) + ", "
                     + (gy * 12 + offsetY(cell)) + ", " + (gz * 16 + offsetZ(cell));
             }
-            Aquifer.FluidStatus s = statuses.ga2$getAquiferStatus(BlockPos.asLong(x, y, z));
+            Aquifer.FluidStatus s = statusOf(statuses, gx, gy, gz, BlockPos.asLong(x, y, z));
             var fs = (FluidStatusAccessor) (Object) s;
             if (fs.ga2$fluidLevel() != level(cell) || fs.ga2$fluidType() != fluid(cell)) {
                 return "aquifer cell " + gx + ", " + gy + ", " + gz + ": CPU " + fs.ga2$fluidLevel() + " " + fs.ga2$fluidType() + ", GPU " + level(cell) + " " + fluid(cell);
             }
         }
         return null;
+    }
+
+    /** A chunk's aquifer cells in the GPU's answer {@code data}, for a step checked against them ({@link FrostedCaves#holdsWithout}). */
+    public static FrostedCaves.Cells cells(int[] data, int cellsPerChunk, int minGridY, int cx, int cz, boolean defaultLava) {
+        return new FrostedCaves.Cells() {
+            @Override
+            public int count() {
+                return cellsPerChunk;
+            }
+
+            @Override
+            public long centre(int cell) {
+                int ii = cell % 3, t = cell / 3, kk = t % 3, jj = t / 3;
+                int bits = data[2 * cell + 1];
+                return BlockPos.asLong((cx - 1 + ii) * 16 + (bits >> 8 & 15), (minGridY + jj) * 12 + (bits >> 12 & 15), (cz - 1 + kk) * 16 + (bits >> 16 & 15));
+            }
+
+            @Override
+            public boolean water(int cell) {
+                return (data[2 * cell + 1] & 1) == 0 && !defaultLava;
+            }
+        };
+    }
+
+    /**
+     * The status of aquifer cell {@code (gx, gy, gz)} centred at {@code location}, as {@code aquifer} computes it. A cell the aquifer has
+     * not located yet gets that centre first, which is the one vanilla would draw.
+     */
+    public static Aquifer.FluidStatus statusOf(AquiferStatusInvoker aquifer, int gx, int gy, int gz, long location) {
+        int index = aquifer.ga2$getIndex(gx, gy, gz);
+        long[] locations = aquifer.ga2$locations();
+        if (locations[index] == Long.MAX_VALUE) {
+            locations[index] = location;
+        }
+        return aquifer.ga2$getAquiferStatus(index);
     }
 
     /** The same data with a separate aquifer, for a chunk copy. */
@@ -334,12 +371,7 @@ public final class GpuTerrain {
         LEVEL_FALLBACKS.increment();
         int bx = QuartPos.toBlock(QuartPos.fromBlock(x)), bz = QuartPos.toBlock(QuartPos.fromBlock(z));
         DensityFunction levels = spec.walk ? spec.walkLevels() : spec.levels;
-        for (int y = spec.minY + spec.height; y >= spec.minY; y -= spec.cellHeight) {
-            if (levels.compute(new DensityFunction.SinglePointContext(bx, y, bz)) > 0.390625) {
-                return y;
-            }
-        }
-        return Integer.MAX_VALUE;
+        return Mth.floor(levels.compute(new DensityFunction.SinglePointContext(bx, 0, bz)));
     }
 
     /** The chunk's aquifer, as the NoiseChunk's aquifer would be. Created once. */
@@ -354,6 +386,11 @@ public final class GpuTerrain {
     /** The aquifer's fluid update flag after the noise fill, as the fill's last block left it. */
     boolean fillFlag() {
         return data[data.length - 1] != 0;
+    }
+
+    /** The aquifer's {@code skipSamplingAboveY}: above it, every block not solid is the global fluid picker's. */
+    int skipSamplingAboveY() {
+        return data[data.length - 2];
     }
 
     int level(int cell) {

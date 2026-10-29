@@ -80,16 +80,16 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$init(CallbackInfo ci) {
-        this.ga2$centerX = this.center.getPos().x;
-        this.ga2$centerZ = this.center.getPos().z;
+        this.ga2$centerX = this.center.getPos().x();
+        this.ga2$centerZ = this.center.getPos().z();
         this.ga2$writeRadius = this.generatingStep.blockStateWriteRadius();
         this.ga2$minY = this.dimensionType.minY();
         this.ga2$maxY = this.dimensionType.minY() + this.dimensionType.height();
         this.ga2$upgrading = this.center.isUpgrading();
         if (this.ga2$upgrading) {
             LevelHeightAccessor h = this.center.getHeightAccessorForGeneration();
-            this.ga2$upgradeMinY = h.getMinBuildHeight();
-            this.ga2$upgradeMaxY = h.getMaxBuildHeight();
+            this.ga2$upgradeMinY = h.getMinY();
+            this.ga2$upgradeMaxY = h.getMaxY() + 1;
         }
         if (FeatureHooks.enabled() && FeaturesCompat.regionCacheAllowed()) {
             this.ga2$chunks = new RegionChunks(this.center.getPos(), this.generatingStep.directDependencies());
@@ -272,7 +272,7 @@ public abstract class WorldGenRegionMixin implements Ga2Region {
     public void ga2$onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState) {
         // POI bookkeeping, which does nothing when neither state has a POI type (PoiStates)
         if (!PoiStates.skip(this.level, oldState, newState)) {
-            this.level.onBlockStateChange(pos, oldState, newState);
+            this.level.updatePOIOnBlockStateChange(pos, oldState, newState);
         }
     }
 }

@@ -5,7 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.BeardifierAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardBounds;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
-import it.unimi.dsi.fastutil.objects.ObjectListIterator;
+import java.util.List;
 import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
 
@@ -40,23 +40,12 @@ public final class BeardCuller {
 
     public static BeardCuller of(Beardifier beardifier) {
         BeardifierAccessor acc = (BeardifierAccessor) beardifier;
-        ObjectListIterator<Beardifier.Rigid> pieces = acc.ga2$pieceIterator();
-        ObjectListIterator<JigsawJunction> junctions = acc.ga2$junctionIterator();
-        int n = 0;
-        while (pieces.hasNext()) {
-            pieces.next();
-            n++;
-        }
-        pieces.back(Integer.MAX_VALUE);
-        while (junctions.hasNext()) {
-            junctions.next();
-            n++;
-        }
-        junctions.back(Integer.MAX_VALUE);
+        List<Beardifier.Rigid> pieces = acc.ga2$pieces();
+        List<JigsawJunction> junctions = acc.ga2$junctions();
+        int n = pieces.size() + junctions.size();
         int[] ranges = new int[n * 6];
         int i = 0;
-        while (pieces.hasNext()) {
-            Beardifier.Rigid rigid = pieces.next();
+        for (Beardifier.Rigid rigid : pieces) {
             int code = BeardBounds.code(rigid.terrainAdjustment());
             if (code == BeardBounds.NONE) {
                 continue;
@@ -71,12 +60,10 @@ public final class BeardCuller {
             }
             i++;
         }
-        pieces.back(Integer.MAX_VALUE);
-        while (junctions.hasNext()) {
-            BeardBounds.junction(junctions.next(), ranges, i * 6);
+        for (JigsawJunction junction : junctions) {
+            BeardBounds.junction(junction, ranges, i * 6);
             i++;
         }
-        junctions.back(Integer.MAX_VALUE);
         return new BeardCuller(ranges, i);
     }
 

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.carver;
 
+import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuTerrain;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.aquifer.FluidStatusAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.AquiferStatusInvoker;
 import net.minecraft.core.BlockPos;
@@ -24,7 +25,7 @@ public final class AquiferDiag {
         StringBuilder out = new StringBuilder();
         for (int qx = 0; qx < 5; qx++) {
             for (int qz = 0; qz < 5; qz++) {
-                int x = (pos.x * 4 + qx) << 2, z = (pos.z * 4 + qz) << 2;
+                int x = (pos.x() * 4 + qx) << 2, z = (pos.z() * 4 + qz) << 2;
                 int a = fill.preliminarySurfaceLevel(x, z), b = fresh.preliminarySurfaceLevel(x, z);
                 if (a != b) {
                     out.append(" surface level at ").append(x).append(",").append(z).append(": fill ").append(a).append(" fresh ").append(b).append(';');
@@ -39,12 +40,12 @@ public final class AquiferDiag {
             for (int jj = 0; jj < cellsY; jj++) {
                 for (int kk = 0; kk < 3; kk++) {
                     for (int ii = 0; ii < 3; ii++) {
-                        int gx = pos.x - 1 + ii, gy = minGridY + jj, gz = pos.z - 1 + kk;
+                        int gx = pos.x() - 1 + ii, gy = minGridY + jj, gz = pos.z() - 1 + kk;
                         RandomSource r = randomState.aquiferRandom().at(gx, gy, gz);
                         int x = gx * 16 + r.nextInt(10), y = gy * 12 + r.nextInt(9), z = gz * 16 + r.nextInt(10);
                         long loc = BlockPos.asLong(x, y, z);
-                        var a = (FluidStatusAccessor) (Object) si.ga2$getAquiferStatus(loc);
-                        var b = (FluidStatusAccessor) (Object) ri.ga2$getAquiferStatus(loc);
+                        var a = (FluidStatusAccessor) (Object) GpuTerrain.statusOf(si, gx, gy, gz, loc);
+                        var b = (FluidStatusAccessor) (Object) GpuTerrain.statusOf(ri, gx, gy, gz, loc);
                         if (a.ga2$fluidLevel() != b.ga2$fluidLevel() || a.ga2$fluidType() != b.ga2$fluidType()) {
                             if (shown++ < 4) {
                                 out.append(" cell ").append(gx).append(",").append(gy).append(",").append(gz).append(": fill ").append(a.ga2$fluidLevel()).append(' ')

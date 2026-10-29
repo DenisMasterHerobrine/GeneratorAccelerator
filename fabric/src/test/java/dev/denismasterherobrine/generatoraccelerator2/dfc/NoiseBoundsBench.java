@@ -39,7 +39,7 @@ public class NoiseBoundsBench {
             var noises = lookup.lookupOrThrow(Registries.NOISE);
             var dim = lookup.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
             var biomeSource = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
-                new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes.asLookup())));
+                new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes)));
             world = new TerrainHarness.World(registries, Holder.direct(NoiseCellBoundsTest.withPerBlockNoise(overworld, noises)), biomeSource, noises, dim, 1234567L);
         } else {
             world = dir == null || dir.isBlank() ? TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L) : GpuDatapack.world(Path.of(dir), 1234567L);

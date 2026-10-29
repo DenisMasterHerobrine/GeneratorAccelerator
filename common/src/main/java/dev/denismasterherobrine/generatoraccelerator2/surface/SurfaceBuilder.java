@@ -193,7 +193,7 @@ public final class SurfaceBuilder {
         int minX = cp.getMinBlockX();
         int minZ = cp.getMinBlockZ();
         Heightmap worldSurface = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
-        BiomeZoom zoom = BiomeZoom.forChunk(biomeManager, minX, minZ, chunk.getMinBuildHeight(), chunk.getMaxBuildHeight());
+        BiomeZoom zoom = BiomeZoom.forChunk(biomeManager, minX, minZ, chunk.getMinY(), chunk.getMaxY() + 1);
         try {
             SurfaceEval eval = new SurfaceEval(program, system, randomState, genContext, worldSurface, zoom);
             SurfaceRules.Context shadow = null;
@@ -222,7 +222,7 @@ public final class SurfaceBuilder {
                 }
                 SurfaceHooks.CHUNKS_HOOKED.increment();
             }
-            DeepPlan deep = SurfaceConfig.deepBands() ? program.deepPlan(chunk.getMinBuildHeight(), chunk.getMaxBuildHeight(), eval.gradLo, eval.gradHi, eval.anchorY)
+            DeepPlan deep = SurfaceConfig.deepBands() ? program.deepPlan(chunk.getMinY(), chunk.getMaxY() + 1, eval.gradLo, eval.gradHi, eval.anchorY)
                 : null;
             run((SurfaceSystemAccessor) system, program, eval, shadow, hooks, frame, deep, blocks, chunk, noiseChunk, worldSurface, zoom, legacy, minX, minZ);
         } finally {
@@ -255,9 +255,9 @@ public final class SurfaceBuilder {
         SurfaceRules.Context hookContext = frame != null && frame.ruleContext != shadow ? frame.ruleContext : null;
         BlockState defaultBlock = system.ga2$defaultBlock();
         boolean deepOk = deep != null && !defaultBlock.isAir() && defaultBlock.getFluidState().isEmpty();
-        Column column = new Column(blocks, chunk.getHeightAccessorForGeneration().getMinBuildHeight(), chunk.getHeightAccessorForGeneration().getMaxBuildHeight());
+        Column column = new Column(blocks, chunk.getHeightAccessorForGeneration().getMinY(), chunk.getHeightAccessorForGeneration().getMaxY() + 1);
         BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos();
-        int minBuild = chunk.getMinBuildHeight();
+        int minBuild = chunk.getMinY();
         // Context.getMinSurfaceLevel: the four corners of the 16x16 surface cell, which is this chunk
         int cellX = minX >> 4;
         int cellZ = minZ >> 4;

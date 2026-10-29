@@ -49,6 +49,10 @@ public final class Ops {
         return v > 0.0 ? v : v * 0.25;
     }
 
+    public static double invert(double v) {
+        return 1.0 / v;
+    }
+
     public static double squeeze(double v) {
         double d0 = clamp(v, -1.0, 1.0);
         return d0 / 2.0 - d0 * d0 * d0 / 24.0;

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 
+import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionRefs;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
@@ -20,7 +21,6 @@ import java.util.function.Supplier;
 import net.minecraft.CrashReport;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
-import net.minecraft.Util;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.server.level.ServerLevel;
@@ -39,6 +39,7 @@ import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import javax.annotation.Nullable;
 import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
+import org.slf4j.Logger;
 
 /**
  * Runs the SURFACE and CARVERS chunk steps on the worker pool, the way vanilla already runs NOISE.
@@ -62,6 +63,8 @@ import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStr
  */
 public final class ParallelSteps {
     private ParallelSteps() {}
+
+    private static final Logger LOGGER = Ga2Log.get("Scheduling");
 
     public static final LongAdder SURFACE_ASYNC = new LongAdder();
     public static final LongAdder SURFACE_INLINE = new LongAdder();
@@ -108,7 +111,7 @@ public final class ParallelSteps {
         StepHandlers.Frame frame = new StepHandlers.Frame(ctx, step, cache, chunk, level, region);
         SURFACE_ASYNC.increment();
         SURFACE_TAKEN.increment();
-        return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_surface", () -> {
+        return CompletableFuture.supplyAsync(StepThreads.named("wgen_surface", () -> {
             run(() -> {
                 StepHandlers.run(handlers, frame, false);
                 StepThreads.withBlender(blender, () -> generator.buildSurface(region, structures, randomState, chunk));
@@ -147,7 +150,7 @@ public final class ParallelSteps {
         Blender blender = Blender.of(region);
         Runnable work = () -> StepThreads.withBlender(blender, call);
         SURFACE_ASYNC.increment();
-        Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_surface", () -> {
+        Supplier<ChunkAccess> body = StepThreads.named("wgen_surface", () -> {
             run(work, step, chunk, generator);
             return chunk;
         });
@@ -183,7 +186,7 @@ public final class ParallelSteps {
             return null;
         }
         CARVERS_ASYNC.increment();
-        return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_carvers", () -> {
+        return CompletableFuture.supplyAsync(StepThreads.named("wgen_carvers", () -> {
             run(call, step, chunk, generator);
             return chunk;
         }), StepLane.executor(StepLane.level(cache, chunk)));
@@ -192,6 +195,11 @@ public final class ParallelSteps {
     public static final LongAdder FEATURES_WAITED = new LongAdder();
     /** From a FEATURES step scheduled to its locks granted. */
     public static final Lat FEATURES_LOCK_WAIT = new Lat();
+    /** A FEATURES step holding its locks: from the grant to the step's start on its lane, and from that start to the release. */
+    public static final Lat FEATURES_HOLD_QUEUED = new Lat();
+    public static final Lat FEATURES_HOLD_RUN = new Lat();
+    /** The longest FEATURES holds, for {@code /ga2 steps stats}. */
+    public static final SlowHolds FEATURES_SLOWEST = new SlowHolds(5);
     public static final LongAdder LIGHT_WAITED = new LongAdder();
     public static final LongAdder LIGHT_INIT_ASYNC = new LongAdder();
 
@@ -220,7 +228,7 @@ public final class ParallelSteps {
         }
         STARTS_ASYNC.increment();
         MinecraftServer server = ctx.level().getServer();
-        Supplier<ChunkAccess> body = Util.wrapThreadWithTaskName("wgen_structure_starts", () -> StepThreads.guarded(server, () -> {
+        Supplier<ChunkAccess> body = StepThreads.named("wgen_structure_starts", () -> StepThreads.guarded(server, () -> {
             run(() -> StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)).join(), step, chunk, ctx.generator());
             return chunk;
         }));
@@ -248,7 +256,7 @@ public final class ParallelSteps {
         List<CompletableFuture<?>> pending = null;
         for (Map.Entry<ConcentricRingsStructurePlacement, ? extends CompletableFuture<?>> e : rings.entrySet()) {
             CompletableFuture<?> f = e.getValue();
-            if (!f.isDone() && !RingBounds.startNeverWaits(state, e.getKey(), pos.x, pos.z)) {
+            if (!f.isDone() && !RingBounds.startNeverWaits(state, e.getKey(), pos.x(), pos.z())) {
                 if (pending == null) {
                     pending = new ArrayList<>();
                 }
@@ -274,7 +282,7 @@ public final class ParallelSteps {
         }
         REFERENCES_ASYNC.increment();
         MinecraftServer server = ctx.level().getServer();
-        return CompletableFuture.supplyAsync(Util.wrapThreadWithTaskName("wgen_structure_references", () -> StepThreads.guarded(server, () -> {
+        return CompletableFuture.supplyAsync(StepThreads.named("wgen_structure_references", () -> StepThreads.guarded(server, () -> {
             run(() -> StepThreads.vanilla(() -> step.task().doWork(ctx, step, cache, chunk)).join(), step, chunk, ctx.generator());
             return chunk;
         })), StepLane.executor(StepLane.level(cache, chunk)));
@@ -371,10 +379,21 @@ public final class ParallelSteps {
     /** Hands a granted request's step to the worker pool. If the pool refuses (shutting down), the locks are released and the step fails. */
     private static Runnable dispatcher(String taskName, MinecraftServer server, AreaLocks locks, AreaLocks.Request request, WorldGenContext ctx, ChunkStep step,
                                        StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, CompletableFuture<ChunkAccess> result) {
+        boolean features = taskName.equals("wgen_features");
         return () -> {
+            long granted = System.nanoTime();
             try {
-                StepLane.execute(StepLane.level(cache, chunk), Util.wrapThreadWithTaskName(taskName, () -> {
+                // the step holds its locks from here on, so it runs before steps that hold none
+                StepLane.executeHolding(StepThreads.named(taskName, () -> {
+                    long started = System.nanoTime();
                     StepThreads.guarded(server, () -> runLocked(locks, request, ctx, step, cache, chunk, result));
+                    if (features) {
+                        // the locks are released at the end of runLocked
+                        long released = System.nanoTime();
+                        FEATURES_HOLD_QUEUED.add(started - granted);
+                        FEATURES_HOLD_RUN.add(released - started);
+                        FEATURES_SLOWEST.offer(released - granted, started - granted, ctx.level().dimension().identifier(), chunk.getPos());
+                    }
                 }));
             } catch (RejectedExecutionException e) {
                 locks.release(request);
@@ -422,14 +441,17 @@ public final class ParallelSteps {
         try {
             work.run();
         } catch (ReportedException e) {
+            // vanilla relays a failed step to the server loop, which may be blocked waiting for this chunk (the spawn search)
+            LOGGER.error("{} step failed at {} -> crash report relayed", step.targetStatus().getName(), chunk.getPos(), e);
             throw e;
         } catch (Exception exception) {
             ChunkPos pos = chunk.getPos();
+            LOGGER.error("{} step failed at {} -> crash report relayed", step.targetStatus().getName(), pos, exception);
             CrashReport report = CrashReport.forThrowable(exception, "Exception generating new chunk");
             CrashReportCategory category = report.addCategory("Chunk to be generated");
             category.setDetail("Status being generated", () -> step.targetStatus().getName());
-            category.setDetail("Location", String.format(Locale.ROOT, "%d,%d", pos.x, pos.z));
-            category.setDetail("Position hash", ChunkPos.asLong(pos.x, pos.z));
+            category.setDetail("Location", String.format(Locale.ROOT, "%d,%d", pos.x(), pos.z()));
+            category.setDetail("Position hash", ChunkPos.pack(pos.x(), pos.z()));
             category.setDetail("Generator", generator);
             category.setDetail("Thread", Thread.currentThread().getName());
             throw new ReportedException(report);

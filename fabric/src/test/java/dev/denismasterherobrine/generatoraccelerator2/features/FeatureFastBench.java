@@ -55,7 +55,7 @@ public class FeatureFastBench {
         long total = 0;
         LevelHeightAccessor heights = HarnessWorld.heights(r, HarnessWorld.Kind.OVERWORLD);
         NoiseBasedChunkGenerator generator = HarnessWorld.generator(r, HarnessWorld.Kind.OVERWORLD);
-        Holder<Biome> biome = r.biomes.getHolderOrThrow(Biomes.PLAINS);
+        Holder<Biome> biome = r.biomes.getOrThrow(Biomes.PLAINS);
         for (FeatureRun.ConfiguredCase c : cases) {
             ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, c.kind(), 20261002L), heights);
             for (ProtoChunk chunk : chunks) {

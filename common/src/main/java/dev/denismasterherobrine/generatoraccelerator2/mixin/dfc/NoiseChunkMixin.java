@@ -1,6 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 
-import com.google.common.collect.ImmutableList;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
@@ -13,7 +13,6 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 import net.minecraft.world.level.biome.Climate;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
@@ -36,7 +35,7 @@ import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.llamalad7.mixinextras.sugar.Local;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -46,7 +45,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Binds the compiled programs to each NoiseChunk and routes {@code fillSlice} and {@code selectCellYZ} through them. */
+/** Binds the compiled programs to each NoiseChunk and routes {@code fillSlice} and the cell fills of {@code selectCellYZ} through them. */
 @Mixin(NoiseChunk.class)
 public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     @Shadow int cellStartBlockY;
@@ -67,10 +66,8 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     @Unique
     private DensityFunction ga2$finalDensity;
 
-    @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
-        target = "Lcom/google/common/collect/ImmutableList$Builder;add(Ljava/lang/Object;)Lcom/google/common/collect/ImmutableList$Builder;"))
-    private ImmutableList.Builder<Object> ga2$recordRule(ImmutableList.Builder<Object> builder, Object rule,
-                                                                                 Operation<ImmutableList.Builder<Object>> original) {
+    @WrapOperation(method = "<init>", at = @At(value = "INVOKE", target = "Ljava/util/List;add(Ljava/lang/Object;)Z"))
+    private boolean ga2$recordRule(List<Object> builder, Object rule, Operation<Boolean> original) {
         if (this.ga2$materialRules == null) {
             this.ga2$materialRules = new Object[2];
         }
@@ -99,14 +96,25 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
                                                          Operation<NoiseChunk.BlockStateFiller> original) {
         NoiseChunk.BlockStateFiller filler = original.call(toggle, ridged, gap, random);
         this.ga2$veinFiller = filler;
-        this.ga2$veinTranscription = VeinRule.of(toggle, ridged, gap, random);
+        // GregTech's handler reads its setting in the same call. Read right after, the answer matches the rule it returned
+        this.ga2$noVeins = GtceuVeins.removesVeins();
+        this.ga2$veinTranscription = this.ga2$noVeins ? null : VeinRule.of(toggle, ridged, gap, random);
         return filler;
     }
+
+    /** {@link FastFill}: the vein rule the constructor built never places a vein ({@link GtceuVeins}). */
+    @Unique
+    private boolean ga2$noVeins;
 
     @Override
     public NoiseChunk.BlockStateFiller ga2$fastVeinRule(NoiseChunk.BlockStateFiller rule) {
         VeinRule fast = this.ga2$veinTranscription;
         return fast != null && rule == this.ga2$veinFiller ? fast : rule;
+    }
+
+    @Override
+    public boolean ga2$placesNoVein(Object rule) {
+        return this.ga2$noVeins && rule == this.ga2$veinFiller;
     }
 
     @Override
@@ -130,12 +138,12 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
 
     /** The interpolators as an array, for the per-row and per-cell steps (vanilla walks the list with a capturing lambda). */
     @Unique
-    private NoiseChunk.NoiseInterpolator[] ga2$interpolatorArray = new NoiseChunk.NoiseInterpolator[0];
+    private NoiseChunk.NoiseInterpolator[] ga2$interpolatorArray;
 
     @Unique
     private NoiseChunk.NoiseInterpolator[] ga2$interpolators() {
         NoiseChunk.NoiseInterpolator[] array = this.ga2$interpolatorArray;
-        if (array.length != this.interpolators.size()) {
+        if (array == null || array.length != this.interpolators.size()) {
             // interpolators are only ever added (each one registers itself when created)
             array = this.interpolators.toArray(new NoiseChunk.NoiseInterpolator[0]);
             this.ga2$interpolatorArray = array;
@@ -168,14 +176,6 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         this.inCellX = blockX - this.cellStartBlockX;
         for (NoiseChunk.NoiseInterpolator interpolator : this.ga2$interpolators()) {
             interpolator.updateForX(dx);
-        }
-    }
-
-    @Redirect(method = "selectCellYZ", at = @At(value = "INVOKE", target = "Ljava/util/List;forEach(Ljava/util/function/Consumer;)V"))
-    private void ga2$selectCellYZ(List<NoiseChunk.NoiseInterpolator> list, Consumer<NoiseChunk.NoiseInterpolator> action,
-                                  @Local(argsOnly = true, ordinal = 0) int cellY, @Local(argsOnly = true, ordinal = 1) int cellZ) {
-        for (NoiseChunk.NoiseInterpolator interpolator : this.ga2$interpolators()) {
-            interpolator.selectCellYZ(cellY, cellZ);
         }
     }
 
@@ -241,6 +241,35 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         return memo == null ? original.call(function, visitor) : MapAllMemo.with(memo, () -> original.call(function, visitor));
     }
 
+    /** The pairing {@link #ga2$bindLevels} made, kept for {@link #ga2$bind}. */
+    @Unique
+    private MarkerPairing ga2$pairing;
+    /** Whether {@link #ga2$bindLevels} ran. */
+    @Unique
+    private boolean ga2$levelsBound;
+
+    /**
+     * Binds the compiled surface level function before the constructor makes the aquifer. The 26.1 aquifer reads the preliminary
+     * surface level of every column it covers when it is made ({@code skipSamplingAboveY}). Bound at the constructor's end, all
+     * those reads ran vanilla's density functions (a fifth of the workers' time in a 400-mod pack).
+     */
+    @Inject(method = "<init>", at = @At(value = "FIELD", opcode = Opcodes.PUTFIELD, shift = At.Shift.AFTER,
+        target = "Lnet/minecraft/world/level/levelgen/NoiseChunk;preliminarySurfaceLevel:Lnet/minecraft/world/level/levelgen/DensityFunction;"),
+        require = 0)
+    private void ga2$bindLevels(int cellCountXZ, RandomState randomState, int firstBlockX, int firstBlockZ, NoiseSettings noiseSettings,
+                                DensityFunctions.BeardifierOrMarker beardifier, NoiseGeneratorSettings settings, Aquifer.FluidPicker fluidPicker,
+                                Blender blender, CallbackInfo ci) {
+        this.ga2$levelsBound = true;
+        ProgramSet set = DfcHooks.enabled() ? ((Ga2RandomState) (Object) randomState).ga2$programs() : null;
+        if (set == null || set.surfaceLevels() == null && set.column() == null && set.cells().isEmpty()) {
+            return;
+        }
+        this.ga2$pairing = this.ga2$pairing(randomState, this.ga2$wrappedRouter);
+        if (this.ga2$pairing != null && set.surfaceLevels() != null && blender == Blender.empty()) {
+            this.ga2$bindLevelProgram(set, this.ga2$pairing);
+        }
+    }
+
     @Inject(method = "<init>", at = @At("TAIL"))
     private void ga2$bind(int cellCountXZ, RandomState randomState, int firstBlockX, int firstBlockZ, NoiseSettings noiseSettings,
                           DensityFunctions.BeardifierOrMarker beardifier, NoiseGeneratorSettings settings, Aquifer.FluidPicker fluidPicker,
@@ -249,6 +278,8 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         NoiseRouter constructed = this.ga2$wrappedRouter;
         this.ga2$wrappedRouter = null;
         this.ga2$veinToggle = constructed == null ? null : constructed.veinToggle();
+        MarkerPairing early = this.ga2$pairing;
+        this.ga2$pairing = null;
         if (!DfcHooks.enabled()) {
             return;
         }
@@ -261,34 +292,20 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         if (!levels && !programs) {
             return;
         }
-        // which chunk object replaced which router object. One walk of the router serves both bindings below.
         MarkerPairing pairing;
-        try {
-            NoiseRouter base = randomState.router();
-            // the constructor's own wrapped router. Wrapping again would return the same instances (wrap() is
-            // memoised), at the cost of a second walk and hash of the whole router.
-            NoiseRouter wrapped = constructed != null ? constructed : base.mapAll(((NoiseChunkAccessor) (Object) this)::ga2$wrap);
-            pairing = MarkerPairing.of(base, wrapped);
-        } catch (RuntimeException e) {
-            if (DfcConfig.failOnCodegenError()) {
-                throw e;
+        if (this.ga2$levelsBound) {
+            // bound before the aquifer was made. A pairing that failed there was logged there
+            pairing = early;
+            if (pairing == null) {
+                return;
             }
-            if (BIND_FAILURES.getAndIncrement() < 3) {
-                Compiler.LOGGER.error("chunk density functions unmatched to compiled programs -> vanilla path for chunk", e);
+        } else {
+            pairing = this.ga2$pairing(randomState, constructed);
+            if (pairing == null) {
+                return;
             }
-            return;
-        }
-        if (levels) {
-            // before the chunk binding, which adds the chunk's beardifier to the pairing
-            try {
-                this.ga2$levelProgram = SurfaceLevels.bind(set.surfaceLevels(), pairing);
-            } catch (RuntimeException e) {
-                if (DfcConfig.failOnCodegenError()) {
-                    throw e;
-                }
-                if (BIND_FAILURES.getAndIncrement() < 3) {
-                    Compiler.LOGGER.error("surface level program bind failed -> vanilla surface levels for chunk", e);
-                }
+            if (levels) {
+                this.ga2$bindLevelProgram(set, pairing);
             }
         }
         if (!programs) {
@@ -306,6 +323,44 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
                 Compiler.LOGGER.error("program bind failed for {} chunks so far (vanilla path): {}", BIND_FAILURES.get(), e.toString());
             }
             this.ga2$binding = null;
+        }
+    }
+
+    /**
+     * Which chunk object replaced which router object, or null when they do not match (logged). One walk of the router serves
+     * both bindings.
+     */
+    @Unique
+    private MarkerPairing ga2$pairing(RandomState randomState, NoiseRouter constructed) {
+        try {
+            NoiseRouter base = randomState.router();
+            // the constructor's own wrapped router. Wrapping again would return the same instances (wrap() is
+            // memoised), at the cost of a second walk and hash of the whole router.
+            NoiseRouter wrapped = constructed != null ? constructed : base.mapAll(((NoiseChunkAccessor) (Object) this)::ga2$wrap);
+            return MarkerPairing.of(base, wrapped);
+        } catch (RuntimeException e) {
+            if (DfcConfig.failOnCodegenError()) {
+                throw e;
+            }
+            if (BIND_FAILURES.getAndIncrement() < 3) {
+                Compiler.LOGGER.error("chunk density functions unmatched to compiled programs -> vanilla path for chunk", e);
+            }
+            return null;
+        }
+    }
+
+    /** Before the chunk binding, which adds the chunk's beardifier to the pairing. */
+    @Unique
+    private void ga2$bindLevelProgram(ProgramSet set, MarkerPairing pairing) {
+        try {
+            this.ga2$levelProgram = SurfaceLevels.bind(set.surfaceLevels(), pairing);
+        } catch (RuntimeException e) {
+            if (DfcConfig.failOnCodegenError()) {
+                throw e;
+            }
+            if (BIND_FAILURES.getAndIncrement() < 3) {
+                Compiler.LOGGER.error("surface level program bind failed -> vanilla surface levels for chunk", e);
+            }
         }
     }
 

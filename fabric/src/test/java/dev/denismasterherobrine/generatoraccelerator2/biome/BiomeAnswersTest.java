@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 public class BiomeAnswersTest {
     @Test
     void sameAnswersAsTheLookup() {
-        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.holders().toList();
+        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.listElements().toList();
         assertTrue(biomes.size() > 10, "too few biomes: " + biomes.size());
         AtomicLong looked = new AtomicLong();
         BiomeAnswers.Lookup truth = (x, y, z) -> {
@@ -59,7 +59,7 @@ public class BiomeAnswersTest {
     /** A lookup whose climate search had a tie is not kept: the next ask looks it up again. */
     @Test
     void tiedAnswersAreNotKept() {
-        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.holders().toList();
+        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.listElements().toList();
         AtomicLong looked = new AtomicLong();
         BiomeAnswers answers = new BiomeAnswers((x, y, z) -> {
             looked.incrementAndGet();

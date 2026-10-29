@@ -24,11 +24,10 @@ import net.minecraft.world.level.chunk.PalettedContainer;
  * <p>The result is what the per-block writes leave in memory. Vanilla's first write into an all-air section resizes it to
  * a linear palette. That palette holds air, then each state in the order it is first written. A section of at most 16
  * states (air included) never resizes again. Its palette is therefore built that way at once, and its storage is packed
- * from the ids. The counters are set to the values {@code setBlockState} reaches from air: {@code nonEmptyBlockCount} for
- * every non-empty state, {@code tickingBlockCount} for states that tick randomly, {@code tickingFluidCount} for every
- * state with a fluid. A section with more states would resize again, which reorders the palette by position. Its writes
- * are therefore replayed through {@code setBlockState} in their original order. Nothing reads the chunk's blocks during
- * the fill, so deferring the writes changes nothing else. If another mod changes {@code LevelChunkSection.setBlockState},
+ * from the ids. The counters are set to the values {@code setBlockState} reaches from air ({@link SectionCounts}). A
+ * section with more states would resize again, which reorders the palette by position. Its writes are therefore replayed
+ * through {@code setBlockState} in their original order. Nothing reads the chunk's blocks during the fill, so deferring the
+ * writes changes nothing else. If another mod changes {@code LevelChunkSection.setBlockState},
  * the per-block writes are kept ({@link HookTargets#NOISE_SECTION_WRITES}).
  */
 public final class SectionWriter {
@@ -52,6 +51,8 @@ public final class SectionWriter {
     /** Per section: the written block indices in write order. {@link #counts} holds their number. */
     private short[][] logs = new short[0][];
     private int[] counts = new int[0];
+    /** The counters one packed section adds. */
+    private final SectionCounts tally = new SectionCounts();
     private boolean[] touched = new boolean[0];
     private int current = -1;
     private short[] curIds;
@@ -208,9 +209,9 @@ public final class SectionWriter {
         @SuppressWarnings("unchecked")
         PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, Mth.ceillog2(distinct + 1));
         Palette<BlockState> palette = data.palette();
-        map[0] = palette.idFor(AIR);
+        map[0] = palette.idFor(AIR, container);
         for (int i = 0; i < distinct; i++) {
-            map[order[i]] = palette.idFor(states[order[i]]);
+            map[order[i]] = palette.idFor(states[order[i]], container);
         }
         BitStorage storage = data.storage();
         if (palette.getSize() != distinct + 1 || !(storage instanceof SimpleBitStorage)) {
@@ -229,25 +230,12 @@ public final class SectionWriter {
             raw[w] = word;
         }
         container.data = data;
-        int nonEmpty = 0;
-        int ticking = 0;
-        int fluids = 0;
+        SectionCounts tally = this.tally;
+        tally.clear();
         for (int i = 0; i < distinct; i++) {
-            int c = hist[order[i]];
-            BlockState state = states[order[i]];
-            if (!PlatformHooks.isEmpty(state)) {
-                nonEmpty += c;
-                if (state.isRandomlyTicking()) {
-                    ticking += c;
-                }
-            }
-            if (!state.getFluidState().isEmpty()) {
-                fluids += c;
-            }
+            tally.add(states[order[i]], hist[order[i]]);
         }
-        section.nonEmptyBlockCount = (short) (section.nonEmptyBlockCount + nonEmpty);
-        section.tickingBlockCount = (short) (section.tickingBlockCount + ticking);
-        section.tickingFluidCount = (short) (section.tickingFluidCount + fluids);
+        tally.addTo(section);
         if (VERIFY.sample()) {
             verify(section, a);
         }
@@ -263,9 +251,7 @@ public final class SectionWriter {
     }
 
     private void verify(LevelChunkSection section, short[] a) {
-        int nonEmpty = 0;
-        int ticking = 0;
-        int fluids = 0;
+        SectionCounts counts = new SectionCounts();
         for (int i = 0; i < 4096; i++) {
             BlockState got = section.getBlockState(i & 15, i >> 8, (i >> 4) & 15);
             if (got != states[a[i]]) {
@@ -273,17 +259,8 @@ public final class SectionWriter {
                 return;
             }
             // The counts setBlockState reaches when writing over air.
-            if (!PlatformHooks.isEmpty(got)) {
-                nonEmpty++;
-                if (got.isRandomlyTicking()) {
-                    ticking++;
-                }
-            }
-            if (!got.getFluidState().isEmpty()) {
-                fluids++;
-            }
+            counts.add(got, 1);
         }
-        VERIFY.result(nonEmpty == section.nonEmptyBlockCount && ticking == section.tickingBlockCount && fluids == section.tickingFluidCount,
-            "counters", nonEmpty + "/" + ticking + "/" + fluids, section.nonEmptyBlockCount + "/" + section.tickingBlockCount + "/" + section.tickingFluidCount);
+        VERIFY.result(counts.matches(section), "counters", counts, SectionCounts.of(section));
     }
 }

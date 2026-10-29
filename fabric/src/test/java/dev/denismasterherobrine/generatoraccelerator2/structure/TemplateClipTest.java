@@ -22,6 +22,9 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.util.valueproviders.UniformInt;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
@@ -37,7 +40,9 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.AlwaysTrueTes
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlackstoneReplaceProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockAgeProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.BlockMatchTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockRotProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.CappedProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.GravityProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.JigsawReplacementProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.LavaSubmergedBlockProcessor;
@@ -45,9 +50,12 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.ProcessorRule
 import net.minecraft.world.level.levelgen.structure.templatesystem.ProtectedBlockProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.RandomBlockMatchTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.RuleProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.RuleTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessorType;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.level.levelgen.structure.templatesystem.TagMatchTest;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -74,27 +82,47 @@ public class TemplateClipTest {
             List.of(new RuleProcessor(List.of(new ProcessorRule(new RandomBlockMatchTest(Blocks.STONE, 0.3F), AlwaysTrueTest.INSTANCE,
                 Blocks.MOSSY_COBBLESTONE.defaultBlockState())))),
             List.of(new ProtectedBlockProcessor(BlockTags.FEATURES_CANNOT_REPLACE), new BlockAgeProcessor(0.5F)),
-            List.of(LavaSubmergedBlockProcessor.INSTANCE, BlackstoneReplaceProcessor.INSTANCE));
+            List.of(LavaSubmergedBlockProcessor.INSTANCE, BlackstoneReplaceProcessor.INSTANCE),
+            // capped lists (CappedPlacement): an ancient city degradation
+            List.of(BlockIgnoreProcessor.STRUCTURE_BLOCK, JigsawReplacementProcessor.INSTANCE, new BlockRotProcessor(0.9F),
+                rule(new RandomBlockMatchTest(Blocks.STONE, 0.3F), Blocks.MOSSY_COBBLESTONE),
+                new CappedProcessor(rule(new BlockMatchTest(Blocks.OAK_PLANKS), Blocks.STONE_BRICKS), ConstantInt.of(10)),
+                rule(new RandomBlockMatchTest(Blocks.COBBLESTONE, 0.5F), Blocks.ANDESITE),
+                new CappedProcessor(rule(new TagMatchTest(BlockTags.STAIRS), Blocks.AIR), UniformInt.of(1, 4)),
+                new ProtectedBlockProcessor(BlockTags.FEATURES_CANNOT_REPLACE)),
+            // a delegate without rules changes nothing
+            List.of(rule(new RandomBlockMatchTest(Blocks.STONE, 0.3F), Blocks.GRANITE), new CappedProcessor(new RuleProcessor(List.of()), ConstantInt.of(1))),
+            List.of(new CappedProcessor(rule(AlwaysTrueTest.INSTANCE, Blocks.OBSIDIAN), ConstantInt.of(60))),
+            // a cap above the block count visits every block
+            List.of(BlockIgnoreProcessor.STRUCTURE_AND_AIR, new CappedProcessor(rule(new BlockMatchTest(Blocks.MOSSY_COBBLESTONE_WALL), Blocks.GLASS), ConstantInt.of(5000))),
+            List.of(new CappedProcessor(new BlockRotProcessor(0.5F), ConstantInt.of(40))),
+            // the delegate matches only what an earlier rule made
+            List.of(rule(new BlockMatchTest(Blocks.STONE), Blocks.GRANITE), new CappedProcessor(rule(new BlockMatchTest(Blocks.GRANITE), Blocks.DIORITE), ConstantInt.of(7)),
+                new BlockRotProcessor(0.8F)),
+            // another mod's processor that hands blocks back, as an empty Lithostitched hook list
+            List.of(new BlockRotProcessor(0.9F), new CappedProcessor(rule(AlwaysTrueTest.INSTANCE, Blocks.OBSIDIAN), ConstantInt.of(30)), new HandsBack()));
+        TemplatePlacement.addClassifier((processor, registries) -> processor instanceof HandsBack ? TemplatePlacement.NO_OP : null);
         // the jigsaw replacement parses its final state through the level's block registry
         RegistryAccess access = new RegistryAccess.ImmutableRegistryAccess(List.of(r.biomes, BuiltInRegistries.BLOCK));
         long clippedBefore = TemplatePlacement.CLIPPED.sum();
+        long cappedBefore = TemplatePlacement.CAPPED.sum();
         long skippedBefore = TemplatePlacement.SKIPPED.sum();
         int compared = 0;
         int placedCount = 0;
-        for (int variant = 0; variant < 40; variant++) {
+        for (int variant = 0; variant < 70; variant++) {
             long seed = rng.nextLong();
             Rotation rotation = Rotation.values()[variant % 4];
             Mirror mirror = Mirror.values()[(variant / 4) % 3];
             BlockPos pivot = variant % 5 == 0 ? new BlockPos(3, 0, 5) : BlockPos.ZERO;
             BlockPos offset = new BlockPos(cx * 16 - 9 + rng.nextInt(19), 55 + rng.nextInt(20), cz * 16 - 9 + rng.nextInt(19));
             List<StructureProcessor> processors = processorSets.get(variant % processorSets.size());
-            ProtoChunk[] terrain = HarnessWorld.terrain(r, HarnessWorld.Kind.OVERWORLD, seed, cx, cz, i -> r.biomes.getHolderOrThrow(Biomes.PLAINS));
+            ProtoChunk[] terrain = HarnessWorld.terrain(r, HarnessWorld.Kind.OVERWORLD, seed, cx, cz, i -> r.biomes.getOrThrow(Biomes.PLAINS));
             boolean[] placed = new boolean[2];
             ProtoChunk[][] after = new ProtoChunk[2][];
             for (int run = 0; run < 2; run++) {
                 ProtoChunk[] chunks = HarnessWorld.clone(r, terrain, heights);
                 HarnessLevel level = new HarnessLevel(chunks, HarnessWorld.RADIUS, cx, cz, heights, dim, seed, HarnessWorld.randomState(r, HarnessWorld.Kind.OVERWORLD, seed),
-                    access, false);
+                    access, false).withSeededServerLevel();
                 StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation).setMirror(mirror).setRotationPivot(pivot)
                     .setBoundingBox(chunkBox).setKnownShape(true).setIgnoreEntities(true);
                 processors.forEach(settings::addProcessor);
@@ -120,8 +148,21 @@ public class TemplateClipTest {
         long skipped = TemplatePlacement.SKIPPED.sum() - skippedBefore;
         assertEquals(compared, clipped, "every placement with the clip on was clipped");
         assertTrue(skipped > 0, "blocks were left out before processing");
+        assertTrue(TemplatePlacement.CAPPED.sum() - cappedBefore >= 7 * 5, "capped placements clipped: " + (TemplatePlacement.CAPPED.sum() - cappedBefore));
         assertTrue(placedCount > compared / 2, "placements that placed blocks: " + placedCount);
         System.out.println("TemplateClipTest: " + compared + " placements identical to vanilla's; " + skipped + " template blocks left out before processing");
+    }
+
+    /** Hands every block back. Its type is never asked for. */
+    private static final class HandsBack extends StructureProcessor {
+        @Override
+        protected StructureProcessorType<?> getType() {
+            return null;
+        }
+    }
+
+    private static RuleProcessor rule(RuleTest input, Block output) {
+        return new RuleProcessor(List.of(new ProcessorRule(input, AlwaysTrueTest.INSTANCE, output.defaultBlockState())));
     }
 
     /** A 24x14x24 template of about 3000 random blocks: stone, planks, stairs, slabs, water, lava, air gaps and jigsaw blocks with a final state. */
@@ -168,7 +209,7 @@ public class TemplateClipTest {
         tag.put("blocks", blocks);
         tag.put("entities", new ListTag());
         StructureTemplate template = new StructureTemplate();
-        template.load(BuiltInRegistries.BLOCK.asLookup(), tag);
+        template.load(BuiltInRegistries.BLOCK, tag);
         return template;
     }
 

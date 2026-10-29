@@ -10,10 +10,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
@@ -118,7 +117,7 @@ public final class GeodeFast {
         int points = config.distributionPoints.sample(random);
         Last lastNoise = noise(level.getSeed());
         NormalNoise normalNoise = lastNoise.noise;
-        double d0 = (double) points / (double) config.outerWallDistance.getMaxValue();
+        double d0 = (double) points / (double) config.outerWallDistance.maxInclusive();
         GeodeLayerSettings layers = config.geodeLayerSettings;
         GeodeBlockSettings blocks = config.geodeBlockSettings;
         GeodeCrackSettings cracks = config.geodeCrackSettings;
@@ -137,7 +136,7 @@ public final class GeodeFast {
             int dz = config.outerWallDistance.sample(random);
             BlockPos p = origin.offset(dx, dy, dz);
             BlockState state = cursor.read(p);
-            if (state.isAir() || state.is(BlockTags.GEODE_INVALID_BLOCKS)) {
+            if (state.isAir() || state.is(blocks.invalidBlocks)) {
                 if (++invalid > config.invalidBlocksThreshold) {
                     return false;
                 }
@@ -224,21 +223,21 @@ public final class GeodeFast {
                                 }
                             }
                         } else if (d6 >= d1) {
-                            Fast.safeSetBlock(cursor, pos, blocks.fillingProvider.getState(random, pos), predicate);
+                            Fast.safeSetBlock(cursor, pos, blocks.fillingProvider.getState(level, random, pos), predicate);
                         } else if (d6 >= d2) {
                             boolean alternate = (double) random.nextFloat() < config.useAlternateLayer0Chance;
                             if (alternate) {
-                                Fast.safeSetBlock(cursor, pos, blocks.alternateInnerLayerProvider.getState(random, pos), predicate);
+                                Fast.safeSetBlock(cursor, pos, blocks.alternateInnerLayerProvider.getState(level, random, pos), predicate);
                             } else {
-                                Fast.safeSetBlock(cursor, pos, blocks.innerLayerProvider.getState(random, pos), predicate);
+                                Fast.safeSetBlock(cursor, pos, blocks.innerLayerProvider.getState(level, random, pos), predicate);
                             }
                             if ((!config.placementsRequireLayer0Alternate || alternate) && (double) random.nextFloat() < config.usePotentialPlacementsChance) {
                                 placements.add(pos.immutable());
                             }
                         } else if (d6 >= d3) {
-                            Fast.safeSetBlock(cursor, pos, blocks.middleLayerProvider.getState(random, pos), predicate);
+                            Fast.safeSetBlock(cursor, pos, blocks.middleLayerProvider.getState(level, random, pos), predicate);
                         } else if (d6 >= d4) {
-                            Fast.safeSetBlock(cursor, pos, blocks.outerLayerProvider.getState(random, pos), predicate);
+                            Fast.safeSetBlock(cursor, pos, blocks.outerLayerProvider.getState(level, random, pos), predicate);
                         }
                     }
                 }

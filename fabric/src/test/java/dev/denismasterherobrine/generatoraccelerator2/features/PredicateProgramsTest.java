@@ -44,7 +44,7 @@ public class PredicateProgramsTest {
         HarnessWorld.Kind kind = HarnessWorld.Kind.OVERWORLD;
         LevelHeightAccessor heights = HarnessWorld.heights(r, kind);
         ProtoChunk[] chunks = HarnessWorld.clone(r, FeatureRun.terrain(r, kind, 1234567L), heights);
-        Holder<Biome> plains = r.biomes.getHolderOrThrow(Biomes.PLAINS);
+        Holder<Biome> plains = r.biomes.getOrThrow(Biomes.PLAINS);
         for (ProtoChunk c : chunks) {
             c.fillBiomesFromNoise((x, y, z, sampler) -> plains, Climate.empty());
         }
@@ -155,7 +155,7 @@ public class PredicateProgramsTest {
             for (int k = 0; k < 120; k++) {
                 int x = x0 + random.nextInt(16);
                 int z = z0 + random.nextInt(16);
-                int y = heights.getMinBuildHeight() - 3 + random.nextInt(heights.getHeight() + 6);
+                int y = heights.getMinY() - 3 + random.nextInt(heights.getHeight() + 6);
                 BlockPos pos = new BlockPos(x, y, z);
                 boolean vanilla = predicate.test(level, pos);
                 boolean program = PredicatePrograms.test(compiled, predicate, level, pos);

@@ -51,12 +51,12 @@ public class ColumnProgramTest {
                 NoiseChunk vanilla = vanillaHolder[0];
                 NoiseChunk compiled = new NoiseChunk(4, state, minX, minZ, ns, DensityFunctions.BeardifierMarker.INSTANCE, settings, picker, Blender.empty());
                 ChunkBinding binding = ((Ga2NoiseChunk) compiled).ga2$binding();
-                assertNotNull(binding, "no column binding for " + preset.location());
+                assertNotNull(binding, "no column binding for " + preset.identifier());
                 List<NoiseChunk.NoiseInterpolator> vi = ((NoiseChunkAccessor) vanilla).ga2$interpolators();
                 List<NoiseChunk.NoiseInterpolator> ci = ((NoiseChunkAccessor) compiled).ga2$interpolators();
                 assertEquals(vi.size(), ci.size());
                 for (NoiseChunk.NoiseInterpolator it : ci) {
-                    assertTrue(binding.handles(it), "interpolator not covered by the column program on " + preset.location());
+                    assertTrue(binding.handles(it), "interpolator not covered by the column program on " + preset.identifier());
                 }
 
                 DfcHooks.runVanilla(() -> { vanilla.initializeForFirstCellX(); vanilla.advanceCellX(0); });
@@ -92,7 +92,7 @@ public class ColumnProgramTest {
         for (int z = 0; z < expected.length; z++) {
             for (int y = 0; y < expected[z].length; y++) {
                 if (Double.doubleToRawLongBits(expected[z][y]) != Double.doubleToRawLongBits(actual[z][y])) {
-                    throw new AssertionError(preset.location() + " chunk " + chunk[0] + "," + chunk[1] + " " + what + " [z=" + z + ",y=" + y + "]: vanilla=" + expected[z][y] + " dfc=" + actual[z][y]);
+                    throw new AssertionError(preset.identifier() + " chunk " + chunk[0] + "," + chunk[1] + " " + what + " [z=" + z + ",y=" + y + "]: vanilla=" + expected[z][y] + " dfc=" + actual[z][y]);
                 }
                 n++;
             }

@@ -108,7 +108,6 @@ final class Propagator {
 
     private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos fromPos = new BlockPos.MutableBlockPos();
-    private final BlockPos.MutableBlockPos shapePos = new BlockPos.MutableBlockPos();
     private long fromKey = Long.MAX_VALUE;
     private BlockState fromState;
 
@@ -442,7 +441,7 @@ final class Propagator {
         }
         this.pos.set(x, y, z);
         BlockState state = this.state(x, y, z, this.pos);
-        int lit = level - Math.max(1, state.getLightBlock(this.job.level, this.pos));
+        int lit = level - Math.max(1, state.getLightDampening());
         if (lit <= stored) {
             return;
         }
@@ -699,7 +698,7 @@ final class Propagator {
     private static final byte KIND_LEVEL = 2;
 
     private int chunkSlot(int cx, int cz) {
-        long key = ChunkPos.asLong(cx, cz);
+        long key = ChunkPos.pack(cx, cz);
         int slot = cx & 3 | (cz & 3) << 2;
         if (this.chunkKeys[slot] != key) {
             LightChunk chunk = this.job.chunkSource.getChunkForLighting(cx, cz);
@@ -710,10 +709,10 @@ final class Propagator {
             if (kind != KIND_OTHER) {
                 if (chunk instanceof ImposterProtoChunk imposter) {
                     this.sections[slot] = imposter.getWrapped().getSections();
-                    this.minY[slot] = imposter.getWrapped().getMinBuildHeight();
+                    this.minY[slot] = imposter.getWrapped().getMinY();
                 } else {
                     this.sections[slot] = ((ChunkAccess) chunk).getSections();
-                    this.minY[slot] = chunk.getMinBuildHeight();
+                    this.minY[slot] = chunk.getMinY();
                 }
             } else {
                 this.sections[slot] = null;
@@ -787,8 +786,8 @@ final class Propagator {
         if (fromEmpty && toEmpty) {
             return false;
         }
-        VoxelShape a = fromEmpty ? Shapes.empty() : fromBlock.getFaceOcclusionShape(this.job.level, this.shapePos.set(from), DIRECTIONS[d]);
-        VoxelShape b = toEmpty ? Shapes.empty() : toBlock.getFaceOcclusionShape(this.job.level, this.shapePos.set(to), DIRECTIONS[OPPOSITE[d]]);
+        VoxelShape a = fromEmpty ? Shapes.empty() : fromBlock.getFaceOcclusionShape(DIRECTIONS[d]);
+        VoxelShape b = toEmpty ? Shapes.empty() : toBlock.getFaceOcclusionShape(DIRECTIONS[OPPOSITE[d]]);
         return Shapes.faceShapeOccludes(a, b);
     }
 

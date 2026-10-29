@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.BitStorage;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -14,7 +15,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * Block access to one proto chunk during a generation step (SURFACE, CARVERS). The semantics are exactly
- * those of {@code ProtoChunk.getBlockState(pos)} and {@code ProtoChunk.setBlockState(pos, state, false)}:
+ * those of {@code ProtoChunk.getBlockState(pos)} and {@code ProtoChunk.setBlockState(pos, state)}:
  * void air outside the build height, air for all-air sections, the all-air shortcut, and the section
  * counters. After every write, the {@code heightmapsAfter()} heightmaps of the persisted status are
  * updated in vanilla order.
@@ -45,9 +46,9 @@ public final class ChunkBlocks {
     private ChunkBlocks(ChunkAccess chunk, Heightmap[] heightmaps, boolean fast) {
         this.chunk = chunk;
         this.sections = chunk.getSections();
-        this.minY = chunk.getMinBuildHeight();
-        this.maxY = chunk.getMaxBuildHeight();
-        this.minSection = chunk.getMinSection();
+        this.minY = chunk.getMinY();
+        this.maxY = chunk.getMaxY() + 1;
+        this.minSection = chunk.getMinSectionY();
         this.heightmaps = heightmaps;
         this.fast = fast;
     }
@@ -160,10 +161,10 @@ public final class ChunkBlocks {
         return StateReads.get(data, ((y & 15) << 8) | (lz << 4) | lx);
     }
 
-    /** {@code chunk.setBlockState(pos, state, false)}. Returns the previous state like vanilla. */
+    /** {@code chunk.setBlockState(pos, state)}, with its default flags. Returns the previous state like vanilla. */
     public BlockState set(int lx, int y, int lz, BlockState state) {
         if (!fast) {
-            return chunk.setBlockState(pos.set(chunk.getPos().getMinBlockX() + lx, y, chunk.getPos().getMinBlockZ() + lz), state, false);
+            return chunk.setBlockState(pos.set(chunk.getPos().getMinBlockX() + lx, y, chunk.getPos().getMinBlockZ() + lz), state, Block.UPDATE_ALL);
         }
         if (y < minY || y >= maxY) {
             return VOID_AIR;
@@ -219,7 +220,7 @@ public final class ChunkBlocks {
         boolean any = false;
         for (BlockState t : targets) {
             if (t != null) {
-                states.data.palette().idFor(t);
+                states.data.palette().idFor(t, states);
                 any = true;
             }
         }
@@ -227,12 +228,12 @@ public final class ChunkBlocks {
             return;
         }
         PalettedContainer.Data<BlockState> data = states.data;
-        int fromId = data.palette().idFor(from);
+        int fromId = data.palette().idFor(from, states);
         // Thread-local buffers for the section's ids and its 16 targets. unpack writes all ids before they are read.
         int[] ids = REWRITE_IDS.get();
         int[] targetIds = REWRITE_TARGETS.get();
         for (int ly = 0; ly < 16; ly++) {
-            targetIds[ly] = targets[ly] == null ? -1 : data.palette().idFor(targets[ly]);
+            targetIds[ly] = targets[ly] == null ? -1 : data.palette().idFor(targets[ly], states);
         }
         BitStorage storage = data.storage();
         storage.unpack(ids);

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.modernfix;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import java.util.List;
@@ -26,7 +27,28 @@ public final class ModernFixMixins {
      */
     public static final String BIOME_TEMPERATURE = "org.embeddedt.modernfix.common.mixin.perf.remove_biome_temperature_cache.BiomeMixin";
 
+    /**
+     * ModernFix's {@code bugfix.chunk_deadlock}. In {@code ServerChunkCache.getChunk} on the server thread, a chunk that its holder is
+     * turning into a full chunk right now is answered at once. GA2's early answer runs only off the server thread, so both apply. Newer
+     * ModernFix builds keep the mixin in the common package, older Forge builds in the Forge one.
+     */
+    public static final String CHUNK_DEADLOCK = "org.embeddedt.modernfix.common.mixin.bugfix.chunk_deadlock.ServerChunkCache_CurrentLoadingMixin";
+    public static final String CHUNK_DEADLOCK_FORGE = "org.embeddedt.modernfix.forge.mixin.bugfix.chunk_deadlock.ServerChunkCache_CurrentLoadingMixin";
+
+    /**
+     * ModernFix's {@code perf.dynamic_structure_manager}: the template repository becomes a cache with soft values. GA2 takes the mixin
+     * over (compat/Takeover) and makes the same cache itself ({@code structure.TemplateLoads}). A later ModernFix also changes the
+     * repository's {@code get}, which turned GA2's template loads off in All the Mods 11.
+     */
+    public static final String DYNAMIC_STRUCTURES = "org.embeddedt.modernfix.common.mixin.perf.dynamic_structure_manager.StructureManagerMixin";
+
+    private static final String DEADLOCK = "ModernFix's chunk deadlock fix still works. It acts on the server thread, and GA2 only hands ready chunks to other threads.";
+
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
+        new KnownMixins.Entry(MOD_ID, FeatureTargets.compatKey("climate"), BIOME_TEMPERATURE, Set.of(KnownMixins.overwrite("getTemperature")),
+            "ModernFix's biome temperature change still works. It gives the same values, so GA2 still skips freezing and snow only where it is too warm."),
+        new KnownMixins.Entry(MOD_ID, HookTargets.CHUNK_PRESENT_OFF_THREAD, CHUNK_DEADLOCK, Set.of("checkCurrentlyLoading"), DEADLOCK),
+        new KnownMixins.Entry(MOD_ID, HookTargets.CHUNK_PRESENT_OFF_THREAD, CHUNK_DEADLOCK_FORGE, Set.of("checkCurrentlyLoading"), DEADLOCK),
         new KnownMixins.Entry(MOD_ID, HookTargets.STRUCTURE_RING_BOUND, STRONGHOLD_CACHE, Set.of("cacheRingPositions", "useDedicatedService"),
             "ModernFix's stronghold cache still works. Stronghold positions stay the same as in vanilla."),
         new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, BIOME_TEMPERATURE, Set.of(KnownMixins.overwrite("getTemperature")),

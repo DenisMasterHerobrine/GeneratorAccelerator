@@ -2,16 +2,13 @@
   "required": true,
   "minVersion": "0.8",
   "package": "dev.denismasterherobrine.generatoraccelerator2.view.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "plugin": "dev.denismasterherobrine.generatoraccelerator2.view.ViewMixinPlugin",
   "mixins": [],
   "client": [
     "SectionOcclusionGraphMixin",
     "LevelRendererMeshMixin",
-    "VertexBufferMixin",
-    "RenderSectionBuffersMixin",
-    "DebugVramMixin",
-    "LevelRendererEvictMixin"
+    "DebugVramMixin"
   ],
   "injectors": {
     "defaultRequire": 1

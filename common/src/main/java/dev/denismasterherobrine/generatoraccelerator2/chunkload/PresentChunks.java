@@ -39,7 +39,7 @@ public final class PresentChunks {
         if (!SWITCH || !HOOK.allowed()) {
             return null;
         }
-        ChunkHolder holder = ((ChunkMapUpdatingInvoker) cache.chunkMap).ga2$visibleChunk(ChunkPos.asLong(x, z));
+        ChunkHolder holder = ((ChunkMapUpdatingInvoker) cache.chunkMap).ga2$visibleChunk(ChunkPos.pack(x, z));
         ChunkAccess chunk = holder == null ? null : holder.getChunkIfPresent(status);
         if (chunk != null) {
             Consumer<ServerChunkCache> before = beforeAnswer;

@@ -60,10 +60,10 @@ public class RingBoundsTest {
                     assertEquals(128, positions.size());
                     double radius = RingBounds.innerRadius(placement);
                     for (ChunkPos p : positions) {
-                        assertFalse(RingBounds.inside(radius, p.x, p.z, 0),
+                        assertFalse(RingBounds.inside(radius, p.x(), p.z(), 0),
                             "seed " + seed + " distance " + distance + ": ring position " + p + " inside the inner radius " + radius);
                         if (radius > 0) {
-                            tightest = Math.min(tightest, Math.sqrt((double) p.x * p.x + (double) p.z * p.z) - radius);
+                            tightest = Math.min(tightest, Math.sqrt((double) p.x() * p.x() + (double) p.z() * p.z()) - radius);
                         }
                         checked++;
                     }

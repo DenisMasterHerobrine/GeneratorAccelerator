@@ -69,11 +69,11 @@ public final class HeightProbes {
             byState = TABLES.computeIfAbsent(generator, g -> new MapMaker().weakKeys().concurrencyLevel(8).makeMap());
         }
         Table t = byState.get(random);
-        if (t == null || t.minY != level.getMinBuildHeight() || t.height != level.getHeight()) {
+        if (t == null || t.minY != level.getMinY() || t.height != level.getHeight()) {
             if (!create || !compiledWhole(random)) {
                 return null;
             }
-            t = new Table(level.getMinBuildHeight(), level.getHeight());
+            t = new Table(level.getMinY(), level.getHeight());
             byState.put(random, t);
         }
         return t;

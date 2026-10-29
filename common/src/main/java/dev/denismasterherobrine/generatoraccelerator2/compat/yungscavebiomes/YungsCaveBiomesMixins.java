@@ -21,6 +21,17 @@ public final class YungsCaveBiomesMixins {
      */
     public static final String AQUIFER = "com.yungnickyoung.minecraft.yungscavebiomes.mixin.frosted_caves.AquiferMixin";
 
+    /** Set once GA2's own Frosted Caves water is set up ({@code FrostedCaves}). Only then does GA2 cancel the mod's handler (Takeover). */
+    private static volatile boolean frostedReplaced;
+
+    public static boolean frostedReplaced() {
+        return frostedReplaced;
+    }
+
+    static void replaceFrosted() {
+        frostedReplaced = true;
+    }
+
     /** The key of the aquifer changes that keep vanilla's values when statuses are computed in vanilla's order. */
     public static final String AQUIFER_ORDER_KEPT = "aquifer.orderKept";
 

@@ -167,7 +167,11 @@ public final class BeardifierChain {
                                 continue; // vanilla's own method, or GA2's
                             }
                             if (call.name.startsWith("handler$") && Names.mojangDesc(call.desc).equals(CALLBACK_DESC)) {
-                                steps.add(new Step(Kind.CALLBACK, mixin, call.name));
+                                // a return callback is merged at each of the method's returns. One return runs, so it runs once.
+                                Step step = new Step(Kind.CALLBACK, mixin, call.name);
+                                if (!steps.contains(step)) {
+                                    steps.add(step);
+                                }
                             } else {
                                 unknown.add(mixin);
                             }

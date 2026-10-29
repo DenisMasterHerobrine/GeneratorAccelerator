@@ -64,11 +64,6 @@ public final class ChunkLoadStats {
     public static final LongAdder UNLOADS = new LongAdder();
     public static final LongAdder RELOADS = new LongAdder();
     public static final LongAdder RELOAD_AGE_MS = new LongAdder();
-    // points of interest
-    public static final LongAdder POI_PREFETCHED = new LongAdder();
-    public static final LongAdder POI_PREFETCH_USED = new LongAdder();
-    public static final LongAdder POI_READS = new LongAdder();
-    public static final Timer POI_WAIT = new Timer();
     // server thread
     public static final Timer MAIN_TASKS = new Timer();
     public static final Timer ENTITY_ADDS = new Timer();
@@ -86,27 +81,18 @@ public final class ChunkLoadStats {
     public static final LongAdder PREPARED_STALE = new LongAdder();
     // the client in the same game (singleplayer, LAN host)
     public static final Timer CLIENT_CHUNK = new Timer();
-    // the client's water blocks given to the section mesher, and those that show no face (fluid.StillWater)
-    public static final LongAdder WATER_MESHED = new LongAdder();
-    public static final LongAdder WATER_HIDDEN = new LongAdder();
     // the client's section occlusion graph (view.mixin.SectionOcclusionGraphMixin)
     public static final Timer GRAPH_REBUILD = new Timer();
     public static final LongAdder GRAPH_SHOWN = new LongAdder();
     public static final LongAdder GRAPH_TRAVEL = new LongAdder();
     public static final AtomicLong GRAPH_TRAVEL_MAX = new AtomicLong();
-    public static final LongAdder GRAPH_KEPT = new LongAdder();
-    public static final LongAdder GRAPH_KEPT_TIMES = new LongAdder();
 
     /** On the render thread, when a rebuilt graph is shown. {@code travel} is how far the camera moved meanwhile, in blocks. */
-    public static void graphShown(long travel, int kept) {
+    public static void graphShown(long travel) {
         GRAPH_SHOWN.increment();
         GRAPH_TRAVEL.add(travel);
         if (travel > GRAPH_TRAVEL_MAX.get()) {
             GRAPH_TRAVEL_MAX.set(travel);
-        }
-        if (kept > 0) {
-            GRAPH_KEPT.add(kept);
-            GRAPH_KEPT_TIMES.increment();
         }
     }
 
@@ -121,7 +107,7 @@ public final class ChunkLoadStats {
     public static synchronized void unloaded(Object level, ChunkPos pos) {
         UNLOADS.increment();
         Long2LongLinkedOpenHashMap map = UNLOADED.computeIfAbsent(level, l -> new Long2LongLinkedOpenHashMap());
-        map.putAndMoveToLast(pos.toLong(), System.currentTimeMillis());
+        map.putAndMoveToLast(pos.pack(), System.currentTimeMillis());
         if (map.size() > UNLOAD_MEMORY) {
             map.removeFirstLong();
         }
@@ -138,7 +124,7 @@ public final class ChunkLoadStats {
         if (map == null) {
             return;
         }
-        long at = map.remove(pos.toLong());
+        long at = map.remove(pos.pack());
         if (at != 0) {
             long age = System.currentTimeMillis() - at;
             if (age <= RELOAD_WINDOW_MS) {
@@ -149,12 +135,12 @@ public final class ChunkLoadStats {
     }
 
     public static synchronized void reset() {
-        for (Timer t : List.of(SLOT_WAIT, TICKET_READY, DISK_LOAD, POI_WAIT, MAIN_TASKS, ENTITY_ADDS, POST_PROCESS, SEND, PREPARE, CLIENT_CHUNK, GRAPH_REBUILD)) {
+        for (Timer t : List.of(SLOT_WAIT, TICKET_READY, DISK_LOAD, MAIN_TASKS, ENTITY_ADDS, POST_PROCESS, SEND, PREPARE, CLIENT_CHUNK, GRAPH_REBUILD)) {
             t.reset();
         }
-        for (LongAdder a : List.of(TICKETS_QUEUED, UNLOADS, RELOADS, RELOAD_AGE_MS, POI_PREFETCHED, POI_PREFETCH_USED, POI_READS,
-            ENTITY_CHUNKS, ENTITY_DEFERRED, FLUID_TICKS, FLUID_TICKS_SKIPPED, PREPARED, PREPARED_USED, PREPARED_STALE, WATER_MESHED, WATER_HIDDEN,
-            GRAPH_SHOWN, GRAPH_TRAVEL, GRAPH_KEPT, GRAPH_KEPT_TIMES)) {
+        for (LongAdder a : List.of(TICKETS_QUEUED, UNLOADS, RELOADS, RELOAD_AGE_MS,
+            ENTITY_CHUNKS, ENTITY_DEFERRED, FLUID_TICKS, FLUID_TICKS_SKIPPED, PREPARED, PREPARED_USED, PREPARED_STALE,
+            GRAPH_SHOWN, GRAPH_TRAVEL)) {
             a.reset();
         }
         GRAPH_TRAVEL_MAX.set(0);
@@ -186,9 +172,6 @@ public final class ChunkLoadStats {
         if (present > 0) {
             out.add(String.format(Locale.ROOT, "chunks other threads asked of the server level, answered at once instead of by the server thread: %,d", present));
         }
-        out.add("points of interest: read with the chunk " + String.format(Locale.ROOT, "%,d", POI_PREFETCHED.sum()) + " (used "
-            + String.format(Locale.ROOT, "%,d", POI_PREFETCH_USED.sum()) + "); read on the server thread " + String.format(Locale.ROOT, "%,d", POI_READS.sum())
-            + ", of them waited for the disk " + POI_WAIT.describe());
         out.add(String.format(Locale.ROOT, "server thread on chunk tasks: %s per second (%s)", ms(MAIN_TASKS.totalNanos() / seconds), MAIN_TASKS.describe()));
         out.add("entities of loaded chunks added: " + String.format(Locale.ROOT, "%,d", ENTITY_CHUNKS.sum()) + " chunks; ticks with additions "
             + ENTITY_ADDS.describe() + "; left for the next tick " + String.format(Locale.ROOT, "%,d", ENTITY_DEFERRED.sum()) + " times (budget "
@@ -204,18 +187,10 @@ public final class ChunkLoadStats {
         if (CLIENT_CHUNK.count() > 0) {
             out.add("client: chunk packets applied on the render thread " + CLIENT_CHUNK.describe());
         }
-        long meshed = WATER_MESHED.sum();
-        if (meshed > 0) {
-            long hidden = WATER_HIDDEN.sum();
-            out.add(String.format(Locale.ROOT, "client: water blocks meshed %,d, of them hidden in water left out %,d (%s)", meshed, hidden, percent(hidden, meshed))
-                + (StillWater.hiddenSkipOn() ? "" : " (skip off)"));
-        }
         long shown = GRAPH_SHOWN.sum();
         if (GRAPH_REBUILD.count() > 0) {
             out.add("client: visible sections rebuilt " + GRAPH_REBUILD.describe() + "; camera moved until shown "
-                + (shown > 0 ? String.format(Locale.ROOT, "avg %.0f, max %d blocks", GRAPH_TRAVEL.sum() / (double) shown, GRAPH_TRAVEL_MAX.get()) : "-")
-                + "; sections at the view's edge kept " + String.format(Locale.ROOT, "%,d", GRAPH_KEPT.sum()) + " in "
-                + String.format(Locale.ROOT, "%,d", GRAPH_KEPT_TIMES.sum()) + " of " + String.format(Locale.ROOT, "%,d", shown) + " rebuilds");
+                + (shown > 0 ? String.format(Locale.ROOT, "avg %.0f, max %d blocks", GRAPH_TRAVEL.sum() / (double) shown, GRAPH_TRAVEL_MAX.get()) : "-"));
         }
         return out;
     }

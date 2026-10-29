@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.gpu;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.GeneratorAccelerator;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClDeviceInfo;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.cl.ClLoader;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.codegen.ClEmitter;
@@ -226,7 +227,7 @@ public final class Gpu {
             if (d != device) {
                 return null;
             }
-            String name = level != null ? level.dimension().location().toString() : settings.unwrapKey().map(k -> k.location().toString()).orElse("?");
+            String name = level != null ? level.dimension().identifier().toString() : settings.unwrapKey().map(k -> k.identifier().toString()).orElse("?");
             wg = GpuRuntime.worldgen(d, name, settings.value(), randomState);
             WORLDS.put(randomState, wg);
             GpuWorldgen w = wg;
@@ -266,7 +267,7 @@ public final class Gpu {
                 test = "self-test skipped (no server level)";
             } else {
                 long t0 = System.nanoTime();
-                String diff = SelfTest.chunks(wg, generator, settings, picker, randomState, level, level.registryAccess().registryOrThrow(Registries.BIOME));
+                String diff = SelfTest.chunks(wg, generator, settings, picker, randomState, level, level.registryAccess().lookupOrThrow(Registries.BIOME));
                 if (diff != null) {
                     GpuRuntime.fail(wg, "self-test: " + diff);
                     return;
@@ -355,7 +356,7 @@ public final class Gpu {
             String gpu = w != null ? "its GPU program: " + w.status().substring(w.name.length() + 2)
                 : generator instanceof NoiseBasedChunkGenerator ? "no GPU program yet (made at the first chunk generated there)"
                 : "not a noise generator: the GPU path runs only where it hands chunks to one";
-            out.add("  level " + level.dimension().location() + ": generator " + Names.mojangName(generator.getClass()) + ", biome source "
+            out.add("  level " + level.dimension().identifier() + ": generator " + Names.mojangName(generator.getClass()) + ", biome source "
                 + Names.mojangName(generator.getBiomeSource().getClass()) + "; " + gpu);
         }
     }
@@ -390,14 +391,19 @@ public final class Gpu {
             out.add(String.format(Locale.ROOT, "  given back to the CPU: %,d chunks whose aquifer cells' order decides a cache_2d value",
                 GpuWorldgen.C2D_CPU.sum()));
         }
+        if (FrostedCaves.GPU_KEPT.sum() + FrostedCaves.GPU_BACK.sum() > 0) {
+            out.add(String.format(Locale.ROOT, "  YUNG's Frosted Caves water: %,d GPU answers kept, %,d given back to the CPU (a cell to turn to water, or a biome tie)",
+                FrostedCaves.GPU_KEPT.sum(), FrostedCaves.GPU_BACK.sum()));
+        }
         if (GpuSteps.ENHANCED_CHUNKS.sum() > 0) {
             out.add(String.format(Locale.ROOT, "  other mods' structure pieces (YUNG's API, Integrated API) filled on the GPU: %,d chunks", GpuSteps.ENHANCED_CHUNKS.sum()));
         }
         out.add(String.format(Locale.ROOT, "  without a NoiseChunk: %,d chunks (%s; levels asked beyond a chunk %,d); blocks asked for at the biome step %,d",
             GpuTerrain.CHUNKS.sum(), GpuTerrain.enabled() ? "on" : "off", GpuTerrain.LEVEL_FALLBACKS.sum(), GpuSteps.NOISE_EARLY.sum()));
-        out.add(String.format(Locale.ROOT, "  surface on the GPU: %,d asked, %,d written, %,d left to the CPU, %,d late; %,d batches %s",
+        String declines = GpuSurfaceJob.declines();
+        out.add(String.format(Locale.ROOT, "  surface on the GPU: %,d asked, %,d written, %,d left to the CPU, %,d late; %,d batches %s%s",
             GpuSurfaceJob.ASKED.sum(), GpuSurfaceJob.APPLIED.sum(), GpuSurfaceJob.CPU.sum(), GpuSurfaceJob.LATE.sum(),
-            SurfaceBatches.BATCHES.sum(), SurfaceBatches.BATCH_LAT.describe()));
+            SurfaceBatches.BATCHES.sum(), SurfaceBatches.BATCH_LAT.describe(), declines.isEmpty() ? "" : "; not asked: " + declines));
         out.add(String.format(Locale.ROOT, "  answers later than %d ms (the CPU did those chunks): %,d; dimensions paused for a while (GPU busy elsewhere): %,d",
             GpuWorldgen.ANSWER_MS, GpuWorldgen.LATE_ANSWERS.sum(), GpuWorldgen.PAUSES.sum()));
         out.add(String.format(Locale.ROOT, "  waits for answers made longer while the whole JVM stood still: %,d (it stood still %.1f s in all)",
@@ -416,7 +422,8 @@ public final class Gpu {
             }
             out.add(sd.toString());
         }
-        out.add("  decorations wait for their locks " + ParallelSteps.FEATURES_LOCK_WAIT.describe());
+        out.add("  decorations wait for their locks " + ParallelSteps.FEATURES_LOCK_WAIT.describe() + "; a lock is held while queued "
+            + ParallelSteps.FEATURES_HOLD_QUEUED.describe() + ", while running " + ParallelSteps.FEATURES_HOLD_RUN.describe());
         long batches = GpuWorldgen.BATCHES.sum();
         if (batches > 0) {
             out.add(String.format(Locale.ROOT, "  latency: biomes %s (written in %s); noise %s (queued %s, batch %s of %.1f chunks; written in %s, NoiseChunk %s); regions %s",

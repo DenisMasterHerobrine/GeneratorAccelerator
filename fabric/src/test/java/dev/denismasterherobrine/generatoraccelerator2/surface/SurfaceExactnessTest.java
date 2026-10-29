@@ -145,8 +145,8 @@ class SurfaceExactnessTest {
     @Test
     void lithostitchedConditionsMatch() {
         TerrainHarness.World w = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, SEEDS[0]);
-        HolderSet<Biome> withO = HolderSet.direct(w.registries.biomes.holders()
-            .filter(h -> h.key().location().getPath().contains("o")).<Holder<Biome>>map(h -> h).toList());
+        HolderSet<Biome> withO = HolderSet.direct(w.registries.biomes.listElements()
+            .filter(h -> h.key().identifier().getPath().contains("o")).<Holder<Biome>>map(h -> h).toList());
         SurfaceRules.ConditionSource inSet = new BiomeCondition(withO);
         SurfaceRules.RuleSource lowered = SurfaceRules.sequence(
             SurfaceRules.ifTrue(new AllOfCondition(List.of(SurfaceRules.abovePreliminarySurface(), new SlopeCondition(new InclusiveRange<>(3, Integer.MAX_VALUE)))),
@@ -266,7 +266,7 @@ class SurfaceExactnessTest {
                 }
             }
             out.addAll(found.values());
-            System.out.println("[SurfaceExactnessTest] seed " + seed + " biome sites: " + found.keySet().stream().map(k -> k.location().getPath()).toList());
+            System.out.println("[SurfaceExactnessTest] seed " + seed + " biome sites: " + found.keySet().stream().map(k -> k.identifier().getPath()).toList());
             return out;
         });
     }

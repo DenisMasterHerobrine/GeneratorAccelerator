@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionChun
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
 import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceHooks;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,19 +14,20 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.attribute.EnvironmentAttributeReader;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
@@ -35,7 +37,6 @@ import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
@@ -63,6 +64,8 @@ import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.WorldGenSettings;
+import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.placement.PlacementContext;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.Fluid;
@@ -72,6 +75,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.ticks.LevelTickAccess;
 import net.minecraft.world.ticks.WorldGenTickAccess;
+import sun.misc.Unsafe;
 
 /**
  * A {@code WorldGenLevel} over a square grid of real {@code ProtoChunk}s, mirroring the semantics of
@@ -102,17 +106,13 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     private final RegionChunks regionChunks;
     private final boolean cacheHeightmaps;
     private final LevelLightEngine lightEngine;
+    /** What getLevel answers. Null: unsupported, which keeps the features that need it out of the matrix. */
+    private ServerLevel serverLevel;
     /** Game time 0: scheduled tick times only need to agree between the two runs. */
     private static final LevelData LEVEL_DATA = new LevelData() {
-        @Override public BlockPos getSpawnPos() { return BlockPos.ZERO; }
-        @Override public float getSpawnAngle() { return 0.0F; }
+        @Override public RespawnData getRespawnData() { return RespawnData.DEFAULT; }
         @Override public long getGameTime() { return 0L; }
-        @Override public long getDayTime() { return 0L; }
-        @Override public boolean isThundering() { return false; }
-        @Override public boolean isRaining() { return false; }
-        @Override public void setRaining(boolean raining) {}
         @Override public boolean isHardcore() { return false; }
-        @Override public GameRules getGameRules() { throw new UnsupportedOperationException("getGameRules"); }
         @Override public Difficulty getDifficulty() { return Difficulty.NORMAL; }
         @Override public boolean isDifficultyLocked() { return false; }
     };
@@ -127,7 +127,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         this.heights = heights;
         this.dimension = dimension;
         this.seed = seed;
-        this.random = randomState.getOrCreateRandomFactory(ResourceLocation.withDefaultNamespace("worldgen_region_random"))
+        this.random = randomState.getOrCreateRandomFactory(Identifier.withDefaultNamespace("worldgen_region_random"))
             .at(new ChunkPos(centerX, centerZ).getWorldPosition());
         this.biomeManager = new BiomeManager(this, BiomeManager.obfuscateSeed(seed));
         this.registryAccess = registryAccess;
@@ -236,7 +236,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
             return false;
         }
         ChunkAccess chunk = getChunk(pos);
-        BlockState old = chunk.setBlockState(pos, state, false);
+        BlockState old = chunk.setBlockState(pos, state, flags);
         if (old != null) {
             ga2$onBlockStateChange(pos, old, state);
         }
@@ -259,8 +259,11 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         } else if (old != null && old.hasBlockEntity()) {
             chunk.removeBlockEntity(pos);
         }
-        if (state.hasPostProcess(this, pos)) {
-            getChunk(pos).markPosForPostprocessing(pos);
+        if ((flags & Block.UPDATE_KNOWN_SHAPE) == 0) {
+            BlockPos post = state.getPostProcessPos(this, pos);
+            if (post != null) {
+                getChunk(post).markPosForPostprocessing(post);
+            }
         }
         return true;
     }
@@ -292,7 +295,7 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
         CompoundTag tag = chunk.getBlockEntityNbt(pos);
         BlockState state = chunk.getBlockState(pos);
         if (tag != null) {
-            if ("DUMMY".equals(tag.getString("id"))) {
+            if ("DUMMY".equals(tag.getStringOr("id", ""))) {
                 if (!state.hasBlockEntity()) {
                     return null;
                 }
@@ -316,8 +319,8 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     }
 
     @Override
-    public int getMinBuildHeight() {
-        return heights.getMinBuildHeight();
+    public int getMinY() {
+        return heights.getMinY();
     }
 
     @Override
@@ -391,11 +394,6 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     }
 
     @Override
-    public float getShade(Direction direction, boolean shade) {
-        return 1.0F;
-    }
-
-    @Override
     public <T extends Entity> List<T> getEntities(EntityTypeTest<Entity, T> test, AABB box, Predicate<? super T> predicate) {
         return Collections.emptyList();
     }
@@ -406,27 +404,59 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
     }
 
     @Override
-    public List<? extends Player> players() {
+    public List<Player> players() {
         return Collections.emptyList();
     }
 
     @Override
-    public void playSound(Player player, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
+    public void playSound(Entity except, BlockPos pos, SoundEvent sound, SoundSource source, float volume, float pitch) {}
 
     @Override
     public void addParticle(ParticleOptions options, double x, double y, double z, double dx, double dy, double dz) {}
 
     @Override
-    public void levelEvent(Player player, int type, BlockPos pos, int data) {}
+    public void levelEvent(Entity source, int type, BlockPos pos, int data) {}
 
     @Override
     public void gameEvent(Holder<GameEvent> event, Vec3 pos, GameEvent.Context context) {}
+
+    @Override
+    public EnvironmentAttributeReader environmentAttributes() {
+        return EnvironmentAttributeReader.EMPTY;
+    }
 
     // ---- unsupported in the harness: a feature touching these is excluded from the matrix
 
     @Override
     public ServerLevel getLevel() {
-        throw new UnsupportedOperationException("getLevel");
+        if (this.serverLevel == null) {
+            throw new UnsupportedOperationException("getLevel");
+        }
+        return this.serverLevel;
+    }
+
+    /**
+     * Lets getLevel answer a level that knows only its seed (vanilla's capped processor seeds from it). The level and its
+     * server are made without constructors, every other call on them fails.
+     */
+    public HarnessLevel withSeededServerLevel() {
+        try {
+            Field f = Unsafe.class.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            Unsafe unsafe = (Unsafe) f.get(null);
+            ServerLevel level = (ServerLevel) unsafe.allocateInstance(ServerLevel.class);
+            MinecraftServer server = (MinecraftServer) unsafe.allocateInstance(DedicatedServer.class);
+            Field settings = MinecraftServer.class.getDeclaredField("worldGenSettings");
+            settings.setAccessible(true);
+            settings.set(server, new WorldGenSettings(new WorldOptions(this.seed, false, false), null));
+            Field owner = ServerLevel.class.getDeclaredField("server");
+            owner.setAccessible(true);
+            owner.set(level, server);
+            this.serverLevel = level;
+            return this;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Override
@@ -538,22 +568,22 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
 
     @Override
     public int ga2$upgradeMinY() {
-        return heights.getMinBuildHeight();
+        return heights.getMinY();
     }
 
     @Override
     public int ga2$upgradeMaxY() {
-        return heights.getMaxBuildHeight();
+        return heights.getMaxY() + 1;
     }
 
     @Override
     public int ga2$minY() {
-        return heights.getMinBuildHeight();
+        return heights.getMinY();
     }
 
     @Override
     public int ga2$maxY() {
-        return heights.getMaxBuildHeight();
+        return heights.getMaxY() + 1;
     }
 
     @Override
@@ -569,8 +599,8 @@ public final class HarnessLevel implements WorldGenLevel, Ga2Region {
                 || !SurfaceHooks.zoomAllowed()) {
                 return null;
             }
-            z = zoom = BiomeZoom.forRegion(biomeManager, centerX << 4, centerZ << 4, getMinBuildHeight(),
-                getMaxBuildHeight(), this);
+            z = zoom = BiomeZoom.forRegion(biomeManager, centerX << 4, centerZ << 4, getMinY(),
+                getMaxY() + 1, this);
         }
         return z.owner() == this ? z : null;
     }

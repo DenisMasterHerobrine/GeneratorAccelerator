@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.StaticCache2D;
@@ -58,7 +58,7 @@ public final class BiomesWeveGoneTerrain {
 
     private static ResourceKey<Biome> biome(String path) {
         return ResourceKey.create(Registries.BIOME,
-            ResourceLocation.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
+            Identifier.fromNamespaceAndPath(BiomesWeveGoneMixins.MOD_ID, path));
     }
 
     /** The lock of a chunk's generator height cache ({@code mixin.ChunkAccessHeightsMixin}). */

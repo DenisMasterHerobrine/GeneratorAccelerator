@@ -46,10 +46,10 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
     @Shadow @Final private LongArrayFIFOQueue increaseQueue;
 
     @Shadow
-    protected abstract int getOpacity(BlockState state, BlockPos pos);
+    protected abstract int getOpacity(BlockState state);
 
     @Shadow
-    protected abstract boolean shapeOccludes(long fromPos, BlockState from, long toPos, BlockState to, Direction direction);
+    protected abstract boolean shapeOccludes(BlockState from, BlockState to, Direction direction);
 
     @Shadow
     protected abstract void enqueueIncrease(long pos, long entry);
@@ -84,7 +84,7 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
     /** Returns the chunk's slot. If the slot holds a different chunk, loads this chunk into it first. */
     @Unique
     private int ga2$slot(int chunkX, int chunkZ) {
-        long key = ChunkPos.asLong(chunkX, chunkZ);
+        long key = ChunkPos.pack(chunkX, chunkZ);
         int slot = FastLight.chunkSlot(chunkX, chunkZ);
         if (this.ga2$chunkKeys[slot] != key) {
             LightChunk chunk = this.chunkSource.getChunkForLighting(chunkX, chunkZ);
@@ -95,7 +95,7 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
             if (kind != FastLight.KIND_OTHER) {
                 this.ga2$sections[slot] = FastLight.sectionsOf(chunk);
                 this.ga2$minY[slot] = chunk instanceof ImposterProtoChunk imposter
-                    ? imposter.getWrapped().getMinBuildHeight() : chunk.getMinBuildHeight();
+                    ? imposter.getWrapped().getMinY() : chunk.getMinY();
             } else {
                 this.ga2$sections[slot] = null;
             }
@@ -156,7 +156,7 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
     }
 
     @Inject(method = "shapeOccludes", at = @At("HEAD"), cancellable = true)
-    private void ga2$shapeOccludes(long fromPos, BlockState from, long toPos, BlockState to, Direction direction, CallbackInfoReturnable<Boolean> cir) {
+    private void ga2$shapeOccludes(BlockState from, BlockState to, Direction direction, CallbackInfoReturnable<Boolean> cir) {
         if (FastLight.on && ga2$noShapes(from, to)) {
             cir.setReturnValue(false);
         }
@@ -194,13 +194,13 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
     }
 
     @Override
-    public int ga2$opacity(BlockState state, BlockPos pos) {
-        return this.getOpacity(state, pos);
+    public int ga2$opacity(BlockState state) {
+        return this.getOpacity(state);
     }
 
     @Override
-    public boolean ga2$occludes(long from, BlockState fromState, long to, BlockState toState, Direction direction) {
-        return !ga2$noShapes(fromState, toState) && this.shapeOccludes(from, fromState, to, toState, direction);
+    public boolean ga2$occludes(BlockState fromState, BlockState toState, Direction direction) {
+        return !ga2$noShapes(fromState, toState) && this.shapeOccludes(fromState, toState, direction);
     }
 
     @Override

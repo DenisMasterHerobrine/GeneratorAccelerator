@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionCounts;
 import java.util.Arrays;
 import java.util.function.IntPredicate;
 
@@ -22,15 +23,14 @@ public final class ChunkCompare {
             return "section count " + sa.length + " vs " + sb.length;
         }
         for (int s = 0; s < sa.length; s++) {
-            if (sa[s].nonEmptyBlockCount != sb[s].nonEmptyBlockCount || sa[s].tickingBlockCount != sb[s].tickingBlockCount
-                || sa[s].tickingFluidCount != sb[s].tickingFluidCount) {
-                String why = "counters of section " + s + " (blocks " + sa[s].nonEmptyBlockCount + " vs " + sb[s].nonEmptyBlockCount + ", ticking " + sa[s].tickingBlockCount
-                    + " vs " + sb[s].tickingBlockCount + ", fluids " + sa[s].tickingFluidCount + " vs " + sb[s].tickingFluidCount + ")";
+            String ca = SectionCounts.of(sa[s]), cb = SectionCounts.of(sb[s]);
+            if (!ca.equals(cb)) {
+                String why = "counters of section " + s + " (blocks/ticking/fluids/ticking fluids " + ca + " vs " + cb + ")";
                 for (int i = 0; i < 4096; i++) {
                     var x = sa[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15);
                     var y = sb[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15);
                     if (x != y) {
-                        return why + ", first at block " + (i & 15) + "," + (a.getMinBuildHeight() + s * 16 + (i >> 8)) + "," + ((i >> 4) & 15) + ": " + x + " vs " + y;
+                        return why + ", first at block " + (i & 15) + "," + (a.getMinY() + s * 16 + (i >> 8)) + "," + ((i >> 4) & 15) + ": " + x + " vs " + y;
                     }
                 }
                 return why + ", the same blocks";
@@ -50,7 +50,7 @@ public final class ChunkCompare {
                     var x = sa[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15);
                     var y = sb[s].getBlockState(i & 15, i >> 8, (i >> 4) & 15);
                     if (x != y) {
-                        return "block " + (i & 15) + "," + (a.getMinBuildHeight() + s * 16 + (i >> 8)) + "," + ((i >> 4) & 15) + ": " + x + " vs " + y;
+                        return "block " + (i & 15) + "," + (a.getMinY() + s * 16 + (i >> 8)) + "," + ((i >> 4) & 15) + ": " + x + " vs " + y;
                     }
                 }
                 return "storage of section " + s;
@@ -73,7 +73,7 @@ public final class ChunkCompare {
 
     /** The first quart whose biome differs, or null. Ties are skipped ({@code tie} takes quart indices in y, x, z order). */
     public static String biomes(ChunkAccess a, ChunkAccess b, IntPredicate tie) {
-        int qx0 = a.getPos().x * 4, qz0 = a.getPos().z * 4, qy0 = a.getMinBuildHeight() >> 2;
+        int qx0 = a.getPos().x() * 4, qz0 = a.getPos().z() * 4, qy0 = a.getMinY() >> 2;
         int quartsY = a.getHeight() / 4;
         boolean anyTie = false;
         for (int i = 0; i < quartsY * 16 && !anyTie; i++) {
@@ -116,6 +116,6 @@ public final class ChunkCompare {
     }
 
     private static String key(Holder<Biome> h) {
-        return h.unwrapKey().map(k -> k.location().toString()).orElse("?");
+        return h.unwrapKey().map(k -> k.identifier().toString()).orElse("?");
     }
 }

@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 @Mixin(DistanceManager.class)
 public abstract class DistanceManagerTicketsMixin {
     @ModifyArg(method = "<init>", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/server/level/ChunkTaskPriorityQueueSorter;<init>(Ljava/util/List;Ljava/util/concurrent/Executor;I)V"), index = 2)
+        target = "Lnet/minecraft/server/level/ThrottlingChunkTaskDispatcher;<init>(Lnet/minecraft/util/thread/TaskScheduler;Ljava/util/concurrent/Executor;I)V"), index = 2)
     private int ga2$ticketWindow(int maxTasks) {
         return ChunkLoadConfig.playerTicketWindow();
     }

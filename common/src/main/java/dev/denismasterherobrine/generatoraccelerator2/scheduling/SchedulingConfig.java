@@ -47,7 +47,8 @@ public final class SchedulingConfig {
         STEADY_LIGHT_UPDATES = b.comment("Schedule light updates whenever the main thread polls for tasks. Vanilla skips them while the distance manager is",
             "busy, which during heavy generation means light only catches up after generation stops, holding finished chunks back.").define("steadyLightUpdates", true);
         CHUNKY_IN_FLIGHT = b.comment("How many chunks Chunky may request at once (its chunky.maxWorkingCount, 50 by default). A chunk spends most of its",
-            "time waiting between threads, so more open requests keep the CPU busy. 0 picks a count from the processors and the memory.",
+            "time waiting between threads, so more open requests keep the CPU busy. 0 picks a count from the processors, the memory",
+            "and the world's height.",
             "50 is Chunky's own default. A -Dchunky.maxWorkingCount JVM argument wins. Read at startup.").defineInRange("chunkyInFlight", 0, 0, 4096);
         CHUNKY_KEPT_CHUNKS = b.comment("How many chunks next to Chunky's requests stay loaded after Chunky lets them go, while Chunky will still need them.",
             "Without this they are saved, unloaded and read back from disk when Chunky reaches the next region. The world is the same",

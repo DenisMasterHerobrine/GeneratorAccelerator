@@ -66,6 +66,11 @@ public final class GpuAquifer implements Aquifer {
             this.shouldScheduleFluidUpdate = false;
             return null;
         }
+        if (j > t.skipSamplingAboveY()) {
+            // vanilla samples no cell above its chunk's surfaces
+            this.shouldScheduleFluidUpdate = false;
+            return t.spec.picker.computeFluid(i, j, k).at(j);
+        }
         if (t.spec.globalLava(i, j, k)) {
             this.shouldScheduleFluidUpdate = false;
             return LAVA;
@@ -76,7 +81,8 @@ public final class GpuAquifer implements Aquifer {
         int k1 = Integer.MAX_VALUE;
         int l1 = Integer.MAX_VALUE;
         int i2 = Integer.MAX_VALUE;
-        int c1 = 0, c2 = 0, c3 = 0;
+        int m4 = Integer.MAX_VALUE;
+        int c1 = 0, c2 = 0, c3 = 0, c4 = 0;
         for (int i3 = 0; i3 <= 1; i3++) {
             for (int j3 = -1; j3 <= 1; j3++) {
                 for (int k3 = 0; k3 <= 1; k3++) {
@@ -89,20 +95,29 @@ public final class GpuAquifer implements Aquifer {
                     int dz = gz * 16 + t.offsetZ(cell) - k;
                     int l5 = dx * dx + dy * dy + dz * dz;
                     if (k1 >= l5) {
+                        c4 = c3;
                         c3 = c2;
                         c2 = c1;
                         c1 = cell;
+                        m4 = i2;
                         i2 = l1;
                         l1 = k1;
                         k1 = l5;
                     } else if (l1 >= l5) {
+                        c4 = c3;
                         c3 = c2;
                         c2 = cell;
+                        m4 = i2;
                         i2 = l1;
                         l1 = l5;
                     } else if (i2 >= l5) {
+                        c4 = c3;
                         c3 = cell;
+                        m4 = i2;
                         i2 = l5;
+                    } else if (m4 >= l5) {
+                        c4 = cell;
+                        m4 = l5;
                     }
                 }
             }
@@ -111,7 +126,7 @@ public final class GpuAquifer implements Aquifer {
         double d1 = similarity(k1, l1);
         BlockState state = s1.at(j);
         if (d1 <= 0.0) {
-            this.shouldScheduleFluidUpdate = d1 >= FLOWING_UPDATE_SIMILARITY;
+            this.shouldScheduleFluidUpdate = d1 >= FLOWING_UPDATE_SIMILARITY && !s1.equals(status(c2));
             return state;
         }
         if (state.is(Blocks.WATER) && t.spec.globalLava(i, j - 1, k)) {
@@ -144,7 +159,12 @@ public final class GpuAquifer implements Aquifer {
                 return null;
             }
         }
-        this.shouldScheduleFluidUpdate = true;
+        Aquifer.FluidStatus s2 = status(c2);
+        Aquifer.FluidStatus s3 = status(c3);
+        this.shouldScheduleFluidUpdate = !s1.equals(s2)
+            || d4 >= FLOWING_UPDATE_SIMILARITY && !s2.equals(s3)
+            || d0 >= FLOWING_UPDATE_SIMILARITY && !s1.equals(s3)
+            || d0 >= FLOWING_UPDATE_SIMILARITY && similarity(k1, m4) >= FLOWING_UPDATE_SIMILARITY && !s1.equals(status(c4));
         return state;
     }
 

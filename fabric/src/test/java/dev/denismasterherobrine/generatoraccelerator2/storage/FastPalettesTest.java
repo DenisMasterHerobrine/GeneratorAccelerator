@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
-import dev.denismasterherobrine.generatoraccelerator2.mixin.storage.ChunkSerializerAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.testutil.TerrainHarness;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,11 +19,15 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
 import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.Strategy;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,14 +38,24 @@ import org.junit.jupiter.api.Test;
  */
 public class FastPalettesTest {
     private static final int[][] CHUNKS = { { 0, 0 }, { 17, -5 }, { -300, 412 } };
+    private static final Strategy<BlockState> STATE_STRATEGY = Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY);
+    /** Vanilla's codec, made outside the factory, so GA2's codec is not in front of it. */
+    private static final Codec<PalettedContainer<BlockState>> STATES = PalettedContainer.codecRW(BlockState.CODEC, STATE_STRATEGY, Blocks.AIR.defaultBlockState());
+
+    private static Codec<PalettedContainerRO<Holder<Biome>>> biomeCodec(Registry<Biome> registry, Strategy<Holder<Biome>> strategy) {
+        return PalettedContainer.codecRO(registry.holderByNameCodec(), strategy, registry.getOrThrow(Biomes.PLAINS));
+    }
 
     @Test
     void realSectionsMatchTheCodec() {
-        Codec<PalettedContainer<BlockState>> states = ChunkSerializerAccessor.ga2$blockStateCodec();
+        Codec<PalettedContainer<BlockState>> states = STATES;
+        FastPalettes.Entries<BlockState> stateEntries = new FastPalettes.Entries<>(BlockState.CODEC);
         int compared = 0;
         for (TerrainHarness.Preset preset : TerrainHarness.Preset.values()) {
             Registry<Biome> registry = TerrainHarness.world(preset, 1234567L).registries.biomes;
-            Codec<PalettedContainerRO<Holder<Biome>>> biomes = ChunkSerializerAccessor.ga2$makeBiomeCodec(registry);
+            Strategy<Holder<Biome>> biomeStrategy = Strategy.createForBiomes(registry.asHolderIdMap());
+            Codec<PalettedContainerRO<Holder<Biome>>> biomes = biomeCodec(registry, biomeStrategy);
+            FastPalettes.Entries<Holder<Biome>> biomeEntries = new FastPalettes.Entries<>(registry.holderByNameCodec());
             for (int[] c : CHUNKS) {
                 TerrainHarness.Site site = TerrainHarness.site(preset, 1234567L, c[0], c[1]);
                 ProtoChunk chunk = site.center();
@@ -52,12 +65,12 @@ public class FastPalettesTest {
                         String where = preset + " chunk " + c[0] + "," + c[1] + " pass " + pass;
                         CompoundTag s = (CompoundTag) states.encodeStart(NbtOps.INSTANCE, section.getStates()).getOrThrow();
                         CompoundTag b = (CompoundTag) biomes.encodeStart(NbtOps.INSTANCE, section.getBiomes()).getOrThrow();
-                        PalettedContainer<BlockState> fastStates = FastPalettes.states(s);
-                        PalettedContainerRO<Holder<Biome>> fastBiomes = FastPalettes.biomes(registry, b);
+                        PalettedContainer<BlockState> fastStates = FastPalettes.decode(s, stateEntries, STATE_STRATEGY);
+                        PalettedContainerRO<Holder<Biome>> fastBiomes = FastPalettes.decode(b, biomeEntries, biomeStrategy);
                         assertNotNull(fastStates, where + " states decoded");
                         assertNotNull(fastBiomes, where + " biomes decoded");
-                        assertTrue(LoadPrep.sameDecoded(states, states.parse(NbtOps.INSTANCE, s).getOrThrow(), fastStates), where + " states");
-                        assertTrue(LoadPrep.sameDecoded(biomes, biomes.parse(NbtOps.INSTANCE, b).getOrThrow(), fastBiomes), where + " biomes");
+                        assertTrue(sameDecoded(states, states.parse(NbtOps.INSTANCE, s).getOrThrow(), fastStates), where + " states");
+                        assertTrue(sameDecoded(biomes, biomes.parse(NbtOps.INSTANCE, b).getOrThrow(), fastBiomes), where + " biomes");
                         compared++;
                     }
                 }
@@ -68,9 +81,12 @@ public class FastPalettesTest {
 
     @Test
     void oddTagsGiveTheCodecsResultOrNothing() {
-        Codec<PalettedContainer<BlockState>> states = ChunkSerializerAccessor.ga2$blockStateCodec();
+        Codec<PalettedContainer<BlockState>> states = STATES;
+        FastPalettes.Entries<BlockState> stateEntries = new FastPalettes.Entries<>(BlockState.CODEC);
         Registry<Biome> registry = TerrainHarness.world(TerrainHarness.Preset.values()[0], 1234567L).registries.biomes;
-        Codec<PalettedContainerRO<Holder<Biome>>> biomes = ChunkSerializerAccessor.ga2$makeBiomeCodec(registry);
+        Strategy<Holder<Biome>> biomeStrategy = Strategy.createForBiomes(registry.asHolderIdMap());
+        Codec<PalettedContainerRO<Holder<Biome>>> biomes = biomeCodec(registry, biomeStrategy);
+        FastPalettes.Entries<Holder<Biome>> biomeEntries = new FastPalettes.Entries<>(registry.holderByNameCodec());
         List<CompoundTag> stateTags = new ArrayList<>();
         stateTags.add(blockStates(List.of(block("minecraft:stone", null)), null));
         stateTags.add(blockStates(List.of(block("minecraft:stone", null), block("minecraft:dirt", null)), null));
@@ -94,7 +110,7 @@ public class FastPalettesTest {
         int decoded = 0;
         for (int pass = 0; pass < 2; pass++) {
             for (CompoundTag tag : stateTags) {
-                decoded += same(states, tag, FastPalettes.states(tag), tag + " pass " + pass);
+                decoded += same(states, tag, FastPalettes.decode(tag, stateEntries, STATE_STRATEGY), tag + " pass " + pass);
             }
         }
         List<CompoundTag> biomeTags = new ArrayList<>();
@@ -105,7 +121,7 @@ public class FastPalettesTest {
         biomeTags.add(biomes(List.of("minecraft:plains", "minecraft:forest"), null));
         for (int pass = 0; pass < 2; pass++) {
             for (CompoundTag tag : biomeTags) {
-                decoded += same(biomes, tag, FastPalettes.biomes(registry, tag), tag + " pass " + pass);
+                decoded += same(biomes, tag, FastPalettes.decode(tag, biomeEntries, biomeStrategy), tag + " pass " + pass);
             }
         }
         assertTrue(decoded >= 8, "decoded without the codec: " + decoded);
@@ -120,8 +136,16 @@ public class FastPalettesTest {
         DataResult<?> vanilla = codec.parse(NbtOps.INSTANCE, tag);
         Optional<?> value = vanilla.result();
         assertTrue(value.isPresent() && vanilla.error().isEmpty(), where + ": decoded, but the codec has an error");
-        assertTrue(LoadPrep.sameDecoded(codec, value.get(), fast), where);
+        assertTrue(sameDecoded(codec, value.get(), fast), where);
         return 1;
+    }
+
+    /** Both values encode to the same tag: same palette order, bit width and storage. */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static boolean sameDecoded(Codec codec, Object a, Object b) {
+        DataResult<Tag> ea = codec.encodeStart(NbtOps.INSTANCE, a);
+        DataResult<Tag> eb = codec.encodeStart(NbtOps.INSTANCE, b);
+        return ea.result().isPresent() && ea.result().equals(eb.result());
     }
 
     private static CompoundTag block(String name, CompoundTag properties) {

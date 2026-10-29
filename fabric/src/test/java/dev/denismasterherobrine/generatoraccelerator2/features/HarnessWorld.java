@@ -8,6 +8,8 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.PalettedContainer;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
+import net.minecraft.world.level.chunk.Strategy;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -16,9 +18,9 @@ import java.util.function.IntFunction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -75,12 +77,15 @@ public final class HarnessWorld {
         public final HolderLookup.Provider lookup;
         public final Registry<Biome> biomes;
         public final RegistryAccess access;
+        /** The section containers chunks are made with, as the level's chunk source makes them. */
+        public final PalettedContainerFactory containers;
 
         /** Registries loaded elsewhere (e.g. from a datapack by the game's registry loader). */
         public Registries2(HolderLookup.Provider lookup, Registry<Biome> biomes, RegistryAccess access) {
             this.lookup = lookup;
             this.biomes = biomes;
             this.access = access;
+            this.containers = PalettedContainerFactory.create(access);
         }
 
         Registries2() {
@@ -91,6 +96,7 @@ public final class HarnessWorld {
             reg.freeze();
             this.biomes = reg;
             this.access = new RegistryAccess.ImmutableRegistryAccess(List.of(reg));
+            this.containers = PalettedContainerFactory.create(this.access);
         }
     }
 
@@ -110,7 +116,7 @@ public final class HarnessWorld {
             case END -> NoiseGeneratorSettings.END;
         };
         Holder<NoiseGeneratorSettings> settings = r.lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(key);
-        Holder<Biome> plains = r.biomes.getHolderOrThrow(Biomes.PLAINS);
+        Holder<Biome> plains = r.biomes.getOrThrow(Biomes.PLAINS);
         return new NoiseBasedChunkGenerator(new FixedBiomeSource(plains), settings);
     }
 
@@ -152,7 +158,7 @@ public final class HarnessWorld {
             for (int dx = 0; dx < size; dx++) {
                 int cx = centerX - RADIUS + dx;
                 int cz = centerZ - RADIUS + dz;
-                ProtoChunk chunk = new ProtoChunk(new ChunkPos(cx, cz), UpgradeData.EMPTY, heights, r.biomes, null);
+                ProtoChunk chunk = new ProtoChunk(new ChunkPos(cx, cz), UpgradeData.EMPTY, heights, r.containers, null);
                 fill(chunk, kind, noise, seed, biomeAt.apply(dx + dz * size));
                 Heightmap.primeHeightmaps(chunk, EnumSet.of(Heightmap.Types.OCEAN_FLOOR_WG, Heightmap.Types.WORLD_SURFACE_WG));
                 chunk.setPersistedStatus(ChunkStatus.CARVERS);
@@ -166,12 +172,12 @@ public final class HarnessWorld {
     }
 
     private static void fill(ProtoChunk chunk, Kind kind, ImprovedNoise noise, long seed, Holder<Biome> biome) {
-        int minY = chunk.getMinBuildHeight();
-        int maxY = chunk.getMaxBuildHeight();
+        int minY = chunk.getMinY();
+        int maxY = chunk.getMaxY() + 1;
         int baseX = chunk.getPos().getMinBlockX();
         int baseZ = chunk.getPos().getMinBlockZ();
-        boolean cold = (biome.unwrapKey().map(k -> k.location().getPath()).orElse("")).contains("snow")
-            || biome.unwrapKey().map(k -> k.location().getPath()).orElse("").contains("frozen");
+        boolean cold = (biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("")).contains("snow")
+            || biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("").contains("frozen");
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 int x = baseX + lx;
@@ -256,7 +262,7 @@ public final class HarnessWorld {
                 LevelChunkSection sec = src.getSection(s);
                 sections[s] = new LevelChunkSection(cloneStates(sec.getStates()), sec.getBiomes().recreate());
             }
-            ProtoChunk copy = new ProtoChunk(src.getPos(), UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(), heights, r.biomes, null);
+            ProtoChunk copy = new ProtoChunk(src.getPos(), UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(), heights, r.containers, null);
             for (Map.Entry<Heightmap.Types, Heightmap> e : src.getHeightmaps()) {
                 copy.setHeightmap(e.getKey(), e.getValue().getRawData().clone());
             }
@@ -266,8 +272,8 @@ public final class HarnessWorld {
         return out;
     }
 
-    private static final Codec<PalettedContainer<BlockState>> STATES_CODEC = PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC,
-        PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
+    private static final Codec<PalettedContainer<BlockState>> STATES_CODEC = PalettedContainer.codecRW(BlockState.CODEC,
+        Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY), Blocks.AIR.defaultBlockState());
 
     /** {@code PalettedContainer.copy()} shares the resize handler with its source, so clone through the codec like the chunk serializer does. */
     public static PalettedContainer<BlockState> cloneStates(PalettedContainer<BlockState> states) {

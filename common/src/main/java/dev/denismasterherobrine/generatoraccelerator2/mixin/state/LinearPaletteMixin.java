@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.state.StateFast;
+import net.minecraft.core.IdMap;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.chunk.LinearPalette;
 import net.minecraft.world.level.chunk.PaletteResize;
@@ -26,9 +27,6 @@ public abstract class LinearPaletteMixin<T> {
     private T[] values;
     @Shadow
     @Final
-    private PaletteResize<T> resizeHandler;
-    @Shadow
-    @Final
     private int bits;
     @Shadow
     private int size;
@@ -40,9 +38,9 @@ public abstract class LinearPaletteMixin<T> {
     @Unique
     private static final HookTargets.Hook GA2$HOOK = HookTargets.hook(HookTargets.PALETTE);
 
-    /** The body of {@code idFor(state)}. Returns the remembered last answer, or else runs vanilla's scan. */
+    /** The body of {@code idFor(state, resizeHandler)}. Returns the remembered last answer, or else runs vanilla's scan. */
     @Unique
-    private int ga2$idFor(T state) {
+    private int ga2$idFor(T state, PaletteResize<T> resizeHandler) {
         if (state == this.ga2$last && (StateFast.ENABLED && GA2$HOOK.allowed())) {
             return this.ga2$lastId;
         }
@@ -61,11 +59,11 @@ public abstract class LinearPaletteMixin<T> {
             this.ga2$lastId = j;
             return j;
         }
-        return this.resizeHandler.onResize(this.bits + 1, state);
+        return resizeHandler.onResize(this.bits + 1, state);
     }
 
     @Inject(method = "read", at = @At("HEAD"))
-    private void ga2$forget(FriendlyByteBuf buf, CallbackInfo ci) {
+    private void ga2$forget(FriendlyByteBuf buf, IdMap<T> globalMap, CallbackInfo ci) {
         this.ga2$last = null;
     }
 }

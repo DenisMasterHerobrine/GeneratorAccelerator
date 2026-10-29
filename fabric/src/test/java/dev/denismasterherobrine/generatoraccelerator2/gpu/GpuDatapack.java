@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -73,28 +74,28 @@ public final class GpuDatapack {
         BiomeSource dimensionSource = null;
         try (MultiPackResourceManager rm = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanilla, pack))) {
             RegistryAccess.Frozen builtIn = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
-            loaded = RegistryDataLoader.load(rm, builtIn, RegistryDataLoader.WORLDGEN_REGISTRIES);
+            List<HolderLookup.RegistryLookup<?>> context = builtIn.listRegistries().toList();
+            loaded = RegistryDataLoader.load(rm, context, RegistryDataLoader.WORLDGEN_REGISTRIES, Runnable::run).join();
             // the overworld's level stem, as the game loads it after the worldgen registries (Terralith places its biomes there
             // when Lithostitched is absent)
-            RegistryAccess.Frozen dims = RegistryDataLoader.load(rm, new RegistryAccess.ImmutableRegistryAccess(
-                Stream.concat(builtIn.registries(), loaded.registries()).map(RegistryAccess.RegistryEntry::value).toList()).freeze(),
-                RegistryDataLoader.DIMENSION_REGISTRIES);
-            var stem = dims.registryOrThrow(Registries.LEVEL_STEM).get(LevelStem.OVERWORLD);
+            RegistryAccess.Frozen dims = RegistryDataLoader.load(rm, Stream.concat(context.stream(), loaded.listRegistries()).toList(),
+                RegistryDataLoader.DIMENSION_REGISTRIES, Runnable::run).join();
+            LevelStem stem = dims.lookupOrThrow(Registries.LEVEL_STEM).getValue(LevelStem.OVERWORLD);
             if (stem != null) {
                 dimensionSource = stem.generator().getBiomeSource();
             }
         }
-        Registry<Biome> biomes = loaded.registryOrThrow(Registries.BIOME);
-        Holder<MultiNoiseBiomeSourceParameterList> params = loaded.registryOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
-            .getHolderOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD);
+        Registry<Biome> biomes = loaded.lookupOrThrow(Registries.BIOME);
+        Holder<MultiNoiseBiomeSourceParameterList> params = loaded.lookupOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST)
+            .getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD);
         BiomeSource source = dimensionSource instanceof MultiNoiseBiomeSource ? dimensionSource
             : MultiNoiseBiomeSource.createFromPreset(params);
-        Holder<NoiseGeneratorSettings> settings = loaded.registryOrThrow(Registries.NOISE_SETTINGS).getHolderOrThrow(NoiseGeneratorSettings.OVERWORLD);
-        DimensionType dim = loaded.registryOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD);
+        Holder<NoiseGeneratorSettings> settings = loaded.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD);
+        DimensionType dim = loaded.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
         HarnessWorld.Registries2 registries = new HarnessWorld.Registries2(loaded, biomes, loaded);
         GpuProbe.log("datapack %s: %d biomes, %d density functions, %d noises, overworld noise settings %s; biome source %s (%d possible biomes)", dataRoot,
-            biomes.size(), loaded.registryOrThrow(Registries.DENSITY_FUNCTION).size(), loaded.registryOrThrow(Registries.NOISE).size(),
-            settings.unwrapKey().orElseThrow().location(), source == dimensionSource ? "from the dimension" : "from the parameter list preset", source.possibleBiomes().size());
+            biomes.size(), loaded.lookupOrThrow(Registries.DENSITY_FUNCTION).size(), loaded.lookupOrThrow(Registries.NOISE).size(),
+            settings.unwrapKey().orElseThrow().identifier(), source == dimensionSource ? "from the dimension" : "from the parameter list preset", source.possibleBiomes().size());
         return new TerrainHarness.World(registries, settings, source, loaded.lookupOrThrow(Registries.NOISE), dim, seed);
     }
 }

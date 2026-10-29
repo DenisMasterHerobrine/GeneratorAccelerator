@@ -1,9 +1,13 @@
 package dev.denismasterherobrine.generatoraccelerator2.aquifer;
 
 import com.google.common.collect.MapMaker;
+import com.google.common.collect.ObjectArrays;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.DfcHooks;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
+import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.world.level.levelgen.Aquifer;
@@ -26,20 +30,21 @@ public final class AquiferFastPath {
     public static final int CLASSIFY = 2;
     /**
      * Search, plus classification ahead. A neighbourhood is classified ahead once every status it still lacks would read
-     * only preliminary surface levels the chunk already holds. Only {@code initial_density_without_jaggedness} reads
-     * order-sensitive state.
+     * only preliminary surface levels the chunk already holds. Only the surface level function reads order-sensitive
+     * state.
      */
     public static final int COLUMNS = 3;
 
     /** Returned by the hook when the original method must run. */
     public static final Object FALLBACK = new Object();
 
-    /** Router fields a status computation evaluates. The last field is evaluated through NoiseChunk.preliminarySurfaceLevel. */
-    public static final String[] STATUS_FIELDS = {
-        "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread", "lava", "initial_density_without_jaggedness"
-    };
     /** The status fields a status computation evaluates itself, without the surface levels it reads through the chunk's memo. */
     public static final String[] POINT_FIELDS = { "erosion", "depth", "fluid_level_floodedness", "fluid_level_spread", "lava" };
+
+    /** Router roots a status computation evaluates: the point fields and, through NoiseChunk.preliminarySurfaceLevel, the surface level. */
+    public static String[] statusFields(Map<String, Node> roots) {
+        return ObjectArrays.concat(POINT_FIELDS, SurfaceLevels.fields(roots), String.class);
+    }
 
     /**
      * {@code -Dgeneratoraccelerator2.aquifer.airBoxes=false} turns off whole-cell air from known statuses in neighbourhoods
@@ -54,6 +59,8 @@ public final class AquiferFastPath {
     public static final boolean STATS = Boolean.getBoolean("generatoraccelerator2.aquifer.stats");
     public static final LongAdder SOLID = new LongAdder();
     public static final LongAdder LAVA = new LongAdder();
+    /** Blocks above the heights vanilla samples cells at ({@code skipSamplingAboveY}). */
+    public static final LongAdder ABOVE_SAMPLING = new LongAdder();
     public static final LongAdder UNIFORM = new LongAdder();
     public static final LongAdder ABOVE_FLUIDS = new LongAdder();
     public static final LongAdder SEARCHED = new LongAdder();
@@ -151,6 +158,7 @@ public final class AquiferFastPath {
     public static void resetStats() {
         SOLID.reset();
         LAVA.reset();
+        ABOVE_SAMPLING.reset();
         UNIFORM.reset();
         ABOVE_FLUIDS.reset();
         SEARCHED.reset();
@@ -165,7 +173,7 @@ public final class AquiferFastPath {
     }
 
     public static String statsLine() {
-        return "solid " + SOLID.sum() + ", lava " + LAVA.sum() + ", uniform " + UNIFORM.sum() + ", above fluids " + ABOVE_FLUIDS.sum()
+        return "solid " + SOLID.sum() + ", lava " + LAVA.sum() + ", above sampling " + ABOVE_SAMPLING.sum() + ", uniform " + UNIFORM.sum() + ", above fluids " + ABOVE_FLUIDS.sum()
             + ", searched " + SEARCHED.sum() + ", fallback " + FALLBACKS.sum() + ", lazy flags resolved " + LAZY_FLAGS.sum()
             + ", late classified " + LATE_CLASSIFIED.sum() + ", classified ahead " + AHEAD_CLASSIFIED.sum()
             + ", aquifers checked for column caches " + CELLS_CHECKED.sum() + " (" + CELLS_CONFLICT.sum() + " kept vanilla's order)" + ", air cell parts from known statuses " + BOX_AIR.sum() + ", blocks from known statuses " + BOX_BLOCKS.sum();

@@ -19,8 +19,8 @@ import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.util.BoundedFloatFunction;
 import net.minecraft.util.CubicSpline;
-import net.minecraft.util.ToFloatFunction;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -101,7 +101,7 @@ public class FastPathsActiveTest {
             }
 
             @Override
-            public int getMinBuildHeight() {
+            public int getMinY() {
                 return -64;
             }
         };
@@ -135,11 +135,11 @@ public class FastPathsActiveTest {
     @Test
     void splinePointsMappedWithoutAStream() {
         TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
-        CubicSpline<Float, ToFloatFunction<Float>> inner = CubicSpline.<Float, ToFloatFunction<Float>>builder(ToFloatFunction.IDENTITY)
+        CubicSpline<Float, BoundedFloatFunction<Float>> inner = CubicSpline.<Float, BoundedFloatFunction<Float>>builder(BoundedFloatFunction.IDENTITY)
             .addPoint(-1.0F, 0.5F).addPoint(1.0F, 2.0F).build();
-        CubicSpline<Float, ToFloatFunction<Float>> spline = CubicSpline.<Float, ToFloatFunction<Float>>builder(ToFloatFunction.IDENTITY)
+        CubicSpline<Float, BoundedFloatFunction<Float>> spline = CubicSpline.<Float, BoundedFloatFunction<Float>>builder(BoundedFloatFunction.IDENTITY)
             .addPoint(-1.0F, inner).addPoint(0.0F, 1.0F).addPoint(1.0F, inner).build();
-        CubicSpline<Float, ToFloatFunction<Float>> mapped = spline.mapAll(c -> c);
+        CubicSpline<Float, BoundedFloatFunction<Float>> mapped = spline.mapAll(c -> c);
         List<?> values = ((CubicSpline.Multipoint<?, ?>) mapped).values();
         // Stream.toList's list is java.util.ImmutableCollections$ListN
         assertFalse(values.getClass().getName().startsWith("java.util.ImmutableCollections"), "values list " + values.getClass().getName());
@@ -178,8 +178,8 @@ public class FastPathsActiveTest {
         Field bounds = ProtoChunk.class.getDeclaredField("ga2$bounds");
         bounds.setAccessible(true);
         assertTrue(bounds.getLong(chunk) == 0L, "bounds not read yet");
-        int min = chunk.getMinBuildHeight();
-        int max = chunk.getMaxBuildHeight();
+        int min = chunk.getMinY();
+        int max = chunk.getMaxY() + 1;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int y = min - 2; y < max + 2; y++) {
             for (int z = 0; z < 16; z++) {
@@ -208,7 +208,7 @@ public class FastPathsActiveTest {
         assertTrue(fluids > 0, "some chunk holds fluids");
     }
 
-    /** {@code ChunkAccess.getMinBuildHeight} and {@code getHeight}: the height accessor's answers, read once (the overwrite is in). */
+    /** {@code ChunkAccess.getMinY} and {@code getHeight}: the height accessor's answers, read once (the overwrite is in). */
     @Test
     void chunkHeightsAreTheAccessors() throws Exception {
         ProtoChunk chunk = TerrainHarness.site(
@@ -219,13 +219,13 @@ public class FastPathsActiveTest {
         accessorField.setAccessible(true);
         LevelHeightAccessor accessor = (LevelHeightAccessor) accessorField.get(chunk);
         heights.setLong(chunk, 0L);
-        assertTrue(chunk.getMinBuildHeight() == accessor.getMinBuildHeight(), "min build height");
+        assertTrue(chunk.getMinY() == accessor.getMinY(), "min build height");
         assertTrue(heights.getLong(chunk) != 0L, "the getters are GA2's (heights kept)");
         assertTrue(chunk.getHeight() == accessor.getHeight(), "height");
-        assertTrue(chunk.getMaxBuildHeight() == accessor.getMaxBuildHeight(), "max build height");
-        assertTrue(chunk.getMinSection() == accessor.getMinSection() && chunk.getMaxSection() == accessor.getMaxSection()
+        assertTrue(chunk.getMaxY() + 1 == accessor.getMaxY() + 1, "max build height");
+        assertTrue(chunk.getMinSectionY() == accessor.getMinSectionY() && chunk.getMaxSectionY() + 1 == accessor.getMaxSectionY() + 1
             && chunk.getSectionsCount() == accessor.getSectionsCount(), "sections");
-        for (int y = accessor.getMinBuildHeight() - 20; y < accessor.getMaxBuildHeight() + 20; y++) {
+        for (int y = accessor.getMinY() - 20; y < accessor.getMaxY() + 1 + 20; y++) {
             assertTrue(chunk.getSectionIndex(y) == accessor.getSectionIndex(y) && chunk.isOutsideBuildHeight(y) == accessor.isOutsideBuildHeight(y), "y " + y);
         }
     }

@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
@@ -11,6 +12,7 @@ import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ExternSamplers;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuConfig;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSteps;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.GpuSurfaceJob;
@@ -422,7 +424,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             throw new ClEmitter.Unsupported("noise settings with cells of " + cellWidth + "x" + cellHeight + " over " + minY + ".." + (minY + height));
         }
         boolean aquifers = settings.isAquifersEnabled();
-        boolean veins = settings.oreVeinsEnabled();
+        // GregTech's setting can remove vanilla's veins, as FastFill sees (GtceuVeins)
+        boolean veins = settings.oreVeinsEnabled() && !GtceuVeins.removesVeins();
         if (aquifers || veins) {
             long[] aq = seeds(randomState.aquiferRandom());
             long[] ore = seeds(randomState.oreRandom());
@@ -838,6 +841,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         }
         ClEmitter g = new ClEmitter(ClEmitter.Prec.F64, true, specs, set.blendedSpecs(), set.column().rootMarkers, cellRoot, set.routerRoots(),
             cellWidth, cellHeight, minY, height, settings.seaLevel());
+        g.surfaceTop = SurfaceLevels.Top.of(randomState.router().preliminarySurfaceLevel());
         if (sf != null) {
             g.extra = e -> sf.source(e.commonArgs(), "", e.commonInit(), ClEmitter.META);
         }
@@ -993,7 +997,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             Map<Object, Integer> numbers = new HashMap<>();
             for (int id = 0; id < n; id++) {
                 if (ls[id] != null) {
-                    Object key = ls[id].value.unwrapKey().<Object>map(k -> k.location()).orElse(ls[id].value);
+                    Object key = ls[id].value.unwrapKey().<Object>map(k -> k.identifier()).orElse(ls[id].value);
                     treeKey[id] = numbers.computeIfAbsent(key, k -> numbers.size());
                 }
             }
@@ -1027,7 +1031,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         b += gen.perChunkCorners ? 16 : (long) gen.roots.size() * ncx * ncx * ncy * rsize;
         b += gen.blockHoisted.isEmpty() ? 16 : nbx * nbx * gen.blockHoisted.size() * rsize;
         b += (4L * w + 23) * (4L * w + 15) * 4 + (long) w * w * 25 * 4;
-        b += (long) w * w * gen.cellsPerChunk * 5 * 4;
+        b += (long) w * w * gen.cellInts() * 4;
         if (biomeKernels()) {
             // quart biomes, climate columns, the tie list and its count
             b += (long) w * w * 16 * (height / 4) * 4 + (long) w * w * 16 * 6 * rsize + (long) tieCap() * 7 * 8 + 16;
@@ -1501,7 +1505,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
         /** Marks the chunk answered. True when that makes every chunk of the region answered. */
         boolean answered(ChunkPos pos) {
-            int i = (pos.x - cx0) * side + (pos.z - cz0);
+            int i = (pos.x() - cx0) * side + (pos.z() - cz0);
             long bit = 1L << (i & 63);
             if ((answered[i >> 6] & bit) == 0) {
                 answered[i >> 6] |= bit;
@@ -1596,7 +1600,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         b.bh = cl.createBuffer(ctx, rw, g.blockHoisted.isEmpty() ? 16 : (long) nbx * nbz * g.blockHoisted.size() * rsize);
         b.surf = cl.createBuffer(ctx, rw, (long) nsx * nsz * 4);
         b.surfIn = cl.createBuffer(ctx, rw, (long) nchunks * 25 * 4);
-        b.cells = cl.createBuffer(ctx, rw, (long) nchunks * g.cellsPerChunk * 5 * 4);
+        b.cells = cl.createBuffer(ctx, rw, (long) nchunks * g.cellInts() * 4);
         b.levels = cl.createBuffer(ctx, rw, (long) nchunks * 4);
         if (g.c2dKind == ClEmitter.C2d.FLOODED) {
             b.c2 = cl.createBuffer(ctx, rw, (long) nchunks * g.cellsPerChunk * 4);
@@ -2072,17 +2076,17 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             || SHARE && busy.size() >= Math.min(device.regionQueues.length, regionLimit())) {
             return;
         }
-        int lx = Math.floorMod(pos.x, side), lz = Math.floorMod(pos.z, side);
+        int lx = Math.floorMod(pos.x(), side), lz = Math.floorMod(pos.z(), side);
         int dx = lx < PREFETCH ? -1 : lx >= side - PREFETCH ? 1 : 0;
         int dz = lz < PREFETCH ? -1 : lz >= side - PREFETCH ? 1 : 0;
         if (dx != 0) {
-            prefetchRegion(pos.x + dx * PREFETCH, pos.z);
+            prefetchRegion(pos.x() + dx * PREFETCH, pos.z());
         }
         if (dz != 0) {
-            prefetchRegion(pos.x, pos.z + dz * PREFETCH);
+            prefetchRegion(pos.x(), pos.z() + dz * PREFETCH);
         }
         if (dx != 0 && dz != 0) {
-            prefetchRegion(pos.x + dx * PREFETCH, pos.z + dz * PREFETCH);
+            prefetchRegion(pos.x() + dx * PREFETCH, pos.z() + dz * PREFETCH);
         }
     }
 
@@ -2096,7 +2100,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** Launches the region holding chunk {@code x, z} unless it was let go. */
     private void prefetchRegion(int x, int z) {
         int rx = Math.floorDiv(x, side), rz = Math.floorDiv(z, side);
-        long k = ChunkPos.asLong(rx, rz);
+        long k = ChunkPos.pack(rx, rz);
         if (!doneRegions.contains(k)) {
             region(k, rx, rz);
         }
@@ -2104,13 +2108,13 @@ public final class GpuWorldgen implements GpuDevice.Pump {
 
     /** The key of the region holding {@code pos}. */
     private long regionKey(ChunkPos pos) {
-        return ChunkPos.asLong(Math.floorDiv(pos.x, side), Math.floorDiv(pos.z, side));
+        return ChunkPos.pack(Math.floorDiv(pos.x(), side), Math.floorDiv(pos.z(), side));
     }
 
     /** The region holding {@code pos}, launched (its kernels enqueued) when new. */
     private Region region(ChunkPos pos) {
-        int rx = Math.floorDiv(pos.x, side), rz = Math.floorDiv(pos.z, side);
-        return region(ChunkPos.asLong(rx, rz), rx, rz);
+        int rx = Math.floorDiv(pos.x(), side), rz = Math.floorDiv(pos.z(), side);
+        return region(ChunkPos.pack(rx, rz), rx, rz);
     }
 
     /** The region {@code rx, rz} (in regions) of key {@code k}, launched when new. */
@@ -2557,7 +2561,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             return;
         }
         int per = 16 * (height / 4);
-        int i = b.pos.x - r.cx0, j = b.pos.z - r.cz0;
+        int i = b.pos.x() - r.cx0, j = b.pos().z() - r.cz0;
         int base = (i * side + j) * per;
         BIOME_CHUNKS.increment();
         int[] quarts;
@@ -2642,7 +2646,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int p = 0, jn = 0;
         int qi = 0;
         for (NoiseReq q : reqs) {
-            s.lstHost.putInt((q.pos.x - r.cx0) * h + (q.pos.z - r.cz0));
+            s.lstHost.putInt((q.pos.x() - r.cx0) * h + (q.pos().z() - r.cz0));
             int np = q.beard.pieces().length / 8, nj = q.beard.junctions().length / 3;
             int[] en = entries[qi++];
             int ne = en == null ? 0 : en.length / EnhancedBeard.ENTRY_STRIDE;
@@ -3027,7 +3031,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         for (int i = 0; i < n; i++) {
             NoiseReq q = b.reqs.get(i);
             answered(b.region, q.pos);
-            if (c2 != null && c2.getInt(((q.pos.x - b.region.cx0) * side + (q.pos.z - b.region.cz0)) * 4) != 0) {
+            if (c2 != null && c2.getInt(((q.pos.x() - b.region.cx0) * side + (q.pos().z() - b.region.cz0)) * 4) != 0) {
                 // a value depends on the order in which vanilla asks this chunk's aquifer cells. The CPU path fills the chunk.
                 C2D_CPU.increment();
                 q.future.complete(null);
@@ -3235,12 +3239,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         biomeList.clear();
     }
 
+    /** ", noise on CPU (why)" while another mod's change keeps the noise off the GPU, else empty. The biomes may still use the GPU. */
+    private static String noiseStatus() {
+        String off = GpuSteps.noiseHooksOff();
+        return off == null ? "" : ", noise on CPU (" + off + ")";
+    }
+
     public String status() {
         return name + ": " + switch (state) {
             case PREPARING -> "preparing (" + reason + ")";
             case FAILED -> "off (" + reason + ")";
             case READY -> "on, " + (certified ? "certified fp32 (cells in doubt rechecked in fp64)" : "fp64 (" + certifiedOff + ")") + ", "
-                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
+                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + noiseStatus() + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
                     : "on CPU (" + biomesOff + "; not handed: " + handOff + ")")
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
                 + String.format(Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)

@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.distanthorizons.DHThreads;
+import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.FrostedCaves;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.BeardCuller;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FastFill;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.FillSteps;
@@ -16,6 +17,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.BeardifierAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepLane;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -27,7 +29,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
@@ -209,7 +211,11 @@ public final class GpuSteps {
         return onAnswer(gpu, res -> {
             long t1 = System.nanoTime();
             NOISE_WAIT.add(t1 - t0);
-            if (res != null && Apply.noise(wg, chunk, res)) {
+            // YUNG's Frosted Caves water, which GA2 does in place of the mod's handler (FrostedCaves): the GPU's aquifer has no such
+            // step, so its answer stands only where the step changes none of the chunk's cells
+            boolean frostedFits = res == null || res.terrain() == null || !FrostedCaves.active() || FrostedCaves.holdsWithout(
+                ((ChunkAccessAccessor) chunk).ga2$noiseChunk(), GpuTerrain.cells(res.terrain(), wg.gen.cellsPerChunk, wg.gen.minGridY(), pos.x(), pos.z(), wg.gen.fluidLava));
+            if (res != null && frostedFits && Apply.noise(wg, chunk, res)) {
                 NOISE_GPU.increment();
                 long t2 = System.nanoTime();
                 NOISE_APPLY.add(t2 - t1);
@@ -218,10 +224,10 @@ public final class GpuSteps {
                 GpuTerrain.Spec spec = res.terrain() != null && gc != null && GpuTerrain.enabled() && (wg.surfaceSpec != null || GpuTerrain.WITHOUT_SURFACE) ? wg.terrainSpec(picker) : null;
                 if (spec != null) {
                     // SURFACE and CARVERS read the GPU's surface levels and aquifer cells. No NoiseChunk is made.
-                    GpuTerrain terrain = new GpuTerrain(spec, res.terrain(), pos.x, pos.z);
+                    GpuTerrain terrain = new GpuTerrain(spec, res.terrain(), pos.x(), pos.z());
                     if (LiquidRegions.active()) {
                         // the carvers' aquifer applies Better Caves' step as the chunk's NoiseChunk aquifer would
-                        terrain.liquids = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x, pos.z);
+                        terrain.liquids = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x(), pos.z());
                     }
                     gc.ga2$setGpuTerrain(terrain);
                     GpuTerrain.CHUNKS.increment();
@@ -342,7 +348,7 @@ public final class GpuSteps {
         if (!wg.liquidRegions) {
             return null;
         }
-        LiquidRegions.Table table = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x, pos.z);
+        LiquidRegions.Table table = LiquidRegions.table(LiquidRegions.regionsOf(randomState), pos.x(), pos.z());
         if (table == null) {
             return null;
         }
@@ -392,12 +398,9 @@ public final class GpuSteps {
             return null; // Another mod's fluid step acts in the chunk (an Iron's Spellbooks structure). The CPU runs it.
         }
         BeardifierAccessor acc = (BeardifierAccessor) beardifier;
-        ObjectListIterator<Beardifier.Rigid> pieces = acc.ga2$pieceIterator();
-        ObjectListIterator<JigsawJunction> junctions = acc.ga2$junctionIterator();
         IntArrayList p = new IntArrayList();
         IntArrayList j = new IntArrayList();
-        while (pieces.hasNext()) {
-            Beardifier.Rigid r = pieces.next();
+        for (Beardifier.Rigid r : acc.ga2$pieces()) {
             BoundingBox b = r.box();
             p.add(b.minX());
             p.add(b.minY());
@@ -408,14 +411,11 @@ public final class GpuSteps {
             p.add(r.terrainAdjustment().ordinal());
             p.add(r.groundLevelDelta());
         }
-        pieces.back(Integer.MAX_VALUE);
-        while (junctions.hasNext()) {
-            JigsawJunction jj = junctions.next();
+        for (JigsawJunction jj : acc.ga2$junctions()) {
             j.add(jj.getSourceX());
             j.add(jj.getSourceGroundY());
             j.add(jj.getSourceZ());
         }
-        junctions.back(Integer.MAX_VALUE);
         if (p.isEmpty() && j.isEmpty() && liquids == null && enhanced == null) {
             return GpuWorldgen.Beard.NONE;
         }

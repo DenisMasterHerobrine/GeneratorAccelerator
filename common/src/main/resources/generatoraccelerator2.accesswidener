@@ -1,6 +1,8 @@
-accessWidener v2 named
+accessWidener v2 official
 # Density function node types are package-private records; the compiler needs to read them.
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$Ap2
+# the preliminary surface level of a router (dfc.runtime.SurfaceLevels)
+accessible class net/minecraft/world/level/levelgen/DensityFunctions$FindTopSurface
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$TwoArgumentSimpleFunction
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$TwoArgumentSimpleFunction$Type
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$MulOrAdd
@@ -103,10 +105,12 @@ accessible method net/minecraft/world/level/levelgen/NoiseChunk$NoiseInterpolato
 
 # tests: the noise fill exactness test compares the sections' block counts
 accessible field net/minecraft/world/level/chunk/LevelChunkSection nonEmptyBlockCount S
+accessible field net/minecraft/world/level/chunk/LevelChunkSection fluidCount S
 accessible field net/minecraft/world/level/chunk/LevelChunkSection tickingBlockCount S
 accessible field net/minecraft/world/level/chunk/LevelChunkSection tickingFluidCount S
 # storage: exact one-pass palette packing for saving
-accessible method net/minecraft/world/level/chunk/PalettedContainer$Strategy calculateBitsForSerialization (Lnet/minecraft/core/IdMap;I)I
+accessible method net/minecraft/world/level/chunk/Strategy getConfigurationForPaletteSize (I)Lnet/minecraft/world/level/chunk/Configuration;
+accessible method net/minecraft/world/level/chunk/Strategy getConfigurationForBitCount (I)Lnet/minecraft/world/level/chunk/Configuration;
 # storage: the region old-chunk scan as one IO task
 accessible class net/minecraft/world/level/chunk/storage/IOWorker$PendingStore
 accessible field net/minecraft/world/level/chunk/storage/IOWorker$PendingStore data Lnet/minecraft/nbt/CompoundTag;
@@ -137,13 +141,8 @@ accessible field net/minecraft/world/level/levelgen/feature/MonsterRoomFeature M
 accessible class net/minecraft/world/level/biome/Biome$ClimateSettings
 # join.JoinWait looks up the spawn area's chunk holders
 accessible method net/minecraft/server/level/ChunkMap getVisibleChunkIfPresent (J)Lnet/minecraft/server/level/ChunkHolder;
-# view.mixin.SectionOcclusionGraphMixin keeps the sections at the view's edge when a rebuilt graph replaces the one shown
+# view.mixin.SectionOcclusionGraphMixin notes which graph a rebuild made
 accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphState
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphStorage
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$GraphEvents
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$SectionToNodeMap
-accessible class net/minecraft/client/renderer/SectionOcclusionGraph$Node
-accessible field net/minecraft/client/renderer/SectionOcclusionGraph$Node section Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection;
 accessible field net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate offset Lnet/minecraft/core/Vec3i;
 accessible field net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate direction Lnet/minecraft/core/Direction;
 accessible field net/minecraft/world/level/levelgen/feature/configurations/MultifaceGrowthConfiguration validDirections Lit/unimi/dsi/fastutil/objects/ObjectArrayList;

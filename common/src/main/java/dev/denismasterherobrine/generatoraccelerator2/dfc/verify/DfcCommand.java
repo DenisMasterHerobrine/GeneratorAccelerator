@@ -39,7 +39,7 @@ public final class DfcCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("ga2")
-            .requires(source -> source.hasPermission(2))
+            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
             .then(Commands.literal("dfc")
                 .then(Commands.literal("stats").executes(ctx -> stats(ctx.getSource())))
                 .then(Commands.literal("report").executes(ctx -> report(ctx.getSource()))))
@@ -80,10 +80,10 @@ public final class DfcCommand {
             RandomState state = level.getChunkSource().randomState();
             ProgramSet set = ((Ga2RandomState) (Object) state).ga2$programs();
             if (set == null) {
-                source.sendSuccess(() -> Component.literal(level.dimension().location() + ": no compiled programs"), false);
+                source.sendSuccess(() -> Component.literal(level.dimension().identifier() + ": no compiled programs"), false);
                 continue;
             }
-            String msg = level.dimension().location() + ": " + set.routerRoots().size() + " router roots, " + set.samplerRoots().size()
+            String msg = level.dimension().identifier() + ": " + set.routerRoots().size() + " router roots, " + set.samplerRoots().size()
                 + " sampler roots, " + set.internedNodes() + " unique nodes, " + set.specs().size() + " noise specs; column program "
                 + (set.column() == null ? "none" : set.column().rootCount() + " roots") + "; cell programs " + set.cells().size()
                 + "; climate sampler " + (set.chunkSampler() == null ? "no" : "yes") + "; global climate sampler "

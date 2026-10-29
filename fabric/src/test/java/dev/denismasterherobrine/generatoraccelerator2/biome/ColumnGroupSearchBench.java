@@ -23,7 +23,7 @@ public class ColumnGroupSearchBench {
     void fillOrder() {
         Assumptions.assumeTrue(Boolean.getBoolean("ga2.bench"));
         List<Pair<Climate.ParameterPoint, Holder<Biome>>> entries = new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD,
-            HarnessWorld.registries().biomes.asLookup()).parameters().values();
+            HarnessWorld.registries().biomes).parameters().values();
         Climate.ParameterList<Holder<Biome>> list = new Climate.ParameterList<>(entries);
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) list.index).ga2$flat();
         int[] keys = new int[flat.nodes() + 1];
@@ -37,7 +37,7 @@ public class ColumnGroupSearchBench {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
         Climate.Sampler sampler = world.randomState.sampler();
         int chunks = Integer.getInteger("ga2.bench.chunks", 64);
-        int minSection = world.heights.getMinSection(), maxSection = world.heights.getMaxSection();
+        int minSection = world.heights.getMinSectionY(), maxSection = world.heights.getMaxSectionY() + 1;
         long[][] queries = new long[chunks * (maxSection - minSection) * 64][];
         int n = 0;
         for (int c = 0; c < chunks; c++) {

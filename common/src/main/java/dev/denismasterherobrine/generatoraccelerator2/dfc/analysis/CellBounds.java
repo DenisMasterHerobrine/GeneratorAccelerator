@@ -589,6 +589,8 @@ public final class CellBounds {
                 set(a <= 0.0 && b >= 0.0 ? 0.0 : Math.min(p, q), Math.max(p, q));
             }
             case CUBE, HALF_NEGATIVE, QUARTER_NEGATIVE -> set(Interpreter.mapped(type, a), Interpreter.mapped(type, b));
+            // decreasing on either side of 0. A range that reaches 0 can give either infinity.
+            case INVERT -> set(a > 0.0 || b < 0.0 ? 1.0 / b : Double.NEGATIVE_INFINITY, a > 0.0 || b < 0.0 ? 1.0 / a : Double.POSITIVE_INFINITY);
             case SQUEEZE -> {
                 // c / 2 - c^3 / 24 is monotone in the reals but a difference of two rounded terms in floating point
                 double p = Interpreter.mapped(type, a);

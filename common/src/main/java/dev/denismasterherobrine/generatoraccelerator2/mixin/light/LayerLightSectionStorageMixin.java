@@ -139,7 +139,7 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
         try {
             // the level's light sections: one below and one above its block sections
             LevelHeightAccessor level = this.chunkSource.getLevel();
-            next = LightSnapshot.next(this.ga2$published, map.ga2$map(), this.changedSections, level.getMinSection() - 1, level.getSectionsCount() + 2);
+            next = LightSnapshot.next(this.ga2$published, map.ga2$map(), this.changedSections, level.getMinSectionY() - 1, level.getSectionsCount() + 2);
         } catch (RuntimeException e) {
             LightSnapshot.fail(e);
             this.ga2$published = null;

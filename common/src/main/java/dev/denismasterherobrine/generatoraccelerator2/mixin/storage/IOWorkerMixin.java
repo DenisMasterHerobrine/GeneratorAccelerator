@@ -1,6 +1,5 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.storage;
 
-import com.mojang.datafixers.util.Either;
 import com.mojang.logging.LogUtils;
 import dev.denismasterherobrine.generatoraccelerator2.storage.Ga2RegionStorage;
 import dev.denismasterherobrine.generatoraccelerator2.storage.ParallelRead;
@@ -8,16 +7,15 @@ import dev.denismasterherobrine.generatoraccelerator2.storage.Precompress;
 import dev.denismasterherobrine.generatoraccelerator2.storage.RegionScan;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.SequencedMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.visitors.CollectFields;
 import net.minecraft.nbt.visitors.FieldSelector;
-import net.minecraft.util.thread.ProcessorMailbox;
-import net.minecraft.util.thread.StrictQueue;
+import net.minecraft.util.thread.PriorityConsecutiveExecutor;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.IOWorker;
 import net.minecraft.world.level.chunk.storage.RegionFileStorage;
@@ -29,12 +27,12 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import javax.annotation.Nullable;
 
 /**
  * Runs the old-chunk scan of a region ({@code createOldDataForRegion}) on the IO thread in 16 tasks of 64 chunks
- * ({@link RegionScan}), so loads queued meanwhile still get their turn.
+ * ({@link RegionScan}), so loads queued meanwhile still get their turn and no pool worker waits on 1024 scans.
  * Blending requests this scan before generating near a region for the first time. Saved chunks are compressed on the
  * worker pool ({@link Precompress}), and loaded chunks are parsed on the worker pool ({@link ParallelRead}).
  */
@@ -46,12 +44,12 @@ public abstract class IOWorkerMixin {
     @Unique
     private static final Logger GA2$IO_LOGGER = LoggerFactory.getLogger(IOWorker.class);
 
-    @Shadow @Final private Map<ChunkPos, IOWorker.PendingStore> pendingWrites;
+    @Shadow @Final private SequencedMap<ChunkPos, IOWorker.PendingStore> pendingWrites;
     @Shadow @Final private RegionFileStorage storage;
-    @Shadow @Final private ProcessorMailbox<StrictQueue.IntRunnable> mailbox;
+    @Shadow private PriorityConsecutiveExecutor consecutiveExecutor;
 
     @Shadow
-    private <T> CompletableFuture<T> submitTask(Supplier<Either<T, Exception>> task) {
+    private <T> CompletableFuture<T> submitTask(Supplier<T> task) {
         throw new AssertionError();
     }
 
@@ -62,8 +60,8 @@ public abstract class IOWorkerMixin {
 
     @Inject(method = "createOldDataForRegion", at = @At("HEAD"), cancellable = true)
     private void ga2$scanRegionOnce(int regionX, int regionZ, CallbackInfoReturnable<CompletableFuture<BitSet>> cir) {
-        if (!RegionScan.enabled() || this.mailbox == null) {
-            // a mod that replaced the IO worker's mailbox (C2ME's chunk IO) answers through its own code
+        if (!RegionScan.enabled() || this.consecutiveExecutor == null) {
+            // a mod that replaced the IO worker's executor (C2ME's chunk IO) answers through its own code
             return;
         }
         // the region's chunks in vanilla's order, in 16 tasks of 64 so loads queued meanwhile still get their turn
@@ -76,7 +74,7 @@ public abstract class IOWorkerMixin {
                 for (ChunkPos pos : batch) {
                     this.ga2$scanOne(pos, bits);
                 }
-                return Either.left(bits);
+                return bits;
             }));
         }
         RegionScan.SCANS.increment();
@@ -112,7 +110,7 @@ public abstract class IOWorkerMixin {
      */
     @Inject(method = "loadAsync", at = @At("HEAD"), cancellable = true)
     private void ga2$parallelRead(ChunkPos pos, CallbackInfoReturnable<CompletableFuture<Optional<CompoundTag>>> cir) {
-        if (this.mailbox == null || !ParallelRead.appliesTo(this.storage.info().type()) || !ParallelRead.enabled()) {
+        if (this.consecutiveExecutor == null || !ParallelRead.appliesTo(this.storage.info().type()) || !ParallelRead.enabled()) {
             return;
         }
         CompletableFuture<Object> read = this.submitTask(() -> {
@@ -120,19 +118,21 @@ public abstract class IOWorkerMixin {
             if (pending != null) {
                 // PendingStore.copyData
                 CompoundTag data = pending.data;
-                return Either.left(Optional.ofNullable(data == null ? null : data.copy()));
+                return Optional.ofNullable(data == null ? null : data.copy());
             }
             try {
-                return Either.left(((Ga2RegionStorage) (Object) this.storage).ga2$readRaw(pos));
+                return ((Ga2RegionStorage) (Object) this.storage).ga2$readRaw(pos);
             } catch (Exception exception) {
                 GA2$IO_LOGGER.warn("Failed to read chunk {}", pos, exception);
-                return Either.right(exception);
+                return new ParallelRead.Failed(exception);
             }
         });
         CompletableFuture<Optional<CompoundTag>> out = new CompletableFuture<>();
         read.whenComplete((result, failure) -> {
             if (failure != null) {
                 out.completeExceptionally(failure);
+            } else if (result instanceof ParallelRead.Failed failed) {
+                out.completeExceptionally(failed.exception());
             } else if (result instanceof ParallelRead.Unparsed raw) {
                 ParallelRead.parseLater(raw, pos, out);
             } else {
@@ -144,10 +144,24 @@ public abstract class IOWorkerMixin {
         cir.setReturnValue(out);
     }
 
-    @Inject(method = "store", at = @At("HEAD"))
-    private void ga2$precompress(ChunkPos pos, @Nullable CompoundTag tag, CallbackInfoReturnable<CompletableFuture<Void>> cir) {
-        if (tag != null && this.mailbox != null && Precompress.enabled() && "chunk".equals(this.storage.info().type())) {
-            ((Ga2RegionStorage) (Object) this.storage).ga2$precompress().submit(pos, tag);
+    /**
+     * The saved chunk's tag goes to the worker pool for compression as soon as the IO thread has it. Vanilla's chunk map hands
+     * the IO worker a supplier that waits for the tag's encoding on the pool. The IO thread then writes the chunk in a later
+     * background task, by which time the pool has compressed it.
+     */
+    @ModifyVariable(method = "store(Lnet/minecraft/world/level/ChunkPos;Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;",
+        at = @At("HEAD"), argsOnly = true)
+    private Supplier<CompoundTag> ga2$precompress(Supplier<CompoundTag> supplier, ChunkPos pos) {
+        if (this.consecutiveExecutor == null || !Precompress.enabled() || !"chunk".equals(this.storage.info().type())) {
+            return supplier;
         }
+        Precompress precompress = ((Ga2RegionStorage) (Object) this.storage).ga2$precompress();
+        return () -> {
+            CompoundTag tag = supplier.get();
+            if (tag != null && Precompress.enabled()) {
+                precompress.submit(pos, tag);
+            }
+            return tag;
+        };
     }
 }

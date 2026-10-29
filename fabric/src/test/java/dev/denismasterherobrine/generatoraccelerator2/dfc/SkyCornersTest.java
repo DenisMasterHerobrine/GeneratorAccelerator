@@ -51,7 +51,7 @@ public class SkyCornersTest {
         NoiseGeneratorSettings settings = NoiseCellBoundsTest.withPerBlockNoise(overworld, noises);
         DimensionType dim = lookup.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD).value();
         var biomeSource = MultiNoiseBiomeSource.createFromPreset(Holder.direct(
-            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes.asLookup())));
+            new MultiNoiseBiomeSourceParameterList(MultiNoiseBiomeSourceParameterList.Preset.OVERWORLD, registries.biomes)));
         compared += compare(() -> new TerrainHarness.World(registries, Holder.direct(settings), biomeSource, noises, dim, 99L), "per-block noise");
 
         skipped = ChunkBinding.SKY_CORNERS_SKIPPED.sum() - skipped;

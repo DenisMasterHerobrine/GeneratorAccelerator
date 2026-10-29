@@ -16,11 +16,9 @@ public final class StorageConfig {
     public static final ConfigSpec.BooleanValue REGION_SCAN;
     public static final ConfigSpec.BooleanValue PRECOMPRESS;
     public static final ConfigSpec.BooleanValue SECTION_CODEC;
-    public static final ConfigSpec.BooleanValue SAVE_PREP;
     public static final ConfigSpec.IntValue SYNC_DELAY_MS;
     public static final ConfigSpec.IntValue COMPRESSION_LEVEL;
     public static final ConfigSpec.BooleanValue PARALLEL_READ;
-    public static final ConfigSpec.BooleanValue LOAD_PREP;
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();
@@ -35,9 +33,6 @@ public final class StorageConfig {
             "so the one IO thread per storage only writes. Needs fastRegionWrite.").define("precompress", true);
         SECTION_CODEC = b.comment("Build the block state and biome tags of saved sections directly (same tags) instead of through the generic codecs.")
             .define("sectionCodec", true);
-        SAVE_PREP = b.comment("Encode an unloading chunk's sections on the worker pool before the server thread saves it; the save takes each tag",
-            "when its section is unchanged since (same tags), so the server thread mostly assembles the chunk's tag. An unload waits",
-            "at most ten ticks for its sections. Needs fastPack and sectionCodec.").define("savePrep", true);
         COMPRESSION_LEVEL = b.comment("zlib level of saved chunks in deflate region files (the default format). The format stays vanilla's, so every",
             "Minecraft version and every world tool reads the chunks at any level, with or without GA2. 1 compresses about three times",
             "as fast as vanilla's 6 (1.7 to 2.6 ms of CPU per chunk at 6 in measured worlds) and the files come out about a fifth larger.",
@@ -51,9 +46,6 @@ public final class StorageConfig {
         b.push("loading");
         PARALLEL_READ = b.comment("Loading saved chunks: the region file's IO thread only reads a chunk's bytes, and the chunk is decompressed and",
             "parsed on the worker pool (same tag), so loads are not queued behind one thread. Chunk and entity storage.").define("parallelRead", true);
-        LOAD_PREP = b.comment("Loading saved chunks: decode the sections' block and biome palettes, build the sections (block counts) and read the",
-            "scheduled tick lists on the worker pool before the server thread reads the chunk; the server thread takes the results",
-            "(the same objects it would build) when the tags are unchanged.").define("loadPrep", true);
         b.pop();
         SPEC = b.build();
     }
@@ -98,14 +90,6 @@ public final class StorageConfig {
         }
     }
 
-    public static boolean savePrep() {
-        try {
-            return !SPEC.isLoaded() || SAVE_PREP.get();
-        } catch (RuntimeException e) {
-            return true;
-        }
-    }
-
     public static boolean sectionCodec() {
         try {
             return !SPEC.isLoaded() || SECTION_CODEC.get();
@@ -117,14 +101,6 @@ public final class StorageConfig {
     public static boolean parallelRead() {
         try {
             return !SPEC.isLoaded() || PARALLEL_READ.get();
-        } catch (RuntimeException e) {
-            return true;
-        }
-    }
-
-    public static boolean loadPrep() {
-        try {
-            return !SPEC.isLoaded() || LOAD_PREP.get();
         } catch (RuntimeException e) {
             return true;
         }

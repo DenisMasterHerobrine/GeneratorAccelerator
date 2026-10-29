@@ -12,15 +12,22 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.Confluen
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbevolutioncompanion.FtbEvolutionCompanionMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.magnumtorch.MagnumTorchMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.malisisswitches.MalisisSwitchesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.repurposedstructures.RepurposedStructuresMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spawn.SpawnMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spectrum.SpectrumMixins;
@@ -29,6 +36,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraB
 import dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.TwilightForestCoremods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.xycraft.XyCraftMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -70,11 +78,11 @@ public final class KnownMixins {
         all.addAll(RepurposedStructuresMixins.ENTRIES);
         all.addAll(LithostitchedMixins.ENTRIES);
         all.addAll(QuarkMixins.ENTRIES);
+        all.addAll(SodiumExtraMixins.ENTRIES);
         all.addAll(TwilightForestCoremods.ENTRIES);
         all.addAll(ModernFixMixins.ENTRIES);
         all.addAll(ConfluenceMixins.ENTRIES);
         all.addAll(EternalStarlightMixins.ENTRIES);
-        all.addAll(ChunkLoadMixins.ENTRIES);
         all.addAll(TectonicMixins.ENTRIES);
         all.addAll(OwoMixins.ENTRIES);
         all.addAll(YungsCaveBiomesMixins.ENTRIES);
@@ -93,6 +101,13 @@ public final class KnownMixins {
         all.addAll(TerraBlenderMixins.ENTRIES);
         all.addAll(AlexsCavesMixins.ENTRIES);
         all.addAll(BetterChunkLoadingMixins.ENTRIES);
+        all.addAll(FtbEvolutionCompanionMixins.ENTRIES);
+        all.addAll(LootrMixins.ENTRIES);
+        all.addAll(MagnumTorchMixins.ENTRIES);
+        all.addAll(MalisisSwitchesMixins.ENTRIES);
+        all.addAll(XyCraftMixins.ENTRIES);
+        all.addAll(GtceuMixins.ENTRIES);
+        all.addAll(FtbChunksMixins.ENTRIES);
         ENTRIES = List.copyOf(all);
     }
 

@@ -29,6 +29,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
+import net.minecraft.world.level.chunk.Strategy;
 import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -42,13 +43,13 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 @EnabledIfSystemProperty(named = "ga2.bench", matches = "true")
 public class SaveBench {
     private static final Codec<PalettedContainer<BlockState>> STATES =
-        PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
+        PalettedContainer.codecRW(BlockState.CODEC, Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY), Blocks.AIR.defaultBlockState());
 
     @Test
     void encodeSections() throws IOException {
         TerrainHarness.World world = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L);
-        Codec<PalettedContainerRO<Holder<Biome>>> biomes = PalettedContainer.codecRO(world.registries.biomes.asHolderIdMap(),
-            world.registries.biomes.holderByNameCodec(), PalettedContainer.Strategy.SECTION_BIOMES, world.registries.biomes.getHolderOrThrow(Biomes.PLAINS));
+        Codec<PalettedContainerRO<Holder<Biome>>> biomes = PalettedContainer.codecRO(world.registries.biomes.holderByNameCodec(),
+            Strategy.createForBiomes(world.registries.biomes.asHolderIdMap()), world.registries.biomes.getOrThrow(Biomes.PLAINS));
         Path region = Path.of(System.getProperty("ga2.bench.region", "../run/bench_bench-onstream512/region/r.-88.87.mca"));
         if (!Files.exists(region)) {
             region = Path.of(System.getProperty("ga2.bench.region", "run/bench_bench-onstream512/region/r.-88.87.mca"));
@@ -57,13 +58,13 @@ public class SaveBench {
         List<PalettedContainer<BlockState>> states = new ArrayList<>();
         List<PalettedContainerRO<Holder<Biome>>> biomeList = new ArrayList<>();
         for (CompoundTag chunk : chunks) {
-            for (Tag t : chunk.getList("sections", Tag.TAG_COMPOUND)) {
+            for (Tag t : chunk.getListOrEmpty("sections")) {
                 CompoundTag section = (CompoundTag) t;
-                if (section.contains("block_states", Tag.TAG_COMPOUND)) {
-                    states.add(STATES.parse(NbtOps.INSTANCE, section.getCompound("block_states")).getOrThrow());
+                if (section.getCompound("block_states").isPresent()) {
+                    states.add(STATES.parse(NbtOps.INSTANCE, section.getCompoundOrEmpty("block_states")).getOrThrow());
                 }
-                if (section.contains("biomes", Tag.TAG_COMPOUND)) {
-                    biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompound("biomes")).getOrThrow());
+                if (section.getCompound("biomes").isPresent()) {
+                    biomeList.add(biomes.parse(NbtOps.INSTANCE, section.getCompoundOrEmpty("biomes")).getOrThrow());
                 }
             }
         }
@@ -141,7 +142,7 @@ public class SaveBench {
                 byte[] data = new byte[length - 1];
                 raf.readFully(data);
                 CompoundTag tag = NbtIo.read(new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data))), NbtAccounter.unlimitedHeap());
-                if ("minecraft:full".equals(tag.getString("Status"))) {
+                if ("minecraft:full".equals(tag.getStringOr("Status", ""))) {
                     out.add(tag);
                 }
             }

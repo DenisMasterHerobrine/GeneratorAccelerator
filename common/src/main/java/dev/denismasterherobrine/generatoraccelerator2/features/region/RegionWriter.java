@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesConfig;
 import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -19,10 +20,10 @@ import net.minecraft.world.level.chunk.status.ChunkType;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
- * Transcription of {@code WorldGenRegion.setBlock} (flags are ignored by the region, so there is one
- * write path) and of {@code ProtoChunk.setBlockState} for a plain proto chunk below the light stages.
- * Same lock, same all-air shortcut, same heightmap priming moment and update order, same POI, block
- * entity and post-processing side effects. Any other chunk class or status delegates to the chunk.
+ * Transcription of {@code WorldGenRegion.setBlock} and of {@code ProtoChunk.setBlockState} for a plain proto chunk below the
+ * light stages. Same lock, same all-air shortcut, same heightmap priming moment and update order, same POI, block entity and
+ * post-processing side effects. The region reads one flag: {@code UPDATE_KNOWN_SHAPE} leaves out the post-processing mark. Any
+ * other chunk class or status delegates to the chunk, with the flags.
  */
 public final class RegionWriter {
     private static final HookTargets.Hook UNLOCKED =
@@ -30,15 +31,15 @@ public final class RegionWriter {
 
     private RegionWriter() {}
 
-    /** Exact {@code level.setBlock(pos, state, anyFlags)} on a generation region. */
-    public static boolean setBlock(Ga2Region region, BlockPos pos, BlockState state) {
+    /** Exact {@code level.setBlock(pos, state, flags)} on a generation region. */
+    public static boolean setBlock(Ga2Region region, BlockPos pos, BlockState state, @Block.UpdateFlags int flags) {
         if (!region.ga2$ensureCanWrite(pos)) {
             return false;
         }
         int cx = pos.getX() >> 4;
         int cz = pos.getZ() >> 4;
         ChunkAccess chunk = region.ga2$chunk(cx, cz);
-        BlockState old = setBlockState(region, chunk, cx, cz, pos, state);
+        BlockState old = setBlockState(region, chunk, cx, cz, pos, state, flags);
         if (old != null) {
             region.ga2$onBlockStateChange(pos, old, state);
         }
@@ -61,26 +62,30 @@ public final class RegionWriter {
         } else if (old != null && old.hasBlockEntity()) {
             chunk.removeBlockEntity(pos);
         }
-        if (state.hasPostProcess(region.ga2$level(), pos)) {
-            chunk.markPosForPostprocessing(pos);
+        if ((flags & Block.UPDATE_KNOWN_SHAPE) == 0) {
+            BlockPos post = state.getPostProcessPos(region.ga2$level(), pos);
+            if (post != null) {
+                // the state may name another block. Vanilla marks it in its own chunk.
+                (post == pos ? chunk : region.ga2$level().getChunk(post)).markPosForPostprocessing(post);
+            }
         }
         return true;
     }
 
-    /** Exact {@code chunk.setBlockState(pos, state, false)}. */
-    public static BlockState setBlockState(Ga2Region region, ChunkAccess chunk, int cx, int cz, BlockPos pos, BlockState state) {
+    /** Exact {@code chunk.setBlockState(pos, state, flags)}. A plain proto chunk ignores the flags. */
+    public static BlockState setBlockState(Ga2Region region, ChunkAccess chunk, int cx, int cz, BlockPos pos, BlockState state, @Block.UpdateFlags int flags) {
         if (chunk.getClass() != ProtoChunk.class || !FeaturesConfig.fastWrites()) {
             if (FeatureStats.DETAILED) {
                 FeatureStats.WRITES_DELEGATED.increment();
             }
-            return chunk.setBlockState(pos, state, false);
+            return chunk.setBlockState(pos, state, flags);
         }
         ChunkStatus status = chunk.getPersistedStatus();
         if (status.isOrAfter(ChunkStatus.INITIALIZE_LIGHT) || !status.heightmapsAfter().equals(ChunkStatus.FINAL_HEIGHTMAPS)) {
             if (FeatureStats.DETAILED) {
                 FeatureStats.WRITES_DELEGATED.increment();
             }
-            return chunk.setBlockState(pos, state, false);
+            return chunk.setBlockState(pos, state, flags);
         }
         int y = pos.getY();
         if (y < region.ga2$minY() || y >= region.ga2$maxY()) {

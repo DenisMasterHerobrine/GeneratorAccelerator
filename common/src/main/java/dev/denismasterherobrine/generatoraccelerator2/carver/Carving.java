@@ -274,7 +274,7 @@ final class Carving {
         if (topRule == null) {
             RandomState randomState = context.randomState();
             topContext = new SurfaceRules.Context(randomState.surfaceSystem(), randomState, chunk, access.ga2$noiseChunk(),
-                biomes, context.registryAccess().registryOrThrow(Registries.BIOME), context);
+                biomes, context.registryAccess().lookupOrThrow(Registries.BIOME), context);
             topRule = access.ga2$surfaceRule().apply(topContext);
         }
         TOP_REUSED.increment();

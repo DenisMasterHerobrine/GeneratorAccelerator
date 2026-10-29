@@ -10,7 +10,6 @@ import net.minecraft.core.QuartPos;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -65,7 +64,7 @@ public class CarverBench {
                             TerrainHarness.vanillaCarvers(w, chunk, lookup);
                         } else {
                             CarverRunner.apply(w.generator, lookup::get, w.registries.access, w.seed, w.randomState, new BiomeManager((x, y, z) -> null, w.zoomSeed),
-                                chunk, GenerationStep.Carving.AIR);
+                                chunk);
                         }
                     }
                     long dt = (System.nanoTime() - t0) / sites.size();

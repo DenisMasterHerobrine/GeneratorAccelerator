@@ -41,8 +41,8 @@ public class PointProgramTest {
             set.routerRoots().forEach((k, v) -> { names.add(k); roots.add(v); });
             set.samplerRoots().forEach((k, v) -> { names.add(k); roots.add(v); });
             long t0 = System.nanoTime();
-            PointProgram program = ProgramCompiler.compilePoint(preset.location().getPath(), roots, set.specs(), set.blendedSpecs());
-            System.out.println("compiled point program for " + preset.location() + " in " + (System.nanoTime() - t0) / 1_000_000L + " ms, scratch=" + program.scratchSize);
+            PointProgram program = ProgramCompiler.compilePoint(preset.identifier().getPath(), roots, set.specs(), set.blendedSpecs());
+            System.out.println("compiled point program for " + preset.identifier() + " in " + (System.nanoTime() - t0) / 1_000_000L + " ms, scratch=" + program.scratchSize);
             double[] scratch = new double[Math.max(1, program.scratchSize)];
             double[] out = new double[roots.size()];
             for (int i = 0; i < POINTS; i++) {
@@ -58,12 +58,41 @@ public class PointProgramTest {
                 for (int r = 0; r < roots.size(); r++) {
                     double expected = set.interpreter().eval(roots.get(r), ctx);
                     if (Double.doubleToRawLongBits(expected) != Double.doubleToRawLongBits(out[r])) {
-                        throw new AssertionError(preset.location() + " root " + names.get(r) + " at (" + x + "," + y + "," + z + "): interpreter=" + expected + " generated=" + out[r]);
+                        throw new AssertionError(preset.identifier() + " root " + names.get(r) + " at (" + x + "," + y + "," + z + "): interpreter=" + expected + " generated=" + out[r]);
                     }
                     comparisons++;
                 }
             }
         }
         System.out.println("DFC codegen: " + comparisons + " comparisons bit-identical");
+    }
+
+    /**
+     * One root holding all of the overworld router's functions, so vanilla's offset, factor and jaggedness splines land in the same
+     * method, as in a datapack router that adds them up (TerraFirmaGreg's moon over Ad Astra's functions). The splines' nested points
+     * share a few coordinates. The program must stay within the JIT's method size and still give the interpreter's values.
+     */
+    @Test
+    void routerSumStaysCompilable() {
+        HolderLookup.Provider lookup = VanillaRegistries.createLookup();
+        NoiseGeneratorSettings settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD).value();
+        RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 987654321L);
+        ProgramSet set = ((Ga2RandomState) (Object) state).ga2$programs();
+        Node sum = null;
+        for (Node root : set.routerRoots().values()) {
+            sum = sum == null ? root : new Node.Ap2(Node.Ap2Type.ADD, sum, root, sum.min() + root.min(), sum.max() + root.max());
+        }
+        PointProgram program = ProgramCompiler.compilePoint("router-sum", List.of(sum), set.specs(), set.blendedSpecs());
+        double[] scratch = new double[Math.max(1, program.scratchSize)];
+        double[] out = new double[1];
+        Random rng = new Random(5);
+        for (int i = 0; i < 500; i++) {
+            DensityFunction.SinglePointContext ctx = new DensityFunction.SinglePointContext(rng.nextInt(20000) - 10000, rng.nextInt(400) - 64, rng.nextInt(20000) - 10000);
+            program.computeAll(ctx, scratch, out);
+            double expected = set.interpreter().eval(sum, ctx);
+            if (Double.doubleToRawLongBits(expected) != Double.doubleToRawLongBits(out[0])) {
+                throw new AssertionError("router sum at " + ctx + ": interpreter=" + expected + " generated=" + out[0]);
+            }
+        }
     }
 }

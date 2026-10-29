@@ -13,7 +13,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -34,7 +33,7 @@ public final class FeatureCompare {
     public static List<String> compare(ProtoChunk expected, ProtoChunk actual, int limit) {
         List<String> out = new ArrayList<>();
         String where = "chunk " + expected.getPos();
-        int minY = expected.getMinBuildHeight();
+        int minY = expected.getMinY();
         for (int s = 0; s < expected.getSections().length && out.size() < limit; s++) {
             LevelChunkSection a = expected.getSection(s);
             LevelChunkSection b = actual.getSection(s);
@@ -69,14 +68,12 @@ public final class FeatureCompare {
                 }
             }
         }
-        for (GenerationStep.Carving step : GenerationStep.Carving.values()) {
-            CarvingMask ma = expected.getCarvingMask(step);
-            CarvingMask mb = actual.getCarvingMask(step);
-            if ((ma == null) != (mb == null)) {
-                out.add(where + " carving mask " + step + " present: expected " + (ma != null) + " got " + (mb != null));
-            } else if (ma != null && !Arrays.equals(ma.toArray(), mb.toArray())) {
-                out.add(where + " carving mask " + step + " differs");
-            }
+        CarvingMask ma = expected.getCarvingMask();
+        CarvingMask mb = actual.getCarvingMask();
+        if ((ma == null) != (mb == null)) {
+            out.add(where + " carving mask present: expected " + (ma != null) + " got " + (mb != null));
+        } else if (ma != null && !Arrays.equals(ma.toArray(), mb.toArray())) {
+            out.add(where + " carving mask differs");
         }
         for (Heightmap.Types type : Heightmap.Types.values()) {
             boolean ha = expected.hasPrimedHeightmap(type);
@@ -115,7 +112,7 @@ public final class FeatureCompare {
         return out;
     }
 
-    private static final String[] COUNTER_FIELDS = { "nonEmptyBlockCount", "tickingBlockCount", "tickingFluidCount" };
+    private static final String[] COUNTER_FIELDS = { "nonEmptyBlockCount", "tickingBlockCount", "fluidCount", "tickingFluidCount" };
 
     /** The section's exact block counters (private fields, read reflectively). Empty when unavailable. */
     private static String counters(LevelChunkSection section) {

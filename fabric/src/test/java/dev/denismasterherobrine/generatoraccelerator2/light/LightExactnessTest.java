@@ -31,6 +31,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
@@ -164,14 +165,14 @@ public class LightExactnessTest {
                 TerrainHarness.Site site = TerrainHarness.site(preset, seed, x0 + dx, z0 + dz);
                 ProtoChunk chunk = site.center();
                 TerrainHarness.vanillaSurface(site, chunk);
-                int minY = chunk.getMinBuildHeight();
+                int minY = chunk.getMinY();
                 int height = chunk.getHeight();
                 BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
                 for (int k = 0; k < 160; k++) {
                     pos.set(chunk.getPos().getMinBlockX() + random.nextInt(16), minY + random.nextInt(height), chunk.getPos().getMinBlockZ() + random.nextInt(16));
                     BlockState state = k % 3 == 0 ? sources[random.nextInt(sources.length)] : shapes[random.nextInt(shapes.length)];
                     if (k % 3 != 0 || chunk.getBlockState(pos).isAir()) {
-                        chunk.setBlockState(pos, state, false);
+                        chunk.setBlockState(pos, state, Block.UPDATE_ALL);
                     }
                 }
                 // a floating canopy so sky light has shade to fill
@@ -180,7 +181,7 @@ public class LightExactnessTest {
                     for (int x = 2; x < 14; x++) {
                         for (int z = 3; z < 12; z++) {
                             pos.set(chunk.getPos().getMinBlockX() + x, top, chunk.getPos().getMinBlockZ() + z);
-                            chunk.setBlockState(pos, (x + z) % 5 == 0 ? Blocks.GLASS.defaultBlockState() : Blocks.OAK_LEAVES.defaultBlockState(), false);
+                            chunk.setBlockState(pos, (x + z) % 5 == 0 ? Blocks.GLASS.defaultBlockState() : Blocks.OAK_LEAVES.defaultBlockState(), Block.UPDATE_ALL);
                         }
                     }
                 }
@@ -227,7 +228,7 @@ public class LightExactnessTest {
         ProtoChunk[] chunks = HarnessWorld.clone(world.registries, base, heights);
         Map<Long, ProtoChunk> byPos = new HashMap<>();
         for (ProtoChunk c : chunks) {
-            byPos.put(c.getPos().toLong(), c);
+            byPos.put(c.getPos().pack(), c);
         }
         BlockGetter level = new BlockGetter() {
             @Nullable
@@ -238,7 +239,7 @@ public class LightExactnessTest {
 
             @Override
             public BlockState getBlockState(BlockPos pos) {
-                ProtoChunk c = byPos.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4));
+                ProtoChunk c = byPos.get(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4));
                 return c == null ? Blocks.AIR.defaultBlockState() : c.getBlockState(pos);
             }
 
@@ -253,15 +254,15 @@ public class LightExactnessTest {
             }
 
             @Override
-            public int getMinBuildHeight() {
-                return heights.getMinBuildHeight();
+            public int getMinY() {
+                return heights.getMinY();
             }
         };
         LightChunkGetter getter = new LightChunkGetter() {
             @Nullable
             @Override
             public LightChunk getChunkForLighting(int x, int z) {
-                return byPos.get(ChunkPos.asLong(x, z));
+                return byPos.get(ChunkPos.pack(x, z));
             }
 
             @Override
@@ -326,26 +327,26 @@ public class LightExactnessTest {
         int minX = chunks[0].getPos().getMinBlockX();
         int minZ = chunks[0].getPos().getMinBlockZ();
         for (int k = 0; changes && k < 1500; k++) {
-            pos.set(minX + random.nextInt(16 * side), heights.getMinBuildHeight() + random.nextInt(heights.getHeight()), minZ + random.nextInt(16 * side));
-            byPos.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4)).setBlockState(pos, palette[random.nextInt(palette.length)], false);
+            pos.set(minX + random.nextInt(16 * side), heights.getMinY() + random.nextInt(heights.getHeight()), minZ + random.nextInt(16 * side));
+            byPos.get(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4)).setBlockState(pos, palette[random.nextInt(palette.length)], Block.UPDATE_ALL);
             if (k % 40 == 39) {
                 update(engine, afterBatch);
             }
         }
         ProtoChunk middle = chunks[side / 2 + side / 2 * side];
-        int emptied = middle.getMinBuildHeight() + 16 * 3;
+        int emptied = middle.getMinY() + 16 * 3;
         for (int y = 0; y < 16; y++) {
             for (int z = 0; z < 16; z++) {
                 for (int x = 0; x < 16; x++) {
-                    middle.setBlockState(pos.set(middle.getPos().getMinBlockX() + x, emptied + y, middle.getPos().getMinBlockZ() + z), Blocks.AIR.defaultBlockState(), false);
+                    middle.setBlockState(pos.set(middle.getPos().getMinBlockX() + x, emptied + y, middle.getPos().getMinBlockZ() + z), Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
                 }
             }
         }
         update(engine, afterBatch);
-        int filled = middle.getMaxBuildHeight() - 24;
+        int filled = middle.getMaxY() + 1 - 24;
         for (int z = 0; z < 16; z++) {
             for (int x = 0; x < 16; x++) {
-                middle.setBlockState(pos.set(middle.getPos().getMinBlockX() + x, filled, middle.getPos().getMinBlockZ() + z), Blocks.STONE.defaultBlockState(), false);
+                middle.setBlockState(pos.set(middle.getPos().getMinBlockX() + x, filled, middle.getPos().getMinBlockZ() + z), Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL);
             }
         }
         update(engine, afterBatch);
@@ -354,8 +355,8 @@ public class LightExactnessTest {
         }
 
         out.updateNanos = System.nanoTime() - t1;
-        int cx0 = chunks[0].getPos().x;
-        int cz0 = chunks[0].getPos().z;
+        int cx0 = chunks[0].getPos().x();
+        int cz0 = chunks[0].getPos().z();
         for (int cz = cz0 - 1; cz <= cz0 + side; cz++) {
             for (int cx = cx0 - 1; cx <= cx0 + side; cx++) {
                 for (int sy = engine.getMinLightSection(); sy < engine.getMaxLightSection(); sy++) {
@@ -371,7 +372,7 @@ public class LightExactnessTest {
         out.brightness = new int[4096];
         Random sample = new Random(3);
         for (int i = 0; i < out.brightness.length; i++) {
-            pos.set(minX - 8 + sample.nextInt(16 * side + 16), heights.getMinBuildHeight() - 8 + sample.nextInt(heights.getHeight() + 16), minZ - 8 + sample.nextInt(16 * side + 16));
+            pos.set(minX - 8 + sample.nextInt(16 * side + 16), heights.getMinY() - 8 + sample.nextInt(heights.getHeight() + 16), minZ - 8 + sample.nextInt(16 * side + 16));
             out.brightness[i] = engine.getRawBrightness(pos, 0) * 100 + engine.getLayerListener(LightLayer.BLOCK).getLightValue(pos);
         }
         return out;

@@ -71,7 +71,7 @@ public final class StepVerify {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int minX = actual.getPos().getMinBlockX();
         int minZ = actual.getPos().getMinBlockZ();
-        for (int y = actual.getMaxBuildHeight() - 1; y >= actual.getMinBuildHeight(); y--) {
+        for (int y = actual.getMaxY(); y >= actual.getMinY(); y--) {
             for (int lx = 0; lx < 16; lx++) {
                 for (int lz = 0; lz < 16; lz++) {
                     pos.set(minX + lx, y, minZ + lz);
@@ -80,7 +80,7 @@ public final class StepVerify {
                         StringBuilder sb = new StringBuilder("x=" + (minX + lx) + " z=" + (minZ + lz) + " world surface before "
                             + (before == null ? "?" : before.getHeight(ws, lx, lz)) + ", vanilla " + expected.getHeight(ws, lx, lz) + ", fast "
                             + actual.getHeight(ws, lx, lz) + "; status " + (before == null ? "?" : before.getPersistedStatus()) + " (y: before / vanilla / fast)");
-                        for (int yy = Math.min(actual.getMaxBuildHeight() - 1, y + 6); yy >= Math.max(actual.getMinBuildHeight(), y - 40); yy--) {
+                        for (int yy = Math.min(actual.getMaxY(), y + 6); yy >= Math.max(actual.getMinY(), y - 40); yy--) {
                             pos.setY(yy);
                             sb.append("\n  ").append(yy).append(": ").append(before == null ? "?" : name(before.getBlockState(pos))).append(" / ")
                                 .append(name(expected.getBlockState(pos))).append(" / ").append(name(actual.getBlockState(pos)));

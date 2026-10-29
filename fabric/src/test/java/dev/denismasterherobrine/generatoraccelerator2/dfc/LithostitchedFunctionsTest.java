@@ -196,7 +196,7 @@ public class LithostitchedFunctionsTest {
         NoiseGeneratorSettings s = NoiseGeneratorSettings.DIRECT_CODEC.parse(ops, json).getOrThrow(IllegalStateException::new);
         NoiseRouter r = s.noiseRouter();
         NoiseRouter changed = new NoiseRouter(r.barrierNoise(), r.fluidLevelFloodednessNoise(), r.fluidLevelSpreadNoise(), r.lavaNoise(), r.temperature(),
-            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.initialDensityWithoutJaggedness(), change.apply(r.finalDensity()), r.veinToggle(),
+            r.vegetation(), r.continents(), r.erosion(), r.depth(), r.ridges(), r.preliminarySurfaceLevel(), change.apply(r.finalDensity()), r.veinToggle(),
             r.veinRidged(), r.veinGap());
         return new NoiseGeneratorSettings(s.noiseSettings(), s.defaultBlock(), s.defaultFluid(), changed, s.surfaceRule(), s.spawnTarget(), s.seaLevel(),
             s.disableMobGeneration(), s.aquifersEnabled(), s.oreVeinsEnabled(), s.useLegacyRandomSource());

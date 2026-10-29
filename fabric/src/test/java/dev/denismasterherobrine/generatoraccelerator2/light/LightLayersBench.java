@@ -15,9 +15,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntSupplier;
+import net.minecraft.server.level.ChunkTaskDispatcher;
 import net.minecraft.server.level.ThreadedLevelLightEngine;
-import net.minecraft.util.thread.ProcessorHandle;
-import net.minecraft.util.thread.ProcessorMailbox;
+import net.minecraft.util.thread.ConsecutiveExecutor;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import org.junit.jupiter.api.Assumptions;
@@ -82,8 +83,14 @@ public class LightLayersBench {
         ExecutorService workers = Executors.newFixedThreadPool(4);
         ThreadMXBean threads = ManagementFactory.getThreadMXBean();
         try {
+            ConsecutiveExecutor lightTasks = new ConsecutiveExecutor(lightThread, "light");
+            // drops what reaches the chunk priority queue, as the direct path sends nothing there
+            ChunkTaskDispatcher sorter = new ChunkTaskDispatcher(lightTasks, lightThread) {
+                @Override
+                public void submit(Runnable task, long pos, IntSupplier level) {}
+            };
             ThreadedLevelLightEngine engine = new ThreadedLevelLightEngine(DirectLightTasksTest.getter(chunks, world.heights), DirectLightTasksTest.chunkMap(),
-                true, ProcessorMailbox.create(lightThread, "light"), ProcessorHandle.of("sorter", m -> {}));
+                true, lightTasks, sorter);
             List<ProtoChunk> order = new ArrayList<>(List.of(chunks));
             Collections.shuffle(order, new Random(round));
             List<CompletableFuture<?>> steps = new ArrayList<>();

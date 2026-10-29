@@ -6,7 +6,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.LongAdder;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.world.level.ChunkPos;
@@ -53,6 +53,9 @@ public final class ParallelRead {
 
     /** A chunk's bytes, read by the IO thread, still to be decompressed and parsed. */
     public record Unparsed(DataInputStream stream) {}
+
+    /** A read that failed on the IO thread. The load fails with the same exception as vanilla's. */
+    public record Failed(Exception exception) {}
 
     /** Decompresses and parses {@code raw} on the worker pool and completes {@code out} with the tag or vanilla's failure. */
     public static void parseLater(Unparsed raw, ChunkPos pos, CompletableFuture<Optional<CompoundTag>> out) {

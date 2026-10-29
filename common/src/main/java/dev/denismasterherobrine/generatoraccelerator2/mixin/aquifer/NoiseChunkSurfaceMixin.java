@@ -14,6 +14,7 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -31,13 +32,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(value = NoiseChunk.class, priority = 5000)
 public abstract class NoiseChunkSurfaceMixin {
-    @Shadow @Final private NoiseSettings noiseSettings;
-    @Shadow @Final private int cellHeight;
 
     @Unique
     private SurfaceLevelCache ga2$surfaceLevels;
 
-    @Shadow @Final private Long2IntMap preliminarySurfaceLevel;
+    @Shadow @Final private Long2IntMap preliminarySurfaceLevelCache;
 
     @Shadow
     private int computePreliminarySurfaceLevel(long column) {
@@ -47,8 +46,8 @@ public abstract class NoiseChunkSurfaceMixin {
     /**
      * Vanilla's {@code preliminarySurfaceLevel} without the method reference that vanilla's {@code computeIfAbsent} allocates on
      * every call. The aquifer calls this method for each fluid status it computes. Same memo, looked up once. On a miss, the same
-     * computation runs and its result is stored the same way. The {@code getOrDefault} sentinel is never a real level, because
-     * {@code computePreliminarySurfaceLevel} returns a y or {@code MAX_VALUE}. Copied over vanilla's body when no other mod
+     * computation runs and its result is stored the same way. The {@code getOrDefault} sentinel is never a real level: a
+     * {@code find_top_surface} returns a y between its bounds. Copied over vanilla's body when no other mod
      * changes that body ({@code compat.LateOverwrites}).
      */
     @Unique
@@ -56,7 +55,7 @@ public abstract class NoiseChunkSurfaceMixin {
         int i = QuartPos.toBlock(QuartPos.fromBlock(x));
         int j = QuartPos.toBlock(QuartPos.fromBlock(z));
         long column = ColumnPos.asLong(i, j);
-        Long2IntMap memo = this.preliminarySurfaceLevel;
+        Long2IntMap memo = this.preliminarySurfaceLevelCache;
         int level = memo.getOrDefault(column, Integer.MIN_VALUE);
         if (level == Integer.MIN_VALUE) {
             level = this.computePreliminarySurfaceLevel(column);
@@ -65,11 +64,28 @@ public abstract class NoiseChunkSurfaceMixin {
         return level;
     }
 
-    @Inject(method = "<init>", at = @At("TAIL"))
+    @Unique
+    private boolean ga2$surfaceLevelsSet;
+
+    /** Before the constructor makes the aquifer, which reads the level of every column it covers (26.1's {@code skipSamplingAboveY}). */
+    @Inject(method = "<init>", at = @At(value = "FIELD", opcode = Opcodes.PUTFIELD, shift = At.Shift.AFTER,
+        target = "Lnet/minecraft/world/level/levelgen/NoiseChunk;preliminarySurfaceLevel:Lnet/minecraft/world/level/levelgen/DensityFunction;"),
+        require = 0)
     private void ga2$surfaceLevels(int cellCountXZ, RandomState randomState, int firstBlockX, int firstBlockZ, NoiseSettings noiseSettings,
                                    DensityFunctions.BeardifierOrMarker beardifier, NoiseGeneratorSettings settings, Aquifer.FluidPicker fluidPicker,
                                    Blender blender, CallbackInfo ci) {
         this.ga2$surfaceLevels = SurfaceLevelCache.forChunk(randomState, noiseSettings, blender);
+        this.ga2$surfaceLevelsSet = true;
+    }
+
+    /** When another mod's change to the constructor hid the field write above. */
+    @Inject(method = "<init>", at = @At("TAIL"))
+    private void ga2$surfaceLevelsLate(int cellCountXZ, RandomState randomState, int firstBlockX, int firstBlockZ, NoiseSettings noiseSettings,
+                                       DensityFunctions.BeardifierOrMarker beardifier, NoiseGeneratorSettings settings, Aquifer.FluidPicker fluidPicker,
+                                       Blender blender, CallbackInfo ci) {
+        if (!this.ga2$surfaceLevelsSet) {
+            this.ga2$surfaceLevels = SurfaceLevelCache.forChunk(randomState, noiseSettings, blender);
+        }
     }
 
     @Inject(method = "computePreliminarySurfaceLevel", at = @At("HEAD"), cancellable = true)
@@ -86,8 +102,7 @@ public abstract class NoiseChunkSurfaceMixin {
         SurfaceLevels program = (Object) this instanceof Ga2NoiseChunk f
             ? f.ga2$levelProgram() : null;
         if (program != null && DfcHooks.enabled()) {
-            int level = program.level(ColumnPos.getX(column), ColumnPos.getZ(column),
-                this.noiseSettings.minY(), this.noiseSettings.height(), this.cellHeight);
+            int level = program.level(ColumnPos.getX(column), ColumnPos.getZ(column));
             if (cache != null) {
                 cache.put(column, level);
             }

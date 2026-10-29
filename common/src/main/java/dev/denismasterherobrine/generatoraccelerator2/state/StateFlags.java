@@ -2,17 +2,18 @@ package dev.denismasterherobrine.generatoraccelerator2.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 
 /**
  * What a section write ({@code LevelChunkSection.setBlockState}) counts about a block state: whether the state is non-empty
- * (NeoForge's {@code isEmpty}), randomly ticking, and holds a fluid. Vanilla queries each flag through the state, its block and
- * its fluid state on every write. The flags are fixed per state, so each state computes them once
- * ({@code BlockStateFlagsMixin}).
+ * (NeoForge's {@code isEmpty}), randomly ticking, holds a fluid, and whether that fluid ticks randomly. Vanilla queries each
+ * flag through the state, its block and its fluid state on every write. The flags are fixed per state, so each state computes
+ * them once ({@code BlockStateFlagsMixin}).
  */
 public final class StateFlags {
     private StateFlags() {}
 
-    public static final int KNOWN = 1, NON_EMPTY = 2, TICKING = 4, FLUID = 8;
+    public static final int KNOWN = 1, NON_EMPTY = 2, TICKING = 4, FLUID = 8, FLUID_TICKING = 16;
 
     /** Implemented by every block state. */
     public interface Holder {
@@ -39,8 +40,12 @@ public final class StateFlags {
         if (state.isRandomlyTicking()) {
             f |= TICKING;
         }
-        if (!state.getFluidState().isEmpty()) {
+        FluidState fluid = state.getFluidState();
+        if (!fluid.isEmpty()) {
             f |= FLUID;
+            if (fluid.isRandomlyTicking()) {
+                f |= FLUID_TICKING;
+            }
         }
         h.ga2$setFlags((byte) f);
         return f;

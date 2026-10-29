@@ -12,7 +12,6 @@ import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.levelgen.GenerationStep;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -72,21 +71,21 @@ class CarverExactnessTest {
                 ProtoChunk actual = afterSurface(site);
                 if (additionalMask) {
                     CarvingMask.Mask extra = (x, y, z) -> ((x * 7 + y * 3 + z) & 7) == 0;
-                    expected.getOrCreateCarvingMask(GenerationStep.Carving.AIR).setAdditionalMask(extra);
-                    actual.getOrCreateCarvingMask(GenerationStep.Carving.AIR).setAdditionalMask(extra);
+                    expected.getOrCreateCarvingMask().setAdditionalMask(extra);
+                    actual.getOrCreateCarvingMask().setAdditionalMask(extra);
                 }
                 TerrainHarness.vanillaCarvers(w, expected, TerrainHarness.carverNeighbourhood(w, expected));
                 TerrainHarness.ChunkLookup lookup = TerrainHarness.carverNeighbourhood(w, actual);
                 long before = CarverRunner.CHUNKS_FAST.sum();
                 boolean ran = CarverRunner.apply(w.generator, lookup::get, w.registries.access, w.seed, w.randomState,
-                    new BiomeManager((x, y, z) -> { throw new IllegalStateException("level biome source used"); }, w.zoomSeed), actual, GenerationStep.Carving.AIR);
+                    new BiomeManager((x, y, z) -> { throw new IllegalStateException("level biome source used"); }, w.zoomSeed), actual);
                 assertTrue(ran, "GA2 carver runner declined " + preset + " " + at[0] + "," + at[1]);
                 assertEquals(before + 1, CarverRunner.CHUNKS_FAST.sum());
                 List<String> diff = FeatureCompare.compare(expected, actual, 12);
                 if (!diff.isEmpty()) {
                     failures.add(preset + " seed " + seed + " pass " + pass + " chunk " + at[0] + "," + at[1] + ": " + String.join("\n    ", diff));
                 }
-                if (expected.getCarvingMask(GenerationStep.Carving.AIR).stream(expected.getPos()).findAny().isPresent()) {
+                if (expected.getCarvingMask().stream(expected.getPos()).findAny().isPresent()) {
                     carved++;
                 }
             }

@@ -355,7 +355,7 @@ public final class SurfaceProgram {
             for (Map.Entry<String, SurfaceRules.RuleSource> e : parts.sources().entrySet()) {
                 String namespace = e.getKey();
                 String key = NamespacedRules.CLASS_NAME + ":" + namespace;
-                Predicate<ResourceKey<Biome>> inNamespace = k -> k.location().getNamespace().equals(namespace);
+                Predicate<ResourceKey<Biome>> inNamespace = k -> k.identifier().getNamespace().equals(namespace);
                 int slot = slot(biomeSlots, key, () -> biomeTests.add(h -> h.is(inNamespace)), biomeTests);
                 Ir.Cond cond = new Ir.Biome(id(key), slot);
                 rules.add(new Ir.Test(cond, rule(e.getValue())));

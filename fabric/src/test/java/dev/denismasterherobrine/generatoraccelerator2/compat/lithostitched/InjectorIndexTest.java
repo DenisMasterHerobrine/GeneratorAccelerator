@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 public class InjectorIndexTest {
     @Test
     void subsetWalkFindsTheSameReplacement() {
-        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.holders().toList();
+        List<Holder.Reference<Biome>> biomes = HarnessWorld.registries().biomes.listElements().toList();
         Random r = new Random(11);
         for (int round = 0; round < 20; round++) {
             List<ReplacePartially> injectors = new ArrayList<>();
@@ -64,7 +64,7 @@ public class InjectorIndexTest {
     @Test
     void otherInjectorTypesAreWalkedWhole() {
         List<Object> list = List.of(new Object(), new Object(), new Object(), new Object(), new Object());
-        Holder<Biome> biome = HarnessWorld.registries().biomes.holders().findFirst().orElseThrow();
+        Holder<Biome> biome = HarnessWorld.registries().biomes.listElements().findFirst().orElseThrow();
         LithostitchedInjectors.noteBiome(biome);
         assertSame(list, LithostitchedInjectors.candidates(new Object(), list));
         assertSame(list, LithostitchedInjectors.candidates(ReplacePartially.CODEC, list));

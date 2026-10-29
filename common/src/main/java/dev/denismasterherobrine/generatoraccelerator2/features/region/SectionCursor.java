@@ -48,7 +48,7 @@ public final class SectionCursor {
     }
 
     /** Kinds of fast path with a cursor of their own on each thread ({@link #mine}). */
-    public static final int DISK = 0, SPRING = 1, SNOW = 2, SEAGRASS = 3, KELP = 4, MULTIFACE = 5, TREE = 6, GEODE = 7, MONSTER_ROOM = 8;
+    public static final int DISK = 0, SPRING = 1, SNOW = 2, SEAGRASS = 3, KELP = 4, MULTIFACE = 5, TREE = 6, GEODE = 7, MONSTER_ROOM = 8, REPLACE_BLOBS = 9;
     /**
      * The thread's cursors, held weakly. A cursor is strongly reachable only from the placement that uses it. Between placements
      * only this slot points at it. So the region it last read, and that region's whole grid of chunks, can be collected as soon as
@@ -58,7 +58,7 @@ public final class SectionCursor {
      */
     @SuppressWarnings("unchecked")
     private static final ThreadLocal<WeakReference<SectionCursor>[]> MINE =
-        ThreadLocal.withInitial(() -> (WeakReference<SectionCursor>[]) new WeakReference[MONSTER_ROOM + 1]);
+        ThreadLocal.withInitial(() -> (WeakReference<SectionCursor>[]) new WeakReference[REPLACE_BLOBS + 1]);
 
     /**
      * This thread's cursor of the fast path {@code kind}, as a new one over {@code region}, instead of a new cursor per placement. For
@@ -127,7 +127,7 @@ public final class SectionCursor {
         if (cx != chunkX || cz != chunkZ) {
             // a region's chunks stay the same objects while it lives
             int k = (cx & 1) | (cz & 1) << 1;
-            long key = ChunkPos.asLong(cx, cz);
+            long key = ChunkPos.pack(cx, cz);
             ChunkAccess c = nearKey[k] == key ? near[k] : null;
             if (c == null) {
                 c = region.ga2$chunk(cx, cz);

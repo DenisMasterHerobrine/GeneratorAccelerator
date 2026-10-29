@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
 import org.objectweb.asm.ClassReader;
@@ -338,7 +338,7 @@ public final class BiolithSearch {
     }
 
     /**
-     * Each leaf's biome as a number. Equal ids get equal numbers ({@code ResourceLocation.equals}, as Biolith compares
+     * Each leaf's biome as a number. Equal ids get equal numbers ({@code Identifier.equals}, as Biolith compares
      * them). Index {@code [nodes]} holds the number of Biolith's placeholder for no leaf ({@code biolith:null}). Returns
      * null when a leaf is not a registered biome. Biolith's own search then runs and fails as it would without GA2.
      */
@@ -352,8 +352,8 @@ public final class BiolithSearch {
         }
         int nodes = flat.nodes();
         int[] keys = new int[nodes + 1];
-        Map<ResourceLocation, Integer> numbers = new HashMap<>();
-        numbers.put(ResourceLocation.fromNamespaceAndPath("biolith", "null"), 0);
+        Map<Identifier, Integer> numbers = new HashMap<>();
+        numbers.put(Identifier.fromNamespaceAndPath("biolith", "null"), 0);
         keys[nodes] = 0;
         for (int id = 0; id < nodes; id++) {
             Climate.RTree.Leaf<?> leaf = flat.leaf(id);
@@ -369,7 +369,7 @@ public final class BiolithSearch {
                 flat.compatData = NO_SHAPE;
                 return null;
             }
-            keys[id] = numbers.computeIfAbsent(key.get().location(), k -> numbers.size());
+            keys[id] = numbers.computeIfAbsent(key.get().identifier(), k -> numbers.size());
         }
         flat.compatData = keys;
         return keys;

@@ -154,7 +154,7 @@ public final class HeightmapPriming {
     private static void scan(ChunkAccess chunk, Heightmap top, List<Heightmap> maps) {
         int n = maps.size();
         Heightmap[] pending = new Heightmap[n];
-        int minY = chunk.getMinBuildHeight();
+        int minY = chunk.getMinY();
         int filled = chunk.getHighestFilledSectionIndex();
         int highest = filled == -1 ? minY - 1 : SectionPos.sectionToBlockCoord(chunk.getSectionYFromSectionIndex(filled)) + 15;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();

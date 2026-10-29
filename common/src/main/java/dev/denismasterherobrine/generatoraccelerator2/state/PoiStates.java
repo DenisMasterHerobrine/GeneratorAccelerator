@@ -2,19 +2,24 @@ package dev.denismasterherobrine.generatoraccelerator2.state;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Predicate;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Every block a generation region writes goes to {@code ServerLevel.onBlockStateChange}. That method looks both states up in
+ * Every block a generation region writes goes to {@code ServerLevel.updatePOIOnBlockStateChange}. That method looks both states up in
  * the POI types' state map ({@code PoiTypes.forState}, two hash lookups). It does nothing when neither state has a POI type,
  * which holds for almost every block worldgen writes. Whether a state has a POI type is fixed while a server runs. The types
  * are registered before the server starts, and NeoForge rebuilds the map only when registries are swapped, between servers.
  * So each state computes the answer once per server start and stores it in a field ({@code BlockStateFlagsMixin}). A change
- * between two states without a POI type skips the call. Off when another mod changes {@code onBlockStateChange},
- * {@code PoiTypes.forState} or the call in {@code WorldGenRegion.setBlock} (hook {@code state.poiSkip}).
+ * between two states without a POI type skips the call. Off when another mod changes {@code updatePOIOnBlockStateChange},
+ * {@code PoiTypes.forState} or the call in {@code WorldGenRegion.setBlock} (hook {@code state.poiSkip}). Compat code can keep
+ * such a change: a mod's own POI types come through {@code forState}, and the states a mod's handler of the call reacts to are
+ * watched ({@link #watch}), so changes involving them keep the call.
  */
 public final class PoiStates {
     private PoiStates() {}
@@ -44,7 +49,15 @@ public final class PoiStates {
         keepOnServerThread = true;
     }
 
-    /** True when {@code level.onBlockStateChange(pos, oldState, newState)} can be left out (it would do nothing). */
+    /** States another mod's handler of the call reacts to (compat). A change from or to one keeps the call. */
+    private static final List<Predicate<BlockState>> WATCHED = new CopyOnWriteArrayList<>();
+
+    /** Registered while mods load, before any state's answer is cached. */
+    public static void watch(Predicate<BlockState> states) {
+        WATCHED.add(states);
+    }
+
+    /** True when {@code level.updatePOIOnBlockStateChange(pos, oldState, newState)} can be left out (it would do nothing). */
     public static boolean skip(ServerLevel level, BlockState oldState, BlockState newState) {
         if (!ENABLED || !HOOK.allowed() || poi(oldState) || poi(newState) || keepOnServerThread && level.getServer().isSameThread()) {
             return false;
@@ -62,8 +75,17 @@ public final class PoiStates {
         if (stamp >>> 1 == e) {
             return (stamp & 1) != 0;
         }
-        boolean poi = PoiTypes.forState(state).isPresent();
+        boolean poi = PoiTypes.forState(state).isPresent() || watched(state);
         h.ga2$setPoiStamp(e << 1 | (poi ? 1 : 0));
         return poi;
+    }
+
+    private static boolean watched(BlockState state) {
+        for (Predicate<BlockState> w : WATCHED) {
+            if (w.test(state)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
