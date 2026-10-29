@@ -41,11 +41,13 @@ public class EveryLayerTest {
     @Test
     void sameAsVanilla() {
         HarnessWorld.Registries2 r = HarnessWorld.registries();
-        List<IntProvider> counts = List.of(ConstantInt.of(1), ConstantInt.of(4), ConstantInt.of(10), UniformInt.of(0, 6), UniformInt.of(2, 12));
+        // 60 a layer draws most columns more than once, so the kept scans are used
+        List<IntProvider> counts = List.of(ConstantInt.of(1), ConstantInt.of(4), ConstantInt.of(10), UniformInt.of(0, 6), UniformInt.of(2, 12), ConstantInt.of(60));
         int readsCompared = 0;
         int calls = 0;
         int positions = 0;
         int maxLayers = 0;
+        long continuedBefore = EveryLayer.CONTINUED.sum();
         for (HarnessWorld.Kind kind : List.of(HarnessWorld.Kind.NETHER, HarnessWorld.Kind.OVERWORLD)) {
             for (long seed : new long[] { 1L, 77L, 4242L }) {
                 LevelHeightAccessor heights = HarnessWorld.heights(r, kind);
@@ -105,8 +107,9 @@ public class EveryLayerTest {
             }
         }
         System.out.println("[EveryLayerTest] reads compared " + readsCompared + ", layer searches " + calls + ", positions " + positions
-            + ", most grounds found in one column " + maxLayers);
+            + ", most grounds found in one column " + maxLayers + ", columns continued " + (EveryLayer.CONTINUED.sum() - continuedBefore));
         assertTrue(positions > 1000, "too few positions found: " + positions);
+        assertTrue(EveryLayer.CONTINUED.sum() > continuedBefore, "no column was continued from its kept scan");
     }
 
     /**

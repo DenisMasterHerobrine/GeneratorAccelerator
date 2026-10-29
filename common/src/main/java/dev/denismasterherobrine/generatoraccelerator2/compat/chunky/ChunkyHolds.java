@@ -106,6 +106,11 @@ public final class ChunkyHolds {
         final short[] cover = new short[1024];
         /** One bit per chunk Chunky asked for, in index order. */
         final long[] asked = new long[16];
+        /**
+         * One bit per kept chunk, in index order, the same set as {@link #kept}'s keys. A request's neighbours and {@link #isKept} read
+         * these bits first, so the map is asked only about chunks that are kept.
+         */
+        final long[] kept = new long[16];
     }
 
     public ChunkyHolds(Tickets tickets, int radius, int cap) {
@@ -161,20 +166,64 @@ public final class ChunkyHolds {
             return;
         }
         int r = this.radius;
-        for (int qx = x - r; qx <= x + r; qx++) {
-            for (int qz = z - r; qz <= z + r; qz++) {
-                long q = ChunkPos.asLong(qx, qz);
-                int left = this.kept.get(q);
-                if (left == 1) {
-                    this.kept.remove(q);
-                    KEPT_NOW.decrementAndGet();
-                    this.tickets.letGo(q);
-                    DONE.increment();
-                } else if (left > 1) {
-                    this.kept.putAndMoveToLast(q, left - 1);
+        int x0 = x - r;
+        int x1 = x + r;
+        int z0 = z - r;
+        int z1 = z + r;
+        for (int tx = x0 >> 5; tx <= x1 >> 5; tx++) {
+            int ax = Math.max(x0, tx << 5) & 31;
+            int bx = Math.min(x1, (tx << 5) + 31) & 31;
+            long mask = ((1L << (bx - ax + 1)) - 1) << ax;
+            for (int tz = z0 >> 5; tz <= z1 >> 5; tz++) {
+                Tile near = this.tiles.get(ChunkPos.asLong(tx, tz));
+                if (near == null) {
+                    continue;
+                }
+                int az = Math.max(z0, tz << 5);
+                int bz = Math.min(z1, (tz << 5) + 31);
+                for (int qz = az; qz <= bz; qz++) {
+                    int lz = qz & 31;
+                    // a row is 32 bits: the low or high half of a word
+                    long row = (near.kept[lz >>> 1] >>> ((lz & 1) << 5)) & mask;
+                    while (row != 0) {
+                        int lx = Long.numberOfTrailingZeros(row);
+                        row &= row - 1;
+                        this.cameNear((tx << 5) | lx, qz, near);
+                    }
                 }
             }
         }
+    }
+
+    /** A request came near the kept chunk {@code x, z} of {@code tile}: one chunk fewer to wait for, or let go at none. */
+    private void cameNear(int x, int z, Tile tile) {
+        long q = ChunkPos.asLong(x, z);
+        int left = this.kept.get(q);
+        if (left == 1) {
+            this.kept.remove(q);
+            setKept(tile, x, z, false);
+            KEPT_NOW.decrementAndGet();
+            this.tickets.letGo(q);
+            DONE.increment();
+        } else {
+            this.kept.putAndMoveToLast(q, left - 1);
+        }
+    }
+
+    private static void setKept(Tile tile, int x, int z, boolean kept) {
+        int i = index(x, z);
+        long bit = 1L << (i & 63);
+        tile.kept[i >>> 6] = kept ? tile.kept[i >>> 6] | bit : tile.kept[i >>> 6] & ~bit;
+    }
+
+    /** {@link Tile#kept}'s bit for the chunk at {@code x, z}, false without a tile. */
+    private boolean keptBit(int x, int z) {
+        Tile tile = this.tiles.get(ChunkPos.asLong(x >> 5, z >> 5));
+        if (tile == null) {
+            return false;
+        }
+        int i = index(x, z);
+        return (tile.kept[i >>> 6] & 1L << (i & 63)) != 0;
     }
 
     /** Chunky removed its ticket at {@code x, z}. */
@@ -206,7 +255,7 @@ public final class ChunkyHolds {
 
     /** Whether GA2's ticket keeps the chunk at {@code pos}. */
     public boolean isKept(long pos) {
-        return this.kept.containsKey(pos);
+        return this.keptBit(ChunkPos.getX(pos), ChunkPos.getZ(pos));
     }
 
     /**
@@ -258,7 +307,11 @@ public final class ChunkyHolds {
     /** No Chunky ticket within the radius of {@code x, z} is left. */
     private void uncovered(int x, int z) {
         long q = ChunkPos.asLong(x, z);
-        if (this.kept.getAndMoveToLast(q) != 0 || this.cap <= 0) {
+        if (this.keptBit(x, z)) {
+            this.kept.getAndMoveToLast(q);
+            return;
+        }
+        if (this.cap <= 0) {
             return;
         }
         int left = this.area - this.askedAround(x, z);
@@ -266,6 +319,8 @@ public final class ChunkyHolds {
             return;
         }
         this.kept.put(q, left);
+        // cover made the tile when it counted this chunk's tickets
+        setKept(this.tiles.get(ChunkPos.asLong(x >> 5, z >> 5)), x, z, true);
         KEPT_NOW.incrementAndGet();
         KEPT.increment();
         this.shrink(this.cap);
@@ -311,6 +366,9 @@ public final class ChunkyHolds {
     private void letGoFirst() {
         long first = this.kept.firstLongKey();
         this.kept.removeFirstInt();
+        int fx = ChunkPos.getX(first);
+        int fz = ChunkPos.getZ(first);
+        setKept(this.tiles.get(ChunkPos.asLong(fx >> 5, fz >> 5)), fx, fz, false);
         KEPT_NOW.decrementAndGet();
         this.tickets.letGo(first);
     }

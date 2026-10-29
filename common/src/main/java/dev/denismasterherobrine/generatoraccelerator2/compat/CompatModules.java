@@ -26,6 +26,9 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.Ecl
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedDensity;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedFunctions;
@@ -39,6 +42,8 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoOres;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelGeodes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraLight;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredCarvers;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
@@ -70,10 +75,14 @@ public final class CompatModules {
     private CompatModules() {}
 
     public static void init() {
+        if (Compat.isLoaded(SodiumExtraMixins.MOD_ID)) {
+            // the layers check Sodium Extra's light updates option on every update
+            CompatAdapters.register(HookTargets.LIGHT_LAYERS, SodiumExtraMixins.LIGHT_ENGINE, SodiumExtraLight::register);
+        }
         if (Compat.isLoaded(ChunkyRequests.MOD_ID)) {
             ChunkyRequests.register();
         }
-        if (Compat.isLoaded(FabricApiMixins.MOD_ID)) {
+        if (Compat.isLoaded(FabricApiMixins.MOD_ID) || Compat.isLoaded(FabricApiMixins.FLUIDS_MOD_ID)) {
             FabricApiMixins.register();
         }
         if (Compat.isLoaded(NaturesSpiritMixins.MOD_ID)) {
@@ -135,6 +144,15 @@ public final class CompatModules {
             CompatAdapters.register(HookTargets.STRUCTURE_RING_BOUND, ModernFixMixins.STRONGHOLD_CACHE, () -> true);
             // nothing to set up: without ModernFix's cache, a temperature is still getHeightAdjustedTemperature's. The GPU computes that
             CompatAdapters.register(HookTargets.GPU_SURFACE, ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // the same for the freeze and snow skip, which reads only the base temperature and the climate settings
+            CompatAdapters.register(FeatureTargets.compatKey("climate"), ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // nothing to set up: ModernFix's answer runs on the server thread only, GA2's off it
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK, () -> true);
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK_FORGE, () -> true);
+        }
+        if (Compat.isLoaded(FtbChunksMixins.MOD_ID)) {
+            // nothing to set up: FTB Chunks only removes directions from vanilla's spread
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, FtbChunksMixins.FLUID_SPREAD, () -> true);
         }
         if (Compat.isLoaded(OwoMixins.MOD_ID)) {
             OwoOres.register();
@@ -192,6 +210,9 @@ public final class CompatModules {
         }
         if (Compat.isLoaded(TwilightForestCoremods.MOD_ID)) {
             TwilightForestSurface.register();
+        }
+        if (Compat.isLoaded(GtceuMixins.MOD_ID)) {
+            GtceuVeins.register();
         }
     }
 }

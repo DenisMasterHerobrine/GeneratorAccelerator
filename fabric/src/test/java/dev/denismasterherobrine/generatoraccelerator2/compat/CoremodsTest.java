@@ -123,7 +123,23 @@ public class CoremodsTest {
         }
         Coremods.Change c = Coremods.compare(owner, original, changed);
         assertNotNull(c);
-        assertEquals(Coremods.UNKNOWN, c.mixin());
+        assertEquals(Coremods.UNKNOWN + " in compute", c.mixin(), "the method is named");
+    }
+
+    /** Fabric Loader's branding patch wraps the name in a call to its own hooks class. It is the platform's change, not a mod's. */
+    @Test
+    void fabricLoaderBrandingIsNoChange() throws Exception {
+        String owner = "net/minecraft/world/level/levelgen/Beardifier";
+        MethodNode original = method(read(owner), "compute");
+        MethodNode changed = method(read(owner), "compute");
+        for (AbstractInsnNode insn = changed.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof Double d && d == 0.8) {
+                changed.instructions.insert(insn, new MethodInsnNode(Opcodes.INVOKESTATIC, "net/fabricmc/loader/impl/game/minecraft/Hooks", "insertBranding",
+                    "(D)D", false));
+                break;
+            }
+        }
+        assertNull(Coremods.compare(owner, original, changed));
     }
 
     @Test

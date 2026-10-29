@@ -18,6 +18,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.Bar
 import dev.denismasterherobrine.generatoraccelerator2.compat.zeta.ZetaClusters;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.SurfaceLevels;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureStats;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.FeatureCopies;
 import dev.denismasterherobrine.generatoraccelerator2.features.placement.EveryLayer;
 import dev.denismasterherobrine.generatoraccelerator2.features.placement.PatchRepeats;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.RegionReads;
@@ -115,12 +116,16 @@ public final class StepsCommand {
         send(source, "features: parallel " + ParallelSteps.FEATURES_ASYNC.sum() + " (" + ParallelSteps.FEATURES_WAITED.sum() + " waited for a neighbour), inline "
             + ParallelSteps.FEATURES_INLINE.sum() + " (config " + SchedulingConfig.parallelFeatures() + ", guard radius " + SchedulingConfig.featuresGuardRadius()
             + "); light initializations that waited: " + ParallelSteps.LIGHT_WAITED.sum() + "; area locks now: " + locks[0] + " held, " + locks[1] + " waiting");
+        send(source, "features' locks: waited for " + ParallelSteps.FEATURES_LOCK_WAIT.describe() + "; held while queued on the lane "
+            + ParallelSteps.FEATURES_HOLD_QUEUED.describe() + ", while running " + ParallelSteps.FEATURES_HOLD_RUN.describe()
+            + "; longest holds: " + ParallelSteps.FEATURES_SLOWEST.describe());
         send(source, "surface builder: GA2 " + SurfaceHooks.CHUNKS_FAST.sum() + " (with other mods' rules "
             + SurfaceHooks.CHUNKS_OPAQUE.sum() + ", with their column code "
             + SurfaceHooks.CHUNKS_HOOKED.sum() + "), vanilla "
             + SurfaceHooks.CHUNKS_VANILLA.sum() + "; deep columns "
             + SurfaceHooks.COLUMNS_DEEP.sum() + ", bulk sections "
             + SurfaceHooks.SECTIONS_BULK.sum());
+        send(source, "modded features on per-thread copies: " + FeatureCopies.MADE.sum() + " copies made");
         send(source, "carver runner: GA2 " + CarverRunner.CHUNKS_FAST.sum() + ", vanilla "
             + CarverRunner.CHUNKS_VANILLA.sum() + "; starts replayed "
             + CarverRunner.CARVES_REPLAYED.sum() + ", other carvers "
@@ -187,6 +192,7 @@ public final class StepsCommand {
             long readsVerified = RegionReads.VERIFIED.sum();
             long layersVerified = EveryLayer.VERIFIED.sum();
             send(source, "regions reading in place: " + readRegions + "; layer placements transcribed: " + layerSearches
+                + " (columns continued: " + EveryLayer.CONTINUED.sum() + ")"
                 + (readsVerified > 0 ? "; reads verified " + readsVerified + ", differing " + RegionReads.DIFFERING.sum() : "")
                 + (layersVerified > 0 ? "; layer scans verified " + layersVerified + ", differing " + EveryLayer.DIFFERING.sum() : ""));
         }

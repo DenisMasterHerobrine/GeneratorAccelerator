@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 import net.minecraft.world.level.lighting.LightEngine;
 import org.slf4j.Logger;
 
@@ -36,6 +37,18 @@ public final class LightLayers {
 
     /** Fewer recorded block light calls than this, with no block light work queued, run on the light thread. */
     public static final int MIN_CALLS = 4;
+
+    /** Updates are recorded only while this holds. Otherwise they run as vanilla's (a mod's option, see compat.sodiumextra). */
+    private static volatile BooleanSupplier recordWhile = () -> true;
+
+    public static void recordWhile(BooleanSupplier condition) {
+        recordWhile = condition;
+    }
+
+    /** Whether the update starting now may be recorded. */
+    public static boolean recordNow() {
+        return recordWhile.getAsBoolean();
+    }
 
     /** Whether a light engine made now runs its layers at once. */
     public static boolean on() {

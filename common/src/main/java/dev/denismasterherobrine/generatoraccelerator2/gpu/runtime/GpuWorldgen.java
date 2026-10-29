@@ -4,6 +4,7 @@ import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderBiomes;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
@@ -422,7 +423,8 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             throw new ClEmitter.Unsupported("noise settings with cells of " + cellWidth + "x" + cellHeight + " over " + minY + ".." + (minY + height));
         }
         boolean aquifers = settings.isAquifersEnabled();
-        boolean veins = settings.oreVeinsEnabled();
+        // GregTech's setting can remove vanilla's veins, as FastFill sees (GtceuVeins)
+        boolean veins = settings.oreVeinsEnabled() && !GtceuVeins.removesVeins();
         if (aquifers || veins) {
             long[] aq = seeds(randomState.aquiferRandom());
             long[] ore = seeds(randomState.oreRandom());
@@ -3235,12 +3237,18 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         biomeList.clear();
     }
 
+    /** ", noise on CPU (why)" while another mod's change keeps the noise off the GPU, else empty. The biomes may still use the GPU. */
+    private static String noiseStatus() {
+        String off = GpuSteps.noiseHooksOff();
+        return off == null ? "" : ", noise on CPU (" + off + ")";
+    }
+
     public String status() {
         return name + ": " + switch (state) {
             case PREPARING -> "preparing (" + reason + ")";
             case FAILED -> "off (" + reason + ")";
             case READY -> "on, " + (certified ? "certified fp32 (cells in doubt rechecked in fp64)" : "fp64 (" + certifiedOff + ")") + ", "
-                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
+                + (gen.perChunkCorners ? "corners per chunk" : "shared corners") + noiseStatus() + ", biomes " + (biomesOff == null ? "on GPU" : handsBiomes ? "on CPU with the GPU's climate points and searches (" + biomesOff + ")"
                     : "on CPU (" + biomesOff + "; not handed: " + handOff + ")")
                 + ", surface " + (surfaces != null ? "on GPU" : "on CPU (" + surfaceOff + ")") + (terrainOff != null ? ", chunks keep their NoiseChunk (" + terrainOff + ")" : "")
                 + String.format(Locale.ROOT, ", program %,d chars built in %.1f s", sourceChars, buildMs / 1e3)

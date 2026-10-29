@@ -12,6 +12,7 @@ import javax.annotation.Nullable;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.level.material.Fluid;
 
 /**
  * Where the loaders' Minecraft differs. NeoForge patches light emission to depend on position. It counts a section's blocks
@@ -48,6 +49,11 @@ public final class PlatformHooks {
             StructureTemplate.StructureBlockInfo placed,
             StructurePlaceSettings settings,
             @Nullable StructureTemplate template);
+
+        /** Fabric API lets a mod draw a fluid its own way. The other loaders draw every fluid with the game's code. */
+        default boolean vanillaFluidRendering(Fluid fluid) {
+            return true;
+        }
     }
 
     private static final Service SERVICE = Platform.load(Service.class);
@@ -99,5 +105,13 @@ public final class PlatformHooks {
             StructurePlaceSettings settings,
             @Nullable StructureTemplate template) {
         return SERVICE.processTemplateBlock(processor, level, offset, pivot, raw, placed, settings, template);
+    }
+
+    /**
+     * True when {@code fluid} is drawn by the game's own {@code LiquidBlockRenderer} code. A water block with water on all six sides
+     * then draws nothing ({@code fluid.StillWater#hidden}). Asked on every render, because a mod can change the renderer at any time.
+     */
+    public static boolean vanillaFluidRendering(Fluid fluid) {
+        return SERVICE.vanillaFluidRendering(fluid);
     }
 }

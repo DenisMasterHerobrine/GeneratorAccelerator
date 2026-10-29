@@ -10,8 +10,8 @@ import java.util.zip.ZipFile
 
 def namesDir = layout.buildDirectory.dir('generated/ga2Names')
 
-/** Super class and interfaces of a class file: just enough of the format to reach them. */
-def readSupers = { byte[] bytes ->
+/** Super class, interfaces and declared methods (name + descriptor) of a class file. */
+def readClass = { byte[] bytes ->
     def in = new DataInputStream(new ByteArrayInputStream(bytes))
     in.skipBytes(8) // magic, minor, major
     int count = in.readUnsignedShort()
@@ -30,16 +30,33 @@ def readSupers = { byte[] bytes ->
         }
     }
     in.skipBytes(4) // access, this
-    def out = []
+    def supers = []
     int superIndex = in.readUnsignedShort()
     if (superIndex != 0) {
-        out << utf8[classIndex[superIndex]]
+        supers << utf8[classIndex[superIndex]]
     }
     int interfaces = in.readUnsignedShort()
     for (int i = 0; i < interfaces; i++) {
-        out << utf8[classIndex[in.readUnsignedShort()]]
+        supers << utf8[classIndex[in.readUnsignedShort()]]
     }
-    return out
+    Set<String> methods = new HashSet<String>()
+    for (int kind = 0; kind < 2; kind++) { // fields, then methods
+        int members = in.readUnsignedShort()
+        for (int i = 0; i < members; i++) {
+            in.skipBytes(2) // access
+            String name = utf8[in.readUnsignedShort()]
+            String desc = utf8[in.readUnsignedShort()]
+            if (kind == 1) {
+                methods << name + desc
+            }
+            int attributes = in.readUnsignedShort()
+            for (int a = 0; a < attributes; a++) {
+                in.skipBytes(2)
+                in.skipBytes(in.readInt())
+            }
+        }
+    }
+    return [supers: supers, methods: methods]
 }
 
 def generateNames = tasks.register('generateGa2Names') {
@@ -49,6 +66,7 @@ def generateNames = tasks.register('generateGa2Names') {
     def fabricClasses = layout.buildDirectory.dir('classes/java/main')
     def mappingFiles = configurations.mappings
     def compileClasspath = sourceSets.main.compileClasspath
+    def minecraftVersion = rootProject.minecraft_version
     def outFile = namesDir.map { it.file('generatoraccelerator2/mappings.txt.gz') }
     dependsOn project(':common').tasks.named('compileJava'), tasks.named('compileJava')
     inputs.files(commonClasses, fabricClasses, mappingFiles)
@@ -121,7 +139,18 @@ def generateNames = tasks.register('generateGa2Names') {
         if (gameJar == null) {
             throw new GradleException('the Mojang-named Minecraft jar is not on the compile classpath')
         }
+        // a jar of another version would give another version's table
+        new ZipFile(gameJar).withCloseable { zip ->
+            def versionEntry = zip.getEntry('version.json')
+            if (versionEntry != null) {
+                def id = (zip.getInputStream(versionEntry).getText('UTF-8') =~ /"id"\s*:\s*"([^"]+)"/)
+                if (id.find() && id.group(1) != minecraftVersion) {
+                    throw new GradleException("the Minecraft jar ${gameJar} is ${id.group(1)}, this project builds for ${minecraftVersion}")
+                }
+            }
+        }
         def supers = [:]
+        def gameMethods = [:]
         new ZipFile(gameJar).withCloseable { zip ->
             def queue = new ArrayDeque<String>(wanted)
             while (!queue.isEmpty()) {
@@ -130,7 +159,9 @@ def generateNames = tasks.register('generateGa2Names') {
                     continue
                 }
                 def entry = zip.getEntry(c + '.class')
-                def list = entry == null ? [] : readSupers(zip.getInputStream(entry).bytes).findAll { namedToInter.containsKey(it) }
+                def read = entry == null ? null : readClass(zip.getInputStream(entry).bytes)
+                gameMethods[c] = read == null ? null : read.methods
+                def list = read == null ? [] : read.supers.findAll { namedToInter.containsKey(it) }
                 supers[c] = list
                 list.each { s ->
                     if (!supers.containsKey(s)) {
@@ -139,6 +170,37 @@ def generateNames = tasks.register('generateGa2Names') {
                     }
                 }
             }
+        }
+
+        // Mappings of another version name methods this game jar does not have (a 1.21.1 table once came out of 1.20.1 mappings
+        // in a build of several branches at once). Every method the mappings list for a wanted class must be in the jar. Forge's
+        // patches change a few vanilla methods' descriptors (LiquidBlockRenderer.vertex, StructureTemplate.placeEntities), so its
+        // patched jar may lack up to 0.1% of them. Mappings of another version miss thousands.
+        def missing = []
+        int checked = 0
+        wanted.each { c ->
+            Set<String> present = gameMethods[c]
+            if (present == null) {
+                missing << c
+                return
+            }
+            methods[c].each { m ->
+                if (m[0] ==~ /method_\d+/) {
+                    return // a synthetic method Mojang's names leave unnamed. GA2 never asks for it, and Forge compiles its lambdas anew
+                }
+                String key = m[0] + mapDesc(m[1])
+                checked++
+                if (!present.contains(key)) {
+                    missing << c + '.' + key
+                }
+            }
+        }
+        int allowed = gameJar.name.startsWith('forge-') ? Math.max(8, checked.intdiv(1000)) : 0
+        if (!missing.isEmpty() && missing.size() <= allowed) {
+            logger.lifecycle("GA2 name table: ${missing.size()} methods changed by Forge's patches: ${missing}")
+        } else if (!missing.isEmpty()) {
+            throw new GradleException("the mappings ${mappingFiles.singleFile} do not match the Minecraft jar ${gameJar}: ${missing.size()} classes or "
+                + "methods are not in the jar, e.g. ${missing.take(5)}")
         }
 
         // the classes named in those members' descriptors: names only, so descriptors translate

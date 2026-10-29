@@ -584,6 +584,10 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.STORAGE_REGION_SYNC, List.of("write(Lnet/minecraft/world/level/ChunkPos;Ljava/nio/ByteBuffer;)V",
                 "clear(Lnet/minecraft/world/level/ChunkPos;)V", "flush()V", "close()V", "writeHeader()V", "padToFullSector()V")))),
         // the section tags are made inside write by wrapping the two codec calls. The rest of write runs as vanilla's.
+        // a saved chunk's post-processing lists are packed by GA2's code in place of packOffsets' body
+        Map.entry("ChunkSerializerOffsetsMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_POST_PROCESSING, List.of("packOffsets([Lit/unimi/dsi/fastutil/shorts/ShortList;)Lnet/minecraft/nbt/ListTag;"),
+                MergedMethods.Mode.BYPASS))),
         Map.entry("ChunkSerializerMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_SECTION_CODEC, List.of("write(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;)Lnet/minecraft/nbt/CompoundTag;",
                 "makeBiomeCodec(Lnet/minecraft/core/Registry;)Lcom/mojang/serialization/Codec;"), List.of(), MergedMethods.Mode.WRAP,

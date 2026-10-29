@@ -395,9 +395,10 @@ public final class Gpu {
         }
         out.add(String.format(Locale.ROOT, "  without a NoiseChunk: %,d chunks (%s; levels asked beyond a chunk %,d); blocks asked for at the biome step %,d",
             GpuTerrain.CHUNKS.sum(), GpuTerrain.enabled() ? "on" : "off", GpuTerrain.LEVEL_FALLBACKS.sum(), GpuSteps.NOISE_EARLY.sum()));
-        out.add(String.format(Locale.ROOT, "  surface on the GPU: %,d asked, %,d written, %,d left to the CPU, %,d late; %,d batches %s",
+        String declines = GpuSurfaceJob.declines();
+        out.add(String.format(Locale.ROOT, "  surface on the GPU: %,d asked, %,d written, %,d left to the CPU, %,d late; %,d batches %s%s",
             GpuSurfaceJob.ASKED.sum(), GpuSurfaceJob.APPLIED.sum(), GpuSurfaceJob.CPU.sum(), GpuSurfaceJob.LATE.sum(),
-            SurfaceBatches.BATCHES.sum(), SurfaceBatches.BATCH_LAT.describe()));
+            SurfaceBatches.BATCHES.sum(), SurfaceBatches.BATCH_LAT.describe(), declines.isEmpty() ? "" : "; not asked: " + declines));
         out.add(String.format(Locale.ROOT, "  answers later than %d ms (the CPU did those chunks): %,d; dimensions paused for a while (GPU busy elsewhere): %,d",
             GpuWorldgen.ANSWER_MS, GpuWorldgen.LATE_ANSWERS.sum(), GpuWorldgen.PAUSES.sum()));
         out.add(String.format(Locale.ROOT, "  waits for answers made longer while the whole JVM stood still: %,d (it stood still %.1f s in all)",
@@ -416,7 +417,8 @@ public final class Gpu {
             }
             out.add(sd.toString());
         }
-        out.add("  decorations wait for their locks " + ParallelSteps.FEATURES_LOCK_WAIT.describe());
+        out.add("  decorations wait for their locks " + ParallelSteps.FEATURES_LOCK_WAIT.describe() + "; a lock is held while queued "
+            + ParallelSteps.FEATURES_HOLD_QUEUED.describe() + ", while running " + ParallelSteps.FEATURES_HOLD_RUN.describe());
         long batches = GpuWorldgen.BATCHES.sum();
         if (batches > 0) {
             out.add(String.format(Locale.ROOT, "  latency: biomes %s (written in %s); noise %s (queued %s, batch %s of %.1f chunks; written in %s, NoiseChunk %s); regions %s",

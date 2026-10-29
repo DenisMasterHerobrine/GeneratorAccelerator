@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.features.FeatureHooks;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.RawPlace;
+import dev.denismasterherobrine.generatoraccelerator2.features.modded.FeatureCopies;
 import dev.denismasterherobrine.generatoraccelerator2.features.modded.ModdedFeatures;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.WorldGenRegion;
@@ -17,7 +18,9 @@ import org.spongepowered.asm.mixin.Unique;
 
 /**
  * Some modded features share state between placements in their code ({@link ModdedFeatures}). During decoration on a
- * generation region, their placements run one at a time. Every other feature still decorates in parallel. Placements
+ * generation region, their placements run one at a time, or on the thread's own copy of the feature when the state is only
+ * the feature's own fields, assigned anew in every placement ({@link FeatureCopies}). Every other feature still decorates in
+ * parallel. Placements
  * outside world generation, such as a sapling growing on the server thread, are untouched. Vanilla never ordered those
  * placements against decoration either.
  */
@@ -25,11 +28,23 @@ import org.spongepowered.asm.mixin.Unique;
 public abstract class FeatureSharedStateMixin {
     @WrapMethod(method = "place(Lnet/minecraft/world/level/levelgen/feature/configurations/FeatureConfiguration;Lnet/minecraft/world/level/WorldGenLevel;"
         + "Lnet/minecraft/world/level/chunk/ChunkGenerator;Lnet/minecraft/util/RandomSource;Lnet/minecraft/core/BlockPos;)Z")
+    @SuppressWarnings("unchecked")
     private boolean ga2$sharedState(FeatureConfiguration config, WorldGenLevel level, ChunkGenerator generator, RandomSource random, BlockPos origin,
                                     Operation<Boolean> original) {
         ModdedFeatures.Profile profile = level instanceof WorldGenRegion && FeatureHooks.enabled() ? ModdedFeatures.of(this.getClass()) : null;
         if (profile == null) {
             return ga2$place(config, level, generator, random, origin, original);
+        }
+        if (profile.copies()) {
+            // the placement runs on this thread's copy, which comes back here as itself
+            Object copy = FeatureCopies.forThread(this);
+            if (copy != null && copy != (Object) this) {
+                return ((Feature<FeatureConfiguration>) copy).place(config, level, generator, random, origin);
+            }
+            if (copy != null) {
+                ModdedFeatures.placed(profile);
+                return ga2$place(config, level, generator, random, origin, original);
+            }
         }
         ModdedFeatures.placed(profile);
         if (profile.lock() == null) {

@@ -47,7 +47,7 @@ public abstract class LevelLightEngineMixin implements Ga2LightLayers {
 
     @Override
     public void ga2$beginLayers() {
-        if (this.blockEngine != null && this.skyEngine != null) {
+        if (this.blockEngine != null && this.skyEngine != null && LightLayers.recordNow()) {
             this.ga2$calls.clear();
             this.ga2$recorder = Thread.currentThread();
         }

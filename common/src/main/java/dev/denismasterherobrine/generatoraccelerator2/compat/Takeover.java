@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.ConfigFiles;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -73,6 +74,10 @@ public final class Takeover {
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.optimize_surface_rules.", "Replaced by GA2's compiled surface rules."),
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.MaterialRuleListMixin",
             "Replaced by GA2's faster terrain fill."),
+        // ModernFix's soft template cache. A later ModernFix also changes the repository's get, which turned GA2's template loads off.
+        // GA2 makes the same soft cache itself (structure.TemplateLoads), so templates still leave memory as with ModernFix
+        new Rule("modernfix", ModernFixMixins.DYNAMIC_STRUCTURES,
+            "Replaced by GA2's template loads. Loaded templates are still kept the soft way ModernFix keeps them, so memory use stays the same."),
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.ClimateParameterListMixin",
             "Replaced by GA2's exact biome search, which uses the biome tree this tweak delays."),
         // Lithium: only Lithium's section packing goes. The packing reuses the order of a hash palette, so the saved bytes
@@ -92,9 +97,13 @@ public final class Takeover {
 
     private static final Map<String, String> CANCELLED = new ConcurrentHashMap<>();
     private static volatile Boolean enabled;
+    /** Set once MixinSquared asks about any mixin. Without MixinSquared nothing is taken over. */
+    private static volatile boolean consulted;
+    private static volatile boolean consultChecked;
 
     /** Called by MixinSquared for every mixin of every config. */
     public static boolean shouldCancel(List<String> targets, String mixinClassName) {
+        consulted = true;
         if (mixinClassName.startsWith("dev.denismasterherobrine.generatoraccelerator2.")) {
             return false;
         }
@@ -110,6 +119,20 @@ public final class Takeover {
             }
         }
         return false;
+    }
+
+    /**
+     * Warns once if MixinSquared never asked about a mixin. MixinSquared asks when a mixin's target class loads. By the time a server
+     * starts, many targets of GA2's own mixins have loaded. A jar built without the bundled MixinSquared shows up here.
+     */
+    public static void checkConsulted() {
+        if (consultChecked) {
+            return;
+        }
+        consultChecked = true;
+        if (enabled() && !consulted) {
+            LOGGER.warn("MixinSquared never consulted -> no takeover, other mods' mixins on GA2's code stay and GA2 hooks may stand down");
+        }
     }
 
     /** Cancelled mixin class name to "mod: reason", for {@code /ga2 compat report}. */

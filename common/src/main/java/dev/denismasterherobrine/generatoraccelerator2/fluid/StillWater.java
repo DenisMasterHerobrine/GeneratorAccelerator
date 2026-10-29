@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.fluid;
 
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadStats;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
@@ -30,8 +31,8 @@ import net.minecraft.world.level.material.Fluids;
  * <p>Client: {@code LiquidBlockRenderer.tesselate} computes the blended water colour before it checks which faces show. The colour
  * costs a biome lookup per block of the blend square (25 at the default blend). Each Y layer is cached separately. A water block with water blocks on all six
  * sides shows no face, and the method returns without drawing. Such a block is not passed to the renderer ({@link #hidden}). Off when
- * another mod changes the renderer's face checks (hook {@code fluids.hiddenWater}), or with
- * {@code -Dgeneratoraccelerator2.fluids.hiddenWaterSkip=false}.
+ * another mod changes the renderer's face checks (hook {@code fluids.hiddenWater}), while a mod draws water its own way
+ * ({@link PlatformHooks#vanillaFluidRendering}), or with {@code -Dgeneratoraccelerator2.fluids.hiddenWaterSkip=false}.
  */
 public final class StillWater {
     private StillWater() {}
@@ -111,7 +112,7 @@ public final class StillWater {
             return false;
         }
         ChunkLoadStats.WATER_MESHED.increment();
-        if (!hiddenSkipOn() || !surrounded(level, pos)) {
+        if (!hiddenSkipOn() || !PlatformHooks.vanillaFluidRendering(fluid.getType()) || !surrounded(level, pos)) {
             return false;
         }
         ChunkLoadStats.WATER_HIDDEN.increment();

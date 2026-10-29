@@ -52,6 +52,9 @@ config = "generatoraccelerator2.compat.spelunkery.mixins.json"
 config = "generatoraccelerator2.compat.supplementaries.mixins.json"
 
 [[mixins]]
+config = "generatoraccelerator2.compat.productivebees.mixins.json"
+
+[[mixins]]
 config = "generatoraccelerator2.parallellight.mixins.json"
 
 # Client render threads

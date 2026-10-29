@@ -14,7 +14,11 @@ public final class GeneratorAcceleratorFabric implements ModInitializer {
         GeneratorAccelerator.init();
         CommandRegistrationCallback.EVENT.register((dispatcher, registries, environment) -> GeneratorAccelerator.registerCommands(dispatcher));
         ServerWorldEvents.LOAD.register((server, level) -> GeneratorAccelerator.onLevelLoad(level));
-        CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> GeneratorAccelerator.onTagsUpdated());
+        CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {
+            if (!client) {
+                GeneratorAccelerator.onTagsUpdated();
+            }
+        });
         ServerLifecycleEvents.SERVER_STARTING.register(GeneratorAccelerator::onServerStarting);
         ServerLifecycleEvents.SERVER_STOPPED.register(GeneratorAccelerator::onServerStopped);
         ServerTickEvents.END_SERVER_TICK.register(GeneratorAccelerator::onServerTickPost);

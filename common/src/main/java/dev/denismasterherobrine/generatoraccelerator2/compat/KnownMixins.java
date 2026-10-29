@@ -12,12 +12,15 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.Confluen
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eternalstarlight.EternalStarlightMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit.NaturesSpiritMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.owo.OwoMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.pastel.PastelMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.quark.QuarkMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.sodiumextra.SodiumExtraMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.redirected.RedirectedMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.regionsunexplored.RegionsUnexploredMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
@@ -70,6 +73,7 @@ public final class KnownMixins {
         all.addAll(RepurposedStructuresMixins.ENTRIES);
         all.addAll(LithostitchedMixins.ENTRIES);
         all.addAll(QuarkMixins.ENTRIES);
+        all.addAll(SodiumExtraMixins.ENTRIES);
         all.addAll(TwilightForestCoremods.ENTRIES);
         all.addAll(ModernFixMixins.ENTRIES);
         all.addAll(ConfluenceMixins.ENTRIES);
@@ -93,6 +97,8 @@ public final class KnownMixins {
         all.addAll(TerraBlenderMixins.ENTRIES);
         all.addAll(AlexsCavesMixins.ENTRIES);
         all.addAll(BetterChunkLoadingMixins.ENTRIES);
+        all.addAll(GtceuMixins.ENTRIES);
+        all.addAll(FtbChunksMixins.ENTRIES);
         ENTRIES = List.copyOf(all);
     }
 

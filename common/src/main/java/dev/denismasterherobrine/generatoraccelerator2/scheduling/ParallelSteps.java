@@ -192,6 +192,11 @@ public final class ParallelSteps {
     public static final LongAdder FEATURES_WAITED = new LongAdder();
     /** From a FEATURES step scheduled to its locks granted. */
     public static final Lat FEATURES_LOCK_WAIT = new Lat();
+    /** A FEATURES step holding its locks: from the grant to the step's start on its lane, and from that start to the release. */
+    public static final Lat FEATURES_HOLD_QUEUED = new Lat();
+    public static final Lat FEATURES_HOLD_RUN = new Lat();
+    /** The longest FEATURES holds, for {@code /ga2 steps stats}. */
+    public static final SlowHolds FEATURES_SLOWEST = new SlowHolds(5);
     public static final LongAdder LIGHT_WAITED = new LongAdder();
     public static final LongAdder LIGHT_INIT_ASYNC = new LongAdder();
 
@@ -371,10 +376,21 @@ public final class ParallelSteps {
     /** Hands a granted request's step to the worker pool. If the pool refuses (shutting down), the locks are released and the step fails. */
     private static Runnable dispatcher(String taskName, MinecraftServer server, AreaLocks locks, AreaLocks.Request request, WorldGenContext ctx, ChunkStep step,
                                        StaticCache2D<GenerationChunkHolder> cache, ChunkAccess chunk, CompletableFuture<ChunkAccess> result) {
+        boolean features = taskName.equals("wgen_features");
         return () -> {
+            long granted = System.nanoTime();
             try {
-                StepLane.execute(StepLane.level(cache, chunk), Util.wrapThreadWithTaskName(taskName, () -> {
+                // the step holds its locks from here on, so it runs before steps that hold none
+                StepLane.executeHolding(Util.wrapThreadWithTaskName(taskName, () -> {
+                    long started = System.nanoTime();
                     StepThreads.guarded(server, () -> runLocked(locks, request, ctx, step, cache, chunk, result));
+                    if (features) {
+                        // the locks are released at the end of runLocked
+                        long released = System.nanoTime();
+                        FEATURES_HOLD_QUEUED.add(started - granted);
+                        FEATURES_HOLD_RUN.add(released - started);
+                        FEATURES_SLOWEST.offer(released - granted, started - granted, ctx.level().dimension().location(), chunk.getPos());
+                    }
                 }));
             } catch (RejectedExecutionException e) {
                 locks.release(request);

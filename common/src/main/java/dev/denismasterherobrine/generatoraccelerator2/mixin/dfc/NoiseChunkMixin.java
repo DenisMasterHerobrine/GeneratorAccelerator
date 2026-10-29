@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 
 import com.google.common.collect.ImmutableList;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.DfcConfig;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.pipeline.Compiler;
@@ -99,14 +100,25 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
                                                          Operation<NoiseChunk.BlockStateFiller> original) {
         NoiseChunk.BlockStateFiller filler = original.call(toggle, ridged, gap, random);
         this.ga2$veinFiller = filler;
-        this.ga2$veinTranscription = VeinRule.of(toggle, ridged, gap, random);
+        // GregTech's handler reads its setting in the same call. Read right after, the answer matches the rule it returned
+        this.ga2$noVeins = GtceuVeins.removesVeins();
+        this.ga2$veinTranscription = this.ga2$noVeins ? null : VeinRule.of(toggle, ridged, gap, random);
         return filler;
     }
+
+    /** {@link FastFill}: the vein rule the constructor built never places a vein ({@link GtceuVeins}). */
+    @Unique
+    private boolean ga2$noVeins;
 
     @Override
     public NoiseChunk.BlockStateFiller ga2$fastVeinRule(NoiseChunk.BlockStateFiller rule) {
         VeinRule fast = this.ga2$veinTranscription;
         return fast != null && rule == this.ga2$veinFiller ? fast : rule;
+    }
+
+    @Override
+    public boolean ga2$placesNoVein(Object rule) {
+        return this.ga2$noVeins && rule == this.ga2$veinFiller;
     }
 
     @Override
