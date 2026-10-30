@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.lootr.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "TileTickerMixin",
+    "FabricTileTickerMixin",
+    "ChunkMapLootrStatusMixin",
+    "ServerLevelLootrUnloadMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

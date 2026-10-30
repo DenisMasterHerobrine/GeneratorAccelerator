@@ -1,9 +1,13 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.SchedulingConfig;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.world.level.dimension.LevelStem;
 import org.slf4j.Logger;
 
@@ -15,6 +19,10 @@ import org.slf4j.Logger;
  * for the overworld's height: a taller world's chunks hold more sections, so fewer requests fit in the heap. A
  * {@code -Dchunky.maxWorkingCount} JVM argument is kept. Nothing is saved differently, and without GA2 Chunky is back at its own
  * default.
+ *
+ * <p>While the heap is nearly full ({@link MemoryPressure}), Chunky's task thread waits before each new request until fewer than
+ * Chunky's own 50 are open ({@code mixin.GenerationTaskMixin}). A large pack's heavy chunks on top of GA2's count once filled a 12 GB
+ * heap, and the collector then took the rate from 250 to 20 chunks a second. Fewer open requests let the loaded chunks go.
  */
 public final class ChunkyRequests {
     private ChunkyRequests() {}
@@ -94,5 +102,39 @@ public final class ChunkyRequests {
         long byHeap = maxHeap / (HEAP_PER_REQUEST * Math.max(sections, BASE_SECTIONS) / BASE_SECTIONS);
         long count = Math.min(Math.min((long) PER_PROCESSOR * processors, byHeap), MAX);
         return (int) Math.max(CHUNKY_DEFAULT, count);
+    }
+
+    /** The longest a request waits for room, so a task never hangs on requests that do not finish. */
+    static final long MAX_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
+    /** Requests Chunky's task thread held back while the heap was nearly full. */
+    public static final LongAdder HELD_BACK = new LongAdder();
+
+    /**
+     * On Chunky's task thread, before it takes a permit of {@code working} for its next request. While the heap is nearly full and
+     * GA2 raised Chunky's count, waits until fewer than {@link #CHUNKY_DEFAULT} requests are open.
+     */
+    public static void waitForRoom(Semaphore working) {
+        if (!ours || !MemoryPressure.high()) {
+            return;
+        }
+        int max = Integer.getInteger(PROPERTY, CHUNKY_DEFAULT);
+        if (!crowded(max, working.availablePermits())) {
+            return;
+        }
+        HELD_BACK.increment();
+        long until = System.nanoTime() + MAX_WAIT_NANOS;
+        while (MemoryPressure.high() && crowded(max, working.availablePermits()) && System.nanoTime() < until) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    /** Whether {@code max - available} open requests are as many as Chunky's own default or more. */
+    static boolean crowded(int max, int available) {
+        return max > CHUNKY_DEFAULT && max - available >= CHUNKY_DEFAULT;
     }
 }
