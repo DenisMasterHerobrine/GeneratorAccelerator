@@ -16,6 +16,8 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.CompatConfig;
 import dev.denismasterherobrine.generatoraccelerator2.compat.biolith.BiolithSearch;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrEntries;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
 import dev.denismasterherobrine.generatoraccelerator2.features.fast.GeodeFast;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.logging.RepeatedWarnings;
@@ -182,6 +184,10 @@ public final class GeneratorAccelerator {
         StructureSteps.clear();
         FlatClimateTree.forgetWorlds();
         BiolithSearch.forgetWorlds();
+        if (Compat.isLoaded(LootrMixins.MOD_ID)) {
+            // Lootr's own list would carry the old world's entries into the next world
+            LootrEntries.ENTRIES.clear();
+        }
         if (Compat.isLoaded(LithostitchedDensity.MOD_ID)) {
             LithostitchedInjectors.forgetWorlds();
             LithostitchedRegions.forgetWorlds();

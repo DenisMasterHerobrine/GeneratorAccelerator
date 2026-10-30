@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.spelunkery.SpelunkeryMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.supplementaries.SupplementariesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.terrablender.TerraBlenderMixins;
@@ -65,6 +66,13 @@ public final class CompatMixinPlugin implements IMixinConfigPlugin {
         if (active && SupplementariesMixins.MIXINS.contains(mixinClassName)) {
             // the barnacle search relies on the code it was written against
             return SupplementariesMixins.codeKnown();
+        }
+        if (active && LootrMixins.TICKER_MIXINS.contains(mixinClassName)) {
+            // GA2's entry set relies on the converter's shape. Lootr 1.11 has another converter under the same name
+            return LootrMixins.tickerKnown(targetClassName);
+        }
+        if (active && LootrMixins.CHUNK_MIXINS.contains(mixinClassName)) {
+            return LootrMixins.anyTickerKnown();
         }
         return active;
     }
