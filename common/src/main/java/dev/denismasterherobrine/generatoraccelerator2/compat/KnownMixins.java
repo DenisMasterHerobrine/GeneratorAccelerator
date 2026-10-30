@@ -17,6 +17,13 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.cobblemon.Cobblemon
 import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.ConfluenceMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.adastra.AdAstraMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.diggerhelmet.DiggerHelmetMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.railways.RailwaysMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.tfc.TfcMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.saturn.SaturnMixins;
@@ -103,6 +110,13 @@ public final class KnownMixins {
         all.addAll(C2MEMixins.ENTRIES);
         all.addAll(TerraBlenderMixins.ENTRIES);
         all.addAll(BetterChunkLoadingMixins.ENTRIES);
+        all.addAll(GtceuMixins.ENTRIES);
+        all.addAll(FtbChunksMixins.ENTRIES);
+        all.addAll(LootrMixins.ENTRIES);
+        all.addAll(RailwaysMixins.ENTRIES);
+        all.addAll(AdAstraMixins.ENTRIES);
+        all.addAll(DiggerHelmetMixins.ENTRIES);
+        all.addAll(TfcMixins.ENTRIES);
         return List.copyOf(all);
     }
 

@@ -66,4 +66,33 @@ public class PointProgramTest {
         }
         System.out.println("DFC codegen: " + comparisons + " comparisons bit-identical");
     }
+
+    /**
+     * One root holding all of the overworld router's functions, so vanilla's offset, factor and jaggedness splines land in the same
+     * method, as in a datapack router that adds them up (TerraFirmaGreg's moon over Ad Astra's functions). The splines' nested points
+     * share a few coordinates. The program must stay within the JIT's method size and still give the interpreter's values.
+     */
+    @Test
+    void routerSumStaysCompilable() {
+        HolderLookup.Provider lookup = VanillaRegistries.createLookup();
+        NoiseGeneratorSettings settings = lookup.lookupOrThrow(Registries.NOISE_SETTINGS).getOrThrow(NoiseGeneratorSettings.OVERWORLD).value();
+        RandomState state = RandomState.create(settings, lookup.lookupOrThrow(Registries.NOISE), 987654321L);
+        ProgramSet set = ((Ga2RandomState) (Object) state).ga2$programs();
+        Node sum = null;
+        for (Node root : set.routerRoots().values()) {
+            sum = sum == null ? root : new Node.Ap2(Node.Ap2Type.ADD, sum, root, sum.min() + root.min(), sum.max() + root.max());
+        }
+        PointProgram program = ProgramCompiler.compilePoint("router-sum", List.of(sum), set.specs(), set.blendedSpecs());
+        double[] scratch = new double[Math.max(1, program.scratchSize)];
+        double[] out = new double[1];
+        Random rng = new Random(5);
+        for (int i = 0; i < 500; i++) {
+            DensityFunction.SinglePointContext ctx = new DensityFunction.SinglePointContext(rng.nextInt(20000) - 10000, rng.nextInt(400) - 64, rng.nextInt(20000) - 10000);
+            program.computeAll(ctx, scratch, out);
+            double expected = set.interpreter().eval(sum, ctx);
+            if (Double.doubleToRawLongBits(expected) != Double.doubleToRawLongBits(out[0])) {
+                throw new AssertionError("router sum at " + ctx + ": interpreter=" + expected + " generated=" + out[0]);
+            }
+        }
+    }
 }

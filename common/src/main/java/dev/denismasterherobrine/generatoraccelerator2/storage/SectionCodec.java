@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.LongStream;
 import javax.annotation.Nullable;
 import net.minecraft.core.Holder;
+import net.minecraft.core.IdMap;
 import net.minecraft.core.Registry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -39,7 +40,7 @@ public final class SectionCodec {
     /** Not final so the exactness test can compare both ways. */
     public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.sectionCodec"));
 
-    private static final Map<BlockState, CompoundTag> STATE_TAGS = new ConcurrentHashMap<>();
+    private static final Map<BlockState, TagRecipe> STATE_TAGS = new ConcurrentHashMap<>();
 
     public static boolean enabled() {
         return ENABLED && StorageConfig.sectionCodec() && HookTargets.allowed(HookTargets.STORAGE_SECTION_CODEC);
@@ -48,7 +49,22 @@ public final class SectionCodec {
     /** {@code block_states} of a section, or null to use the codec. */
     @Nullable
     public static Tag blockStates(PalettedContainer<BlockState> states) {
-        return blockStates(states.pack(Block.BLOCK_STATE_REGISTRY, PalettedContainer.Strategy.SECTION_STATES));
+        FastPack.Raw<BlockState> raw = FastPack.enabled() ? packRaw(states, Block.BLOCK_STATE_REGISTRY, PalettedContainer.Strategy.SECTION_STATES) : null;
+        return raw != null ? blockStates(raw) : blockStates(states.pack(Block.BLOCK_STATE_REGISTRY, PalettedContainer.Strategy.SECTION_STATES));
+    }
+
+    /**
+     * {@link FastPack#packRaw} under the container's lock, as {@code pack} takes it. The longs stay the array the tag keeps, without the
+     * stream {@code pack}'s result wraps them in.
+     */
+    @Nullable
+    private static <T> FastPack.Raw<T> packRaw(PalettedContainer<T> container, IdMap<T> registry, PalettedContainer.Strategy strategy) {
+        container.acquire();
+        try {
+            return FastPack.packRaw(container.data, registry, strategy);
+        } finally {
+            container.release();
+        }
     }
 
     /** {@code block_states} from a container packed for saving, or null to use the codec. {@code SavePrep} packs a copy. */
@@ -75,16 +91,16 @@ public final class SectionCodec {
     private static ListTag statePalette(List<BlockState> entries) {
         ListTag palette = new ListTag();
         for (BlockState state : entries) {
-            CompoundTag tag = STATE_TAGS.get(state);
+            TagRecipe tag = STATE_TAGS.get(state);
             if (tag == null) {
                 Optional<Tag> encoded = BlockState.CODEC.encodeStart(NbtOps.INSTANCE, state).result();
                 if (encoded.isEmpty() || !(encoded.get() instanceof CompoundTag compound)) {
                     return null;
                 }
-                tag = compound;
+                tag = TagRecipe.of(compound);
                 STATE_TAGS.put(state, tag);
             }
-            palette.add(copy(tag));
+            palette.add(tag.make());
         }
         return palette;
     }
@@ -92,7 +108,9 @@ public final class SectionCodec {
     /** {@code biomes} of a section, or null to use the codec. */
     @Nullable
     public static Tag biomes(PalettedContainerRO<Holder<Biome>> biomes, Registry<Biome> registry) {
-        return biomes(biomes.pack(registry.asHolderIdMap(), PalettedContainer.Strategy.SECTION_BIOMES));
+        FastPack.Raw<Holder<Biome>> raw = FastPack.enabled() && biomes instanceof PalettedContainer<Holder<Biome>> container
+            ? packRaw(container, registry.asHolderIdMap(), PalettedContainer.Strategy.SECTION_BIOMES) : null;
+        return raw != null ? biomes(raw) : biomes(biomes.pack(registry.asHolderIdMap(), PalettedContainer.Strategy.SECTION_BIOMES));
     }
 
     /** {@code biomes} from a container packed for saving, or null to use the codec. */
@@ -156,13 +174,28 @@ public final class SectionCodec {
         return out;
     }
 
-    /** A copy that inserts each compound's keys in the source's iteration order, so the copy iterates the same way. */
-    private static CompoundTag copy(CompoundTag source) {
-        CompoundTag out = new CompoundTag();
-        for (String key : source.getAllKeys()) {
-            Tag value = source.get(key);
-            out.put(key, value instanceof CompoundTag compound ? copy(compound) : value.copy());
+    /**
+     * A compound's keys and values in its iteration order. {@link #make} builds a copy that inserts the keys in that order, so the copy
+     * iterates the same way. Unlike copying the compound itself, it walks no hash map and looks up no key.
+     */
+    private record TagRecipe(String[] keys, Object[] values) {
+        static TagRecipe of(CompoundTag source) {
+            String[] keys = source.getAllKeys().toArray(new String[0]);
+            Object[] values = new Object[keys.length];
+            for (int i = 0; i < keys.length; i++) {
+                Tag value = source.get(keys[i]);
+                values[i] = value instanceof CompoundTag compound ? of(compound) : value;
+            }
+            return new TagRecipe(keys, values);
         }
-        return out;
+
+        CompoundTag make() {
+            CompoundTag out = new CompoundTag();
+            for (int i = 0; i < keys.length; i++) {
+                Object value = values[i];
+                out.put(keys[i], value instanceof TagRecipe recipe ? recipe.make() : ((Tag) value).copy());
+            }
+            return out;
+        }
     }
 }

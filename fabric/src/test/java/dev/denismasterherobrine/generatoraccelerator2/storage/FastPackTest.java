@@ -18,6 +18,9 @@ import java.util.function.Supplier;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.LongArrayTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
@@ -119,6 +122,83 @@ public class FastPackTest {
                 same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {}), "biomes n=" + n + " pattern " + pattern);
             }
         }
+    }
+
+    /**
+     * Containers read from saved longs keep whatever the bits past each long's last entry held. Vanilla packs zeros there. Checked for
+     * every local width, with ids in the palette's own order (the longs are copied), in another order (repacked a byte or an id at a
+     * time), and with values the storage no longer holds (narrower longs).
+     */
+    @Test
+    void savedLongsWithDirtyPadding() {
+        List<BlockState> all = new ArrayList<>();
+        Block.BLOCK_STATE_REGISTRY.forEach(all::add);
+        Random random = new Random(19);
+        for (int n : new int[] { 2, 5, 9, 16, 17, 30, 32, 33, 64, 100, 128, 129, 200, 256 }) {
+            for (int order = 0; order < 3; order++) {
+                List<BlockState> values = pick(all, n, random);
+                ListTag palette = new ListTag();
+                for (BlockState s : values) {
+                    palette.add(BlockState.CODEC.encodeStart(NbtOps.INSTANCE, s).getOrThrow(false, error -> {}));
+                }
+                CompoundTag tag = new CompoundTag();
+                tag.put("palette", palette);
+                tag.put("data", new LongArrayTag(dirtyLongs(n, 4096, Math.max(4, ceilLog2(n)), order, random)));
+                PalettedContainer<BlockState> container = STATES.parse(NbtOps.INSTANCE, tag).getOrThrow(false, error -> {});
+                same(() -> STATES.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {}), "states n=" + n + " order " + order);
+            }
+        }
+        Registry<Biome> registry = TerrainHarness.world(TerrainHarness.Preset.OVERWORLD, 1234567L).registries.biomes;
+        Codec<PalettedContainerRO<Holder<Biome>>> codec = biomeCodec(registry);
+        List<Holder<Biome>> biomes = new ArrayList<>();
+        registry.holders().forEach(biomes::add);
+        for (int n : new int[] { 2, 3, 4, 5, 7, 8 }) {
+            for (int order = 0; order < 3; order++) {
+                List<Holder<Biome>> values = pick(biomes, n, random);
+                ListTag palette = new ListTag();
+                for (Holder<Biome> b : values) {
+                    palette.add(StringTag.valueOf(b.unwrapKey().orElseThrow().location().toString()));
+                }
+                CompoundTag tag = new CompoundTag();
+                tag.put("palette", palette);
+                tag.put("data", new LongArrayTag(dirtyLongs(n, 64, ceilLog2(n), order, random)));
+                PalettedContainerRO<Holder<Biome>> container = codec.parse(NbtOps.INSTANCE, tag).getOrThrow(false, error -> {});
+                same(() -> codec.encodeStart(NbtOps.INSTANCE, container).getOrThrow(false, error -> {}), "biomes n=" + n + " order " + order);
+            }
+        }
+    }
+
+    private static int ceilLog2(int n) {
+        return 32 - Integer.numberOfLeadingZeros(n - 1);
+    }
+
+    /**
+     * Saved longs for {@code size} entries of {@code bits} each over a palette of {@code n} values, with random bits past each long's
+     * last entry. Order 0: the first entries are 0, 1, 2 ... (the palette's own order). Order 1: random ids. Order 2: only the lower
+     * half of the palette's ids appear.
+     */
+    private static long[] dirtyLongs(int n, int size, int bits, int order, Random random) {
+        int[] ids = new int[size];
+        for (int i = 0; i < size; i++) {
+            ids[i] = switch (order) {
+                case 0 -> i < n ? i : random.nextInt(n);
+                case 1 -> random.nextInt(n);
+                default -> random.nextInt(Math.max(1, n / 2));
+            };
+        }
+        int perLong = 64 / bits;
+        long[] longs = new long[(size + perLong - 1) / perLong];
+        for (int w = 0; w < longs.length; w++) {
+            long word = random.nextLong();
+            for (int t = 0; t < perLong; t++) {
+                int i = w * perLong + t;
+                long id = i < size ? ids[i] : random.nextInt(1 << bits);
+                word &= ~(((1L << bits) - 1L) << t * bits);
+                word |= id << t * bits;
+            }
+            longs[w] = word;
+        }
+        return longs;
     }
 
     /** {@link SectionCodec} builds the same block state and biome tags as the codecs, for real and synthetic sections. */

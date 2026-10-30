@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
@@ -19,9 +20,13 @@ import net.minecraft.world.level.levelgen.feature.MonsterRoomFeature;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.level.material.Fluid;
 
 /** {@link PlatformHooks} on Fabric: vanilla's game, where light emission does not depend on position. */
 public final class FabricPlatformHooks implements PlatformHooks.Service {
+    /** Fabric API's fluid rendering module. It is a client module, so a dedicated server has none. */
+    private static final boolean FLUID_RENDERING = FabricLoader.getInstance().isModLoaded("fabric-rendering-fluids-v1");
+
     /** Vanilla's {@code findBlockLightSources} filter. */
     @Override
     public boolean mayEmitLight(BlockState state, BlockGetter chunk) {
@@ -72,5 +77,11 @@ public final class FabricPlatformHooks implements PlatformHooks.Service {
             StructurePlaceSettings settings,
             StructureTemplate template) {
         return processor.processBlock(level, offset, pivot, raw, placed, settings);
+    }
+
+    /** Fabric API draws every fluid through its handler registry. Its built-in handlers draw the game's way ({@link FabricWaterRendering}). */
+    @Override
+    public boolean vanillaFluidRendering(Fluid fluid) {
+        return !FLUID_RENDERING || FabricWaterRendering.builtIn(fluid);
     }
 }

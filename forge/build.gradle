@@ -20,6 +20,7 @@ def ga2MixinConfigs = [
         'generatoraccelerator2.compat.quark.mixins.json',
         'generatoraccelerator2.compat.spelunkery.mixins.json',
         'generatoraccelerator2.compat.supplementaries.mixins.json',
+        'generatoraccelerator2.compat.productivebees.mixins.json',
         'generatoraccelerator2.parallellight.mixins.json',
         // Client render threads
         'generatoraccelerator2.view.mixins.json',

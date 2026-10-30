@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.structure;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
 import net.minecraft.core.BlockPos;
@@ -59,7 +60,13 @@ public final class JigsawBlocks {
 
     private static Rotated build(StructureTemplate.Palette palette, Rotation rotation) {
         StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation);
-        List<StructureTemplate.StructureBlockInfo> blocks = palette.blocks(Blocks.JIGSAW);
+        // vanilla's blocks(Block) answer, filtered from the palette's list. That method fills a map every reader of the template shares
+        List<StructureTemplate.StructureBlockInfo> blocks = new ArrayList<>();
+        for (StructureTemplate.StructureBlockInfo info : palette.blocks()) {
+            if (info.state().is(Blocks.JIGSAW)) {
+                blocks.add(info);
+            }
+        }
         int n = blocks.size();
         BlockPos[] pos = new BlockPos[n];
         BlockState[] state = new BlockState[n];

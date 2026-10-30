@@ -32,7 +32,11 @@ public final class GeneratorAcceleratorForge {
                 GeneratorAccelerator.onLevelLoad(level);
             }
         });
-        MinecraftForge.EVENT_BUS.addListener((TagsUpdatedEvent e) -> GeneratorAccelerator.onTagsUpdated());
+        MinecraftForge.EVENT_BUS.addListener((TagsUpdatedEvent e) -> {
+            if (e.getUpdateCause() == TagsUpdatedEvent.UpdateCause.SERVER_DATA_LOAD) {
+                GeneratorAccelerator.onTagsUpdated();
+            }
+        });
         MinecraftForge.EVENT_BUS.addListener((ServerAboutToStartEvent e) -> GeneratorAccelerator.onServerStarting(e.getServer()));
         MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent e) -> GeneratorAccelerator.onServerStopped(e.getServer()));
         MinecraftForge.EVENT_BUS.addListener((TickEvent.ServerTickEvent e) -> {

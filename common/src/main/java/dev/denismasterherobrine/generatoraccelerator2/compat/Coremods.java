@@ -286,6 +286,7 @@ public final class Coremods {
             }
         }
         String foreignOwner = null;
+        boolean loaderPatch = false;
         Set<String> merged = new LinkedHashSet<>();
         Map<LabelNode, Integer> currentLabels = labelOrdinals(current);
         for (AbstractInsnNode insn = current.instructions.getFirst(); insn != null; insn = insn.getNext()) {
@@ -300,6 +301,10 @@ public final class Coremods {
             }
             String refOwner = insn instanceof MethodInsnNode mi ? mi.owner : ((FieldInsnNode) insn).owner;
             String refName = insn instanceof MethodInsnNode mi ? mi.name : ((FieldInsnNode) insn).name;
+            if (refOwner.equals(FABRIC_LOADER_HOOKS)) {
+                loaderPatch = true;
+                continue;
+            }
             if (refOwner.equals(owner) || isOwn(refOwner)) {
                 continue; // a field of the class (added by the coremod) or a vanilla call. No other mod is named here
             }
@@ -311,10 +316,18 @@ public final class Coremods {
             }
         }
         if (foreignOwner == null) {
-            return new Change(UNKNOWN, List.of("coremod$unknown"));
+            if (loaderPatch) {
+                // Fabric Loader's own patch (the branding in getClientModName and getServerModName), the platform's as Forge's are
+                return null;
+            }
+            // the method's name, so a log line says where to look
+            return new Change(UNKNOWN + " in " + current.name, List.of("coremod$unknown"));
         }
         return new Change("coremod " + foreignOwner, List.copyOf(merged.isEmpty() ? Set.of("coremod$unknown") : merged));
     }
+
+    /** The class Fabric Loader's game patches call (branding, entrypoints). */
+    private static final String FABRIC_LOADER_HOOKS = "net/fabricmc/loader/impl/game/minecraft/Hooks";
 
     private static boolean isOwn(String owner) {
         for (String p : OWN_OWNERS) {

@@ -31,6 +31,15 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.confluence.Confluen
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.eclipticseasons.EclipticSeasonsSurface;
 import dev.denismasterherobrine.generatoraccelerator2.compat.fabricapi.FabricApiMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.adastra.AdAstraMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.diggerhelmet.DiggerHelmetLight;
+import dev.denismasterherobrine.generatoraccelerator2.compat.diggerhelmet.DiggerHelmetMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.ftbchunks.FtbChunksMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lootr.LootrMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.railways.RailwaysMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.tfc.TfcMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.GtceuVeins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.saturn.SaturnMixins;
@@ -75,7 +84,7 @@ public final class CompatModules {
         if (Compat.isLoaded(ChunkyRequests.MOD_ID)) {
             ChunkyRequests.register();
         }
-        if (Compat.isLoaded(FabricApiMixins.MOD_ID) || Compat.isLoaded(FabricApiMixins.FORGE_MOD_ID)) {
+        if (Compat.isLoaded(FabricApiMixins.MOD_ID) || Compat.isLoaded(FabricApiMixins.FORGE_MOD_ID) || Compat.isLoaded(FabricApiMixins.FLUIDS_MOD_ID)) {
             FabricApiMixins.register();
         }
         if (Compat.isLoaded(NaturesSpiritMixins.MOD_ID)) {
@@ -119,6 +128,15 @@ public final class CompatModules {
             CompatAdapters.register(HookTargets.STRUCTURE_RING_BOUND, ModernFixMixins.STRONGHOLD_CACHE, () -> true);
             // nothing to set up: without ModernFix's cache, a temperature is still getHeightAdjustedTemperature's. The GPU computes that
             CompatAdapters.register(HookTargets.GPU_SURFACE, ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // the same for the freeze and snow skip, which reads only the base temperature and the climate settings
+            CompatAdapters.register(FeatureTargets.compatKey("climate"), ModernFixMixins.BIOME_TEMPERATURE, () -> true);
+            // nothing to set up: ModernFix's answer runs on the server thread only, GA2's off it
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK, () -> true);
+            CompatAdapters.register(HookTargets.CHUNK_PRESENT_OFF_THREAD, ModernFixMixins.CHUNK_DEADLOCK_FORGE, () -> true);
+        }
+        if (Compat.isLoaded(FtbChunksMixins.MOD_ID)) {
+            // nothing to set up: FTB Chunks only removes directions from vanilla's spread
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, FtbChunksMixins.FLUID_SPREAD, () -> true);
         }
         if (Compat.isLoaded(SaturnMixins.MOD_ID)) {
             SaturnMixins.register();
@@ -197,6 +215,28 @@ public final class CompatModules {
             }
             // nothing to set up: TerraBlender's lookup answers from the position and the regions of the world's seed
             CompatAdapters.register(HookTargets.BIOME_ANSWERS, TerraBlenderMixins.BIOME_SOURCE, () -> true);
+        }
+        if (Compat.isLoaded(GtceuMixins.MOD_ID)) {
+            GtceuVeins.register();
+        }
+        if (Compat.isLoaded(LootrMixins.MOD_ID)) {
+            // nothing to set up: GA2 asks forState, which runs Lootr's handler
+            CompatAdapters.register(HookTargets.STATE_POI_SKIP, LootrMixins.POI_TYPES, () -> true);
+        }
+        if (Compat.isLoaded(RailwaysMixins.MOD_ID)) {
+            // nothing to set up: the skipped biomes return before the track test
+            CompatAdapters.register(FeatureTargets.compatKey("climate"), RailwaysMixins.SNOW_ON_TRACKS, () -> true);
+        }
+        if (Compat.isLoaded(TfcMixins.MOD_ID)) {
+            // nothing to set up: TFC's renderer change only hides more faces
+            CompatAdapters.register(HookTargets.FLUID_HIDDEN_WATER, TfcMixins.LIQUID_RENDERER, () -> true);
+        }
+        if (Compat.isLoaded(AdAstraMixins.MOD_ID)) {
+            // nothing to set up: the water GA2 leaves alone gets the same tick result with Ad Astra's changes
+            CompatAdapters.register(HookTargets.FLUID_POST_PROCESS, AdAstraMixins.FLUIDS, () -> true);
+        }
+        if (Compat.isLoaded(DiggerHelmetMixins.MOD_ID)) {
+            DiggerHelmetLight.register();
         }
     }
 }

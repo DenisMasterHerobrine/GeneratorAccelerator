@@ -201,6 +201,15 @@ class ChunkyHoldsTest {
             this.uncovered.clear();
             this.maxKept = Math.max(this.maxKept, this.tickets.kept.size());
             assertEquals(this.tickets.kept.size(), this.holds.keptCount(), "GA2's tickets against the chunks it keeps");
+            if (this.now % 16 == 0) {
+                // the holds' per-tile bits name the same chunks as GA2's tickets
+                for (long q : this.tickets.kept) {
+                    assertTrue(this.holds.isKept(q), "kept without its bit: " + new ChunkPos(q));
+                }
+                for (long q : this.loaded) {
+                    assertEquals(this.tickets.kept.contains(q), this.holds.isKept(q), "bit of " + new ChunkPos(q));
+                }
+            }
             assertTrue(this.cap <= 0 || this.tickets.kept.size() <= this.cap, "over the cap: " + this.tickets.kept.size());
         }
 

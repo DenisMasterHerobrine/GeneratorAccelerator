@@ -716,7 +716,7 @@ public final class Emitter {
         } else if (n instanceof Node.Weird w) {
             return 50;
         } else if (n instanceof Node.Spline s) {
-            return 14 + 6 * splineCoordCount(s.spline());
+            return 14 + 6 * splineCoords(s.spline()).size();
         } else if (n instanceof Node.Blended b) {
             return 14;
         } else if (n instanceof Node.BlendDensity b) {
@@ -746,17 +746,6 @@ public final class Emitter {
         } else {
             throw new IllegalStateException(String.valueOf(n));
         }
-    }
-
-    private int splineCoordCount(Node.SplineSpec s) {
-        if (s instanceof Node.SplineMulti m) {
-            int c = 1;
-            for (Node.SplineSpec v : m.values()) {
-                c += splineCoordCount(v);
-            }
-            return c;
-        }
-        return 0;
     }
 
     /** Puts each of {@code roots} in a helper method of its own, so a method computing several roots stays small. */
@@ -1605,11 +1594,31 @@ public final class Emitter {
         mv.visitInsn(Opcodes.F2D);
     }
 
+    /**
+     * Ensures each distinct coordinate of the spline once. Vanilla's offset spline nests a few hundred points over four coordinates. An
+     * ensure per point repeated the same slot check hundreds of times, which kept one method over the JIT's limit at every compaction
+     * level (TerraFirmaGreg's moon). A second ensure of a slot computes nothing, so once per coordinate is the same.
+     */
     private void ensureSplineCoords(MethodVisitor mv, Locals l, Node.SplineSpec spec) {
+        for (Node coordinate : splineCoords(spec)) {
+            emitEnsure(mv, l, coordinate);
+        }
+    }
+
+    /** The spline's distinct coordinates in the order its points first use them. Told apart by identity, as the slots are. */
+    private static List<Node> splineCoords(Node.SplineSpec spec) {
+        List<Node> coords = new ArrayList<>();
+        collectSplineCoords(spec, coords, new IdentityHashMap<>());
+        return coords;
+    }
+
+    private static void collectSplineCoords(Node.SplineSpec spec, List<Node> coords, Map<Node, Boolean> seen) {
         if (spec instanceof Node.SplineMulti m) {
-            emitEnsure(mv, l, m.coordinate());
+            if (seen.put(m.coordinate(), Boolean.TRUE) == null) {
+                coords.add(m.coordinate());
+            }
             for (Node.SplineSpec v : m.values()) {
-                ensureSplineCoords(mv, l, v);
+                collectSplineCoords(v, coords, seen);
             }
         }
     }

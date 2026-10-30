@@ -277,6 +277,9 @@ public final class FeatureSafetyScan {
      * field declared with such a type.
      */
     private static boolean concurrentStatic(FieldInsnNode field) {
+        if (ConcurrentStatics.isMade(field.owner, field.name)) {
+            return true; // GA2 replaced the mod's collection with a concurrent one
+        }
         ClassNode owner = CLASSES.get().get(field.owner);
         if (owner == null || owner == MISSING) {
             return false;
