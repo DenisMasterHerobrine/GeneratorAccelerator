@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +33,15 @@ class ChunkyRequestsTest {
         assertEquals(128, ChunkyRequests.inFlight(0, 16, 6 * GB, 48), "768 blocks need twice the heap per request");
         assertEquals(256, ChunkyRequests.inFlight(0, 16, 16 * GB, 48), "a big heap still reaches the processor count");
         assertEquals(256, ChunkyRequests.inFlight(0, 16, 6 * GB, 16), "a lower world keeps the vanilla figure");
+    }
+
+    /** While the heap is nearly full, a request waits once Chunky's own default of 50 are open, and only when GA2 raised the count. */
+    @Test
+    void crowdedFromChunkysDefault() {
+        assertFalse(ChunkyRequests.crowded(192, 192 - 49), "49 open");
+        assertTrue(ChunkyRequests.crowded(192, 192 - 50), "50 open");
+        assertTrue(ChunkyRequests.crowded(192, 0), "all open");
+        assertFalse(ChunkyRequests.crowded(50, 0), "Chunky's own count is never held back");
     }
 
     @Test

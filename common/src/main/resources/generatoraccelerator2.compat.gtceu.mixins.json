@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.denismasterherobrine.generatoraccelerator2.compat.gtceu.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "plugin": "dev.denismasterherobrine.generatoraccelerator2.compat.CompatMixinPlugin",
+  "mixins": [
+    "BedrockFluidVeinSavedDataMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
