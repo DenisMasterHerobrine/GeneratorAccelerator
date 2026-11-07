@@ -15,6 +15,7 @@ build/
 # Misc
 *.log
 *.jfr
+benchmark-results/
 
 # Mixin debug export (-Dmixin.debug.export=true)
 .mixin.out/

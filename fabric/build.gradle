@@ -56,11 +56,41 @@ remapJar {
 
 apply from: file('names.gradle')
 
+// Common benchmarks need the same widened Minecraft classes and mixins as the tests.
+sourceSets {
+    benchmark {
+        java.srcDir rootProject.file('common/src/jmh/java')
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+
+dependencies {
+    benchmarkImplementation 'org.openjdk.jmh:jmh-core:1.37'
+    benchmarkAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
+    benchmarkImplementation "net.fabricmc:fabric-loader-junit:$rootProject.fabric_loader_version"
+    benchmarkImplementation 'org.junit.platform:junit-platform-launcher:1.10.3'
+    benchmarkCompileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+}
+
+tasks.register('benchmark', JavaExec) {
+    group = 'benchmark'
+    description = 'Runs common biome JMH benchmarks with Fabric transformations and GC profiling.'
+    dependsOn tasks.named('benchmarkClasses')
+    classpath = sourceSets.benchmark.runtimeClasspath
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    mainClass = 'org.openjdk.jmh.Main'
+    args '-prof', 'gc', '-foe', 'true'
+}
+
+apply from: rootProject.file('gradle/jmh-regression.gradle')
+
 // The tests run inside Fabric Loader (fabric-loader-junit), so GA2's mixins are applied to the game they test, as they were
 // in NeoForge's unit test environment. The game is bootstrapped once by testutil.GameBootstrap.
 dependencies {
     testImplementation "net.fabricmc:fabric-loader-junit:$rootProject.fabric_loader_version"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
+    testImplementation sourceSets.benchmark.output
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testCompileOnly "com.google.code.findbugs:jsr305:3.0.2"
     testImplementation "org.lwjgl:lwjgl-opencl:$rootProject.lwjgl_version"
