@@ -26,7 +26,7 @@ public final class GenericModifiers {
         protected Boolean computeValue(Class<?> type) {
             try {
                 return type.getMethod(GET_POSITIONS, PlacementContext.class, RandomSource.class, BlockPos.class).getDeclaringClass() == RepeatingPlacement.class;
-            } catch (NoSuchMethodException | LinkageError e) {
+            } catch (NoSuchMethodException | RuntimeException | LinkageError e) {
                 return false;
             }
         }

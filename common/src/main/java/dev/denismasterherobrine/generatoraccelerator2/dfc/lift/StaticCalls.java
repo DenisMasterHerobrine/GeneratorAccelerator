@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,7 +14,7 @@ import org.objectweb.asm.Type;
 /**
  * Whitelist of pure static methods a lifted density function may call. Generated code invokes the
  * very same methods, so results are identical to the original bytecode by construction. The
- * interpreter calls them reflectively.
+ * interpreter calls them through method handles.
  */
 public final class StaticCalls {
     private StaticCalls() {}
@@ -34,7 +35,17 @@ public final class StaticCalls {
         MTH + ".floor(D)I", MTH + ".ceil(D)I", MTH + ".clamp(III)I", MTH + ".floorDiv(II)I", MTH + ".positiveModulo(II)I",
         MTH + ".square(I)I", MTH + ".lerpInt(FII)I");
 
-    private static final Map<String, MethodHandle> HANDLES = new ConcurrentHashMap<>();
+    /** Most arguments of an allowed method ({@code clampedMap}, {@code map}). */
+    public static final int MAX_ARGS = 5;
+
+    /** A resolved method as {@code (double x5)double}. Arguments past its own are ignored. */
+    private record Call(String owner, String desc, MethodHandle handle) {}
+
+    /** Resolved methods by name. Overloads share a name, so each name holds a short list. */
+    private static final Map<String, Call[]> CALLS = new ConcurrentHashMap<>();
+
+    private static final MethodType UNIFORM = MethodType.methodType(double.class,
+        double.class, double.class, double.class, double.class, double.class);
 
     public static boolean allowed(String owner, String name, String desc) {
         // The whitelist uses Mojang names. A lifted call has the running game's names ({@link Names}).
@@ -45,20 +56,54 @@ public final class StaticCalls {
                 && desc.equals(ExternSamplers.DESC);
     }
 
-    public static Object invoke(String owner, String name, String desc, Object[] args) {
+    /**
+     * Calls the method with its arguments as doubles, padded to {@link #MAX_ARGS}. Int and float arguments are cast back from
+     * the doubles they were widened to, so they arrive unchanged. An int result comes back widened to a double.
+     */
+    public static double invoke(String owner, String name, String desc, double a0, double a1, double a2, double a3, double a4) {
+        MethodHandle mh = handle(owner, name, desc);
         try {
-            MethodHandle mh = HANDLES.computeIfAbsent(owner + "." + name + desc, k -> resolve(owner, name, desc));
-            return mh.invokeWithArguments(args);
+            return (double) mh.invokeExact(a0, a1, a2, a3, a4);
         } catch (Throwable t) {
             throw new IllegalStateException("static call failed: " + owner + "." + name + desc, t);
         }
+    }
+
+    private static MethodHandle handle(String owner, String name, String desc) {
+        Call[] calls = CALLS.get(name);
+        if (calls != null) {
+            for (Call c : calls) {
+                if (c.owner().equals(owner) && c.desc().equals(desc)) {
+                    return c.handle();
+                }
+            }
+        }
+        Call resolved = new Call(owner, desc, resolve(owner, name, desc));
+        CALLS.merge(name, new Call[] { resolved }, (old, add) -> {
+            for (Call c : old) {
+                if (c.owner().equals(owner) && c.desc().equals(desc)) {
+                    return old;
+                }
+            }
+            Call[] out = Arrays.copyOf(old, old.length + 1);
+            out[old.length] = resolved;
+            return out;
+        });
+        return resolved.handle();
     }
 
     private static MethodHandle resolve(String owner, String name, String desc) {
         try {
             Class<?> cls = Class.forName(owner.replace('/', '.'), false, StaticCalls.class.getClassLoader());
             MethodType type = MethodType.fromMethodDescriptorString(desc, StaticCalls.class.getClassLoader());
-            return MethodHandles.publicLookup().findStatic(cls, name, type);
+            if (type.parameterCount() > MAX_ARGS) {
+                throw new IllegalStateException("more than " + MAX_ARGS + " arguments: " + owner + "." + name + desc);
+            }
+            int n = type.parameterCount();
+            MethodHandle mh = MethodHandles.publicLookup().findStatic(cls, name, type);
+            // casts: double to int or float for the arguments (d2i, d2f), int to double for the result
+            mh = MethodHandles.explicitCastArguments(mh, UNIFORM.dropParameterTypes(n, MAX_ARGS));
+            return MethodHandles.dropArguments(mh, n, UNIFORM.parameterList().subList(n, MAX_ARGS));
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("cannot resolve " + owner + "." + name + desc, e);
         }

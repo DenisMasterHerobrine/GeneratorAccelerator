@@ -7,6 +7,7 @@ import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LayerMap;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightStorage;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2SnapshotCopy;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightSnapshot;
+import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
@@ -40,6 +41,7 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
     @Shadow @Final protected LongSet sectionsAffectedByLightUpdates;
     @Shadow @Final protected M updatingSectionData;
     @Shadow @Final protected LightChunkGetter chunkSource;
+    @Shadow @Final protected Long2ByteMap sectionStates;
 
     @Unique private long ga2$lastChanged = Long.MAX_VALUE;
     /** The last snapshot this storage published, or null after a publish by vanilla's clone. Read and written by the light thread. */
@@ -67,6 +69,12 @@ public abstract class LayerLightSectionStorageMixin<M extends DataLayerStorageMa
     @Override
     public DataLayer ga2$layer(long sectionKey) {
         return ((Ga2LayerMap) this.updatingSectionData).ga2$layer(sectionKey);
+    }
+
+    @Override
+    public boolean ga2$hasData(long sectionKey) {
+        // SectionState.HAS_DATA_BIT
+        return (this.sectionStates.get(sectionKey) & 32) != 0;
     }
 
     @Override

@@ -51,7 +51,7 @@ public final class Reflect {
     public static Method[] declaredMethods(Class<?> type) {
         try {
             return type.getDeclaredMethods();
-        } catch (LinkageError e) {
+        } catch (RuntimeException | LinkageError e) {
             return new Method[0];
         }
     }
@@ -83,7 +83,7 @@ public final class Reflect {
         Field[] fields;
         try {
             fields = c.getDeclaredFields();
-        } catch (LinkageError e) {
+        } catch (RuntimeException | LinkageError e) {
             return null; // a field's type is a class this side does not have
         }
         for (Field f : fields) {
@@ -110,7 +110,7 @@ public final class Reflect {
     public static Class<?> type(String name) {
         try {
             return Class.forName(name, false, Reflect.class.getClassLoader());
-        } catch (ClassNotFoundException | LinkageError e) {
+        } catch (ClassNotFoundException | RuntimeException | LinkageError e) {
             return null;
         }
     }

@@ -196,7 +196,7 @@ public final class MarkerPairing {
                     }
                     accessors.add(accessor);
                 }
-            } catch (LinkageError e) {
+            } catch (RuntimeException | LinkageError e) {
                 // a component type this side cannot load: the subtree stays unpaired
                 return new Method[0];
             }

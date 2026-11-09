@@ -87,7 +87,7 @@ final class LeafUpdates {
                     }
                 }
                 return NONE;
-            } catch (LinkageError e) {
+            } catch (RuntimeException | LinkageError e) {
                 // a signature names a class this side does not have: ask the block
                 return OTHER;
             }

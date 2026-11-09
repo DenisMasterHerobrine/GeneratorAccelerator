@@ -84,7 +84,7 @@ public final class ChunkCopy {
             Field[] declared;
             try {
                 declared = c.getDeclaredFields();
-            } catch (LinkageError e) {
+            } catch (RuntimeException | LinkageError e) {
                 continue; // A field's type is a class missing on this side.
             }
             for (Field f : declared) {

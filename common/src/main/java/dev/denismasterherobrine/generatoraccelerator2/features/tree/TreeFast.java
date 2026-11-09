@@ -64,7 +64,7 @@ public final class TreeFast {
                         }
                     }
                 }
-            } catch (LinkageError e) {
+            } catch (RuntimeException | LinkageError e) {
                 return Boolean.FALSE; // a signature names a class this side does not have (a client class on a server): ask the placer
             }
             return Boolean.TRUE;

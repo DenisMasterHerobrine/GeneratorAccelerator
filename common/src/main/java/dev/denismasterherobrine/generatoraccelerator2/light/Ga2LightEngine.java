@@ -6,6 +6,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.LightChunkGetter;
 
 /**
  * What the light propagation loops ({@code mixin/light/SkyLightEngineMixin}, {@code BlockLightEngineMixin}) need from
@@ -42,4 +43,10 @@ public interface Ga2LightEngine {
 
     /** {@code enqueueIncrease(pos, entry)}. */
     void ga2$enqueueIncrease(long pos, long entry);
+
+    /** {@code chunkSource}. */
+    LightChunkGetter ga2$chunkSource();
+
+    /** {@code storage}. */
+    Ga2LightStorage ga2$storage();
 }

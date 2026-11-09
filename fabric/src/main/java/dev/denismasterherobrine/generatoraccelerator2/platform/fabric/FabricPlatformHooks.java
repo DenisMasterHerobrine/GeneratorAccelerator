@@ -53,7 +53,7 @@ public final class FabricPlatformHooks implements PlatformHooks.Service {
         try {
             Method m = chunkClass.getMethod(FIND_BLOCKS, Predicate.class, BiConsumer.class);
             return m.getDeclaringClass() == ChunkAccess.class;
-        } catch (NoSuchMethodException | LinkageError e) {
+        } catch (NoSuchMethodException | LinkageError | RuntimeException e) {
             return false;
         }
     }

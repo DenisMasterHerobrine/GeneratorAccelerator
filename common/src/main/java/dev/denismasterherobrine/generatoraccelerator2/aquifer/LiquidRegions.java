@@ -65,7 +65,14 @@ public final class LiquidRegions {
     private static MethodHandle altitudeOf;
     private static MethodHandle blocksOf;
 
-    private static synchronized void resolve() {
+    /** Finds the mod's objects once. The handles are written before {@code resolved}, so a thread that sees it set sees them. */
+    private static void resolve() {
+        if (!resolved) {
+            resolveLocked();
+        }
+    }
+
+    private static synchronized void resolveLocked() {
         if (resolved) {
             return;
         }
@@ -93,6 +100,7 @@ public final class LiquidRegions {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             LOGGER.warn("Better Caves' liquid regions not readable ({}) -> the aquifer keeps vanilla's code", e.toString());
             aquiferField = null;
+            stateMethod = null; // a partial find gives no regions, so table() never meets a missing handle
         } finally {
             resolved = true;
         }

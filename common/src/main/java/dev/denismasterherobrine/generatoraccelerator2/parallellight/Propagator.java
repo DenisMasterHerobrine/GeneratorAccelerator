@@ -401,7 +401,13 @@ final class Propagator {
         int y = BlockPos.getY(position);
         int z = BlockPos.getZ(position);
         long section = SectionPos.blockToSection(position);
-        int stored = this.layer(section).get(x & 15, y & 15, z & 15);
+        DataLayer here = this.layer(section);
+        if (here == null) {
+            // a light source queued in a section that stores no light. Vanilla's getStoredLevel would throw, and the batch would
+            // fail again on every next update. Skipped, as the light thread's own propagation skips it
+            return;
+        }
+        int stored = here.get(x & 15, y & 15, z & 15);
         if ((entry & FROM_EMISSION) != 0 && stored < level) {
             this.set(x, y, z, section, level);
             stored = level;

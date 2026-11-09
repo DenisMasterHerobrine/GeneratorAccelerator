@@ -157,7 +157,7 @@ public final class ModdedFeatures {
                     }
                 }
             }
-        } catch (LinkageError e) {
+        } catch (RuntimeException | LinkageError e) {
             // a method signature names a class this side does not have (a client class on a dedicated server). The feature's own code runs.
             return false;
         }

@@ -26,6 +26,10 @@ versionRange = "[1.21.1,1.21.2)"
 ordering = "NONE"
 side = "BOTH"
 
+# The mod is built for Java 21. Older Java stops the game at load with a clear message.
+[features.generatoraccelerator2]
+javaVersion = "[21,)"
+
 [[mixins]]
 config = "generatoraccelerator2.mixins.json"
 

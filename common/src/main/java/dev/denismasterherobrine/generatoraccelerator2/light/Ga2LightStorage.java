@@ -14,4 +14,7 @@ public interface Ga2LightStorage {
 
     /** {@code setStoredLevel(pos, level)} for a block of section {@code sectionKey} ({@code SectionPos.blockToSection(pos)}). */
     void ga2$setStoredLevel(long pos, long sectionKey, int level);
+
+    /** Whether the section is registered as holding blocks ({@code SectionState.hasData(sectionStates.get(sectionKey))}). */
+    boolean ga2$hasData(long sectionKey);
 }

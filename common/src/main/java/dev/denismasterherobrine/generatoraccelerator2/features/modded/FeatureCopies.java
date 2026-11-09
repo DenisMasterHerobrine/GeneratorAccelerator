@@ -62,7 +62,7 @@ public final class FeatureCopies {
                 }
             }
             return copy;
-        } catch (ReflectiveOperationException | RuntimeException e) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             if (FAILED.putIfAbsent(type, Boolean.TRUE) == null) {
                 Ga2Log.get("Features").warn("feature {} -> no per-thread copies, placed one at a time ({})", type.getName(), e.toString());
             }

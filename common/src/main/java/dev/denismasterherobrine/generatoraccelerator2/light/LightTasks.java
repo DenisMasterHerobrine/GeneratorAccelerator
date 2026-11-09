@@ -1,12 +1,14 @@
 package dev.denismasterherobrine.generatoraccelerator2.light;
 
 import com.mojang.datafixers.util.Pair;
+import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import org.slf4j.Logger;
 
 /**
  * Light tasks handed straight to the light thread ({@code ThreadedLightTasksMixin}), and where the light thread's tasks spend
@@ -27,6 +29,9 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class LightTasks {
     private LightTasks() {}
+
+    private static final Logger LOGGER = Ga2Log.get("Light");
+    private static final AtomicLong FAILED = new AtomicLong();
 
     public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.directLightTasks"));
 
@@ -95,12 +100,22 @@ public final class LightTasks {
             this.task = task;
         }
 
+        // A task that throws would end vanilla's runUpdate before its later tasks, and stay first in the task list, so every next
+        // update would throw again. The chunks it holds would never be lit and the server thread waiting for one would hang until
+        // the watchdog. The task is logged and skipped instead; the update goes on.
         @Override
         public void run() {
             long t0 = System.nanoTime();
             LATENCY[this.slot].add(t0 - this.queued);
             try {
                 this.task.run();
+            } catch (Exception | LinkageError e) {
+                long n = FAILED.incrementAndGet();
+                if (n <= 16) {
+                    LOGGER.error("light task {} on {} failed; skipped", this.task, Thread.currentThread().getName(), e);
+                } else if (n % 1000 == 0) {
+                    LOGGER.error("{} light tasks failed and were skipped so far; last: {}", n, e.toString());
+                }
             } finally {
                 NANOS[this.slot].add(System.nanoTime() - t0);
                 COUNT[this.slot].increment();

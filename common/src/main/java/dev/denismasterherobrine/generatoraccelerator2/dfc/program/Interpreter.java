@@ -87,7 +87,7 @@ public final class Interpreter {
                         default -> a % b;
                     };
                 }
-                yield (double) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
+                yield call(c.owner(), c.name(), c.desc(), c.args(), ctx);
             }
             case Node.NoiseAt n -> specs[n.spec()].getValue(eval(n.x(), ctx), eval(n.y(), ctx), eval(n.z(), ctx));
             case Node.IntToDouble i -> (double) evalInt(i.value(), ctx);
@@ -118,18 +118,23 @@ public final class Interpreter {
             }
             case INode.IntNeg g -> -evalInt(g.a(), ctx);
             case INode.DoubleToInt d -> (int) eval(d.value(), ctx);
-            case INode.IntStaticCall c -> (int) StaticCalls.invoke(c.owner(), c.name(), c.desc(), callArgs(c.args(), ctx));
+            case INode.IntStaticCall c -> (int) call(c.owner(), c.name(), c.desc(), c.args(), ctx);
             case INode.SelectInt s -> jumps(s.cond(), ctx) ? evalInt(s.whenJump(), ctx) : evalInt(s.whenFall(), ctx);
         };
     }
 
-    private Object[] callArgs(List<Object> args, DensityFunction.FunctionContext ctx) {
-        Object[] out = new Object[args.size()];
-        for (int i = 0; i < out.length; i++) {
-            Object a = args.get(i);
-            out[i] = a instanceof Node n ? (Object) eval(n, ctx) : (Object) evalInt((INode) a, ctx);
+    /** A whitelisted static call. An int result comes back as a double and casts back exactly. */
+    private double call(String owner, String name, String desc, List<Object> args, DensityFunction.FunctionContext ctx) {
+        return StaticCalls.invoke(owner, name, desc, arg(args, 0, ctx), arg(args, 1, ctx), arg(args, 2, ctx), arg(args, 3, ctx), arg(args, 4, ctx));
+    }
+
+    /** Argument {@code i} widened to a double, or 0 past the last one. */
+    private double arg(List<Object> args, int i, DensityFunction.FunctionContext ctx) {
+        if (i >= args.size()) {
+            return 0.0;
         }
-        return out;
+        Object a = args.get(i);
+        return a instanceof Node n ? eval(n, ctx) : evalInt((INode) a, ctx);
     }
 
     /** Evaluates a lifted condition exactly like the JVM: compare, then apply the jump opcode to the result. */

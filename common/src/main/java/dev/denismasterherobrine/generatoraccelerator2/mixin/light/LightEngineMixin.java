@@ -5,6 +5,7 @@ import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightEngine;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightStorage;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2Propagator;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightQueue;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightSectionSync;
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import net.minecraft.core.SectionPos;
 import java.util.Arrays;
@@ -20,6 +21,7 @@ import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.lighting.LayerLightSectionStorage;
 import net.minecraft.world.level.lighting.LightEngine;
+import net.minecraft.world.level.lighting.SkyLightEngine;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -175,7 +177,14 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
         for (count = 0; !this.increaseQueue.isEmpty(); count++) {
             long pos = this.increaseQueue.dequeueLong();
             long entry = this.increaseQueue.dequeueLong();
-            int stored = this.ga2$layer(SectionPos.blockToSection(pos)).get(BlockPos.getX(pos) & 15, BlockPos.getY(pos) & 15, BlockPos.getZ(pos) & 15);
+            DataLayer layer = this.ga2$layer(SectionPos.blockToSection(pos));
+            if (layer == null) {
+                // A light source queued in a section that stores no light (LightSectionSync). Vanilla's getStoredLevel would throw
+                // here, and the update's tasks would run and throw again on every next update.
+                LightSectionSync.skipped((Object) this instanceof SkyLightEngine, pos);
+                continue;
+            }
+            int stored = layer.get(BlockPos.getX(pos) & 15, BlockPos.getY(pos) & 15, BlockPos.getZ(pos) & 15);
             int level = LightEngine.QueueEntry.getFromLevel(entry);
             if (LightEngine.QueueEntry.isIncreaseFromEmission(entry) && stored < level) {
                 this.ga2$setStoredLevel(pos, level);
@@ -216,5 +225,15 @@ public abstract class LightEngineMixin implements Ga2LightEngine {
     @Override
     public void ga2$enqueueIncrease(long pos, long entry) {
         this.enqueueIncrease(pos, entry);
+    }
+
+    @Override
+    public LightChunkGetter ga2$chunkSource() {
+        return this.chunkSource;
+    }
+
+    @Override
+    public Ga2LightStorage ga2$storage() {
+        return (Ga2LightStorage) this.storage;
     }
 }

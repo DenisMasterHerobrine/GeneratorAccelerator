@@ -1,14 +1,17 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.light;
 
 import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
+import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightEngine;
 import dev.denismasterherobrine.generatoraccelerator2.light.Ga2LightLayers;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightLayers;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightSectionSync;
 import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -34,6 +37,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class LevelLightEngineMixin implements Ga2LightLayers {
     @Shadow @Final @Nullable private LightEngine<?, ?> blockEngine;
     @Shadow @Final @Nullable private LightEngine<?, ?> skyEngine;
+    @Shadow @Final protected LevelHeightAccessor levelHeightAccessor;
 
     /** The thread recording block light calls, or null. Only that thread reads and writes the recording. */
     @Unique @Nullable private Thread ga2$recorder;
@@ -92,12 +96,44 @@ public abstract class LevelLightEngineMixin implements Ga2LightLayers {
 
     @Inject(method = "propagateLightSources", at = @At("HEAD"), cancellable = true)
     private void ga2$propagateLightSources(ChunkPos pos, CallbackInfo ci) {
+        this.ga2$resyncSections(pos);
         if (this.ga2$recording()) {
             LightEngine<?, ?> block = this.blockEngine;
             this.ga2$calls.add(() -> block.propagateLightSources(pos));
             this.skyEngine.propagateLightSources(pos);
             ci.cancel();
         }
+    }
+
+    /**
+     * The chunk's sections with blocks, registered again before its light sources are queued ({@link LightSectionSync}). Each
+     * registration is this class's {@code updateSectionStatus(pos, false)}, called here directly: the threaded engine's override
+     * would only queue a task, to run after the light sources. While recording, the block light's part is recorded before the
+     * light sources call, as the update would record it.
+     */
+    @Unique
+    private void ga2$resyncSections(ChunkPos pos) {
+        LightEngine<?, ?> any = this.blockEngine != null ? this.blockEngine : this.skyEngine;
+        if (!LightSectionSync.ENABLED || any == null) {
+            return;
+        }
+        // the sky light's state is current on this thread: while recording, its calls run at once and the block light's later
+        LightEngine<?, ?> reference = this.skyEngine != null ? this.skyEngine : this.blockEngine;
+        LightSectionSync.resync(this.levelHeightAccessor, ((Ga2LightEngine) any).ga2$chunkSource().getChunkForLighting(pos.x, pos.z), pos,
+            ((Ga2LightEngine) reference).ga2$storage(), section -> {
+                if (this.ga2$recording()) {
+                    LightEngine<?, ?> block = this.blockEngine;
+                    this.ga2$calls.add(() -> block.updateSectionStatus(section, false));
+                    this.skyEngine.updateSectionStatus(section, false);
+                    return;
+                }
+                if (this.blockEngine != null) {
+                    this.blockEngine.updateSectionStatus(section, false);
+                }
+                if (this.skyEngine != null) {
+                    this.skyEngine.updateSectionStatus(section, false);
+                }
+            });
     }
 
     @Inject(method = "queueSectionData", at = @At("HEAD"), cancellable = true)

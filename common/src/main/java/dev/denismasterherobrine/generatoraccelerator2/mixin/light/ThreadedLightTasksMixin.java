@@ -75,9 +75,14 @@ public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
             LightTasks.taken(entry, now);
             this.lightTasks.add(entry);
         }
-        ((ThreadedLightEngineInvoker) this).ga2$runUpdate();
-        // The flag is cleared before the queue is looked at again. A task queued in between either sees the flag clear or is seen here.
-        this.scheduled.set(false);
+        try {
+            ((ThreadedLightEngineInvoker) this).ga2$runUpdate();
+        } finally {
+            // The flag is cleared before the queue is looked at again. A task queued in between either sees the flag clear or is seen here.
+            // Also when the update threw: a flag left set refuses every later update and the dimension's light stops for good. The
+            // server thread's tryScheduleUpdate asks again.
+            this.scheduled.set(false);
+        }
         if (this.ga2$hasTasks()) {
             this.ga2$schedule();
         }

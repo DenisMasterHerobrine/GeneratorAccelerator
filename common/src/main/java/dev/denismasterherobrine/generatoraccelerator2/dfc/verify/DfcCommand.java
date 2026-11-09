@@ -17,6 +17,7 @@ import dev.denismasterherobrine.generatoraccelerator2.features.FeaturesCommand;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.light.GpuLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightLayers;
+import dev.denismasterherobrine.generatoraccelerator2.light.LightSectionSync;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightSnapshot;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightTasks;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
@@ -60,6 +61,9 @@ public final class DfcCommand {
             source.sendSuccess(() -> Component.literal(line), false);
         }
         for (String line : LightLayers.statusLines()) {
+            source.sendSuccess(() -> Component.literal(line), false);
+        }
+        for (String line : LightSectionSync.statusLines()) {
             source.sendSuccess(() -> Component.literal(line), false);
         }
         for (String line : LightSnapshot.statusLines()) {

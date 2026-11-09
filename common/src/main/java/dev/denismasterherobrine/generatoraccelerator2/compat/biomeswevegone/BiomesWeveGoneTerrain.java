@@ -98,7 +98,7 @@ public final class BiomesWeveGoneTerrain {
                     return true;
                 }
             }
-        } catch (LinkageError e) {
+        } catch (RuntimeException | LinkageError e) {
             // Another mod's mixin method names a class missing on this side. The cache is not known to be locked.
         }
         return false;

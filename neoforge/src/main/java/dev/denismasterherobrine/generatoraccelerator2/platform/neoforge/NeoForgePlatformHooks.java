@@ -29,14 +29,15 @@ public final class NeoForgePlatformHooks implements PlatformHooks.Service {
     }
 
     // Looking a method up resolves every method signature of the class. A mod's block may declare methods with client-only
-    // types, which a dedicated server does not have, so the lookup fails with a LinkageError. Such a class is asked as NeoForge
-    // asks it.
+    // types, which a dedicated server does not have, so the lookup fails. FML's RuntimeDistCleaner throws a plain
+    // RuntimeException for those ("Attempted to load class ... for invalid dist DEDICATED_SERVER"), a missing class is a
+    // LinkageError. Such a class is asked as NeoForge asks it.
     @Override
     public boolean positionalLightEmission(Class<?> blockClass) {
         try {
             Method m = blockClass.getMethod("getLightEmission", BlockState.class, BlockGetter.class, BlockPos.class);
             return m.getDeclaringClass() != IBlockExtension.class;
-        } catch (NoSuchMethodException | LinkageError e) {
+        } catch (NoSuchMethodException | LinkageError | RuntimeException e) {
             return true;
         }
     }
@@ -52,7 +53,7 @@ public final class NeoForgePlatformHooks implements PlatformHooks.Service {
         try {
             Method m = chunkClass.getMethod("findBlocks", Predicate.class, BiPredicate.class, BiConsumer.class);
             return m.getDeclaringClass() == ChunkAccess.class;
-        } catch (NoSuchMethodException | LinkageError e) {
+        } catch (NoSuchMethodException | LinkageError | RuntimeException e) {
             return false;
         }
     }
