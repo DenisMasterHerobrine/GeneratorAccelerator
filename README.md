@@ -6,3 +6,5 @@ This is a rewrite of the original Generator Accelerator mod, with a focus on sta
 
 > [!WARNING]
 > This mod is in the ALPHA stage. Always make backups of your worlds before installing and enabling experimental features!
+
+The categorized JMH timing/allocation regression gate runs automatically during Fabric `check` and `build`. Run `:fabric:regrssionBenchmark` to compare against saved best records. See [gradle/README.md](gradle/README.md) for categories, history migration and Markdown reports.

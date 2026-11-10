@@ -26,6 +26,11 @@ import net.minecraft.world.level.biome.Climate;
  * <p>Children of a node are stored next to each other (breadth-first ids), so a child's id is the index
  * of its slot.
  *
+ * <p>For the usual trees, whose bounds and queries fit in {@link #SMALL}, a node is one 64-byte run of
+ * {@code int}s: six bounds, the offset's distance to 0, and the first and end child slots. A node's terms then
+ * come from one cache line, and the offset's square is one multiply. Bounds outside that range keep the
+ * {@code long} layout, so overflowing inputs behave exactly as before.
+ *
  * <p>The walk's answer depends on the last result only through ties. A node is never nearer than a leaf below it.
  * Every subtree holding a nearest leaf is therefore entered while the best distance is larger. The walk ends on the
  * last result when the last result is one of the nearest leaves. Otherwise it ends on the first nearest leaf in walk
@@ -36,16 +41,30 @@ import net.minecraft.world.level.biome.Climate;
  * distance shared by two leaves goes to the walk, which resolves the tie as vanilla does.
  */
 public final class FlatClimateTree {
-    /** Six lower and upper bounds per node: {@code bounds[n * 12 + 2 * d]} and {@code [... + 1]}. */
+    /**
+     * Small trees: per node, 16 ints at {@code id * 16}. Indices {@code 0..11} are the six bounds ({@code 2 * d} and
+     * {@code 2 * d + 1}), index {@code 12} is the seventh dimension's distance to 0, and indices {@code 14} and {@code 15}
+     * are the first and end child slots. Null when the bounds do not fit in {@link #SMALL}.
+     */
+    private final int[] node;
+    /** Trees with bounds beyond {@link #SMALL}: six lower and upper bounds per node, {@code [... + 2 * d]}. Null for small trees. */
     private final long[] bounds;
-    /** The seventh dimension's squared distance to 0. */
+    /** Trees with bounds beyond {@link #SMALL}: the seventh dimension's squared distance to 0. Null for small trees. */
     private final long[] offsetTerm;
+    /** Trees with bounds beyond {@link #SMALL}: the first child slot and the end child slot ({@code first + count}). */
     private final int[] first;
-    private final int[] count;
+    private final int[] end;
     private final Climate.RTree.Leaf<?>[] leaves;
+    private final int nodeCount;
     private final int depth;
     /** Every bound and offset is within {@link #SMALL}. A node's distance terms then never overflow (see {@link #search}). */
     private final boolean small;
+    /**
+     * Every interval has {@code min <= max}. Vanilla's distance is then the plain gap to the interval, so the small
+     * layouts can use a branchless maximum. An inverted interval (a broken datapack) keeps vanilla's exact formula and
+     * disables the column answers, which rely on a child never being nearer than its parent.
+     */
+    private final boolean nonInverted;
 
     /** With all bounds and queries within this, each squared term is below 2^60 and seven of them below 2^63. */
     private static final long SMALL = 1L << 29;
@@ -54,21 +73,38 @@ public final class FlatClimateTree {
         return v >= -SMALL && v <= SMALL;
     }
 
-    private static final ThreadLocal<int[]> STACK = ThreadLocal.withInitial(() -> new int[64]);
+    /**
+     * {@code v >= -SMALL && v <= SMALL} for six values without a branch. In two's complement the low bits of
+     * {@code (v + SMALL) | (SMALL - v)} are the sum and difference; a value outside the range makes one of them
+     * negative, so the sign bit of the OR reports it.
+     */
+    private static boolean within(long q0, long q1, long q2, long q3, long q4, long q5) {
+        long m = (q0 + SMALL) | (SMALL - q0)
+            | (q1 + SMALL) | (SMALL - q1)
+            | (q2 + SMALL) | (SMALL - q2)
+            | (q3 + SMALL) | (SMALL - q3)
+            | (q4 + SMALL) | (SMALL - q4)
+            | (q5 + SMALL) | (SMALL - q5);
+        return m >= 0L;
+    }
 
     /** Per-tree data kept by compat code, e.g. Biolith's biome numbers per leaf. Built once on first use. */
     public volatile Object compatData;
     /** Per-tree objects compat code reads from the tree itself, e.g. Biolith's two thread-local last answers. Read once on first use. */
     public volatile Object compatFields;
 
-    private FlatClimateTree(long[] bounds, long[] offsetTerm, int[] first, int[] count, Climate.RTree.Leaf<?>[] leaves, int depth, boolean small) {
+    private FlatClimateTree(int[] node, long[] bounds, long[] offsetTerm, int[] first, int[] end, Climate.RTree.Leaf<?>[] leaves, int depth, boolean small,
+                            boolean nonInverted, int nodeCount) {
         this.small = small;
+        this.nonInverted = nonInverted;
+        this.node = node;
         this.bounds = bounds;
         this.offsetTerm = offsetTerm;
         this.first = first;
-        this.count = count;
+        this.end = end;
         this.leaves = leaves;
         this.depth = depth;
+        this.nodeCount = nodeCount;
         ALL.add(this);
     }
 
@@ -92,43 +128,70 @@ public final class FlatClimateTree {
             }
         }
         int nodes = order.size();
-        long[] bounds = new long[nodes * 12];
-        long[] offsetTerm = new long[nodes];
-        int[] first = new int[nodes];
-        int[] count = new int[nodes];
-        Climate.RTree.Leaf<?>[] leaves = new Climate.RTree.Leaf<?>[nodes];
-        boolean small = true;
+        boolean small = true, nonInverted = true;
         for (int id = 0; id < nodes; id++) {
-            Climate.RTree.Node<?> node = order.get(id);
-            Climate.Parameter[] space = node.parameterSpace;
-            for (int d = 0; d < 6; d++) {
-                bounds[id * 12 + 2 * d] = space[d].min();
-                bounds[id * 12 + 2 * d + 1] = space[d].max();
-            }
-            long t = distance(space[6].min(), space[6].max(), 0L);
-            offsetTerm[id] = t * t;
+            Climate.Parameter[] space = order.get(id).parameterSpace;
             for (int d = 0; d < 7; d++) {
-                small &= within(space[d].min()) && within(space[d].max());
+                long min = space[d].min(), max = space[d].max();
+                small &= within(min) && within(max);
+                nonInverted &= min <= max;
             }
-            first[id] = children.get(id)[0];
-            count[id] = children.get(id)[1];
+        }
+        int[] first = new int[nodes];
+        int[] end = new int[nodes];
+        Climate.RTree.Leaf<?>[] leaves = new Climate.RTree.Leaf<?>[nodes];
+        for (int id = 0; id < nodes; id++) {
+            int[] slots = children.get(id);
+            first[id] = slots[0];
+            end[id] = slots[0] + slots[1];
+            Climate.RTree.Node<?> node = order.get(id);
             if (node instanceof Climate.RTree.Leaf<?> leaf) {
-                if (count[id] != 0) {
+                if (slots[1] != 0) {
                     throw new IllegalStateException("leaf with children");
                 }
                 leaves[id] = leaf;
                 indexer.index(leaf, id);
-            } else if (count[id] == 0) {
+            } else if (slots[1] == 0) {
                 throw new IllegalStateException("unknown climate tree node " + node.getClass());
             }
         }
-        return new FlatClimateTree(bounds, offsetTerm, first, count, leaves, depthOf(first, count, 0), small);
+        int depth = depthOf(first, end, 0);
+        if (small) {
+            int[] packed = new int[nodes * 16];
+            for (int id = 0; id < nodes; id++) {
+                Climate.Parameter[] space = order.get(id).parameterSpace;
+                int o = id << 4;
+                for (int d = 0; d < 6; d++) {
+                    packed[o + 2 * d] = (int) space[d].min();
+                    packed[o + 2 * d + 1] = (int) space[d].max();
+                }
+                // The square is computed per lookup. The distance itself fits, so a multiply in a register beats
+                // reading a second array.
+                packed[o + 12] = (int) distance(space[6].min(), space[6].max(), 0L);
+                packed[o + 14] = first[id];
+                packed[o + 15] = end[id];
+            }
+            return new FlatClimateTree(packed, null, null, null, null, leaves, depth, true, nonInverted, nodes);
+        }
+        long[] bounds = new long[nodes * 12];
+        long[] offsetTerm = new long[nodes];
+        for (int id = 0; id < nodes; id++) {
+            Climate.Parameter[] space = order.get(id).parameterSpace;
+            int o = id * 12;
+            for (int d = 0; d < 6; d++) {
+                bounds[o + 2 * d] = space[d].min();
+                bounds[o + 2 * d + 1] = space[d].max();
+            }
+            long t = distance(space[6].min(), space[6].max(), 0L);
+            offsetTerm[id] = t * t;
+        }
+        return new FlatClimateTree(null, bounds, offsetTerm, first, end, leaves, depth, false, nonInverted, nodes);
     }
 
-    private static int depthOf(int[] first, int[] count, int node) {
+    private static int depthOf(int[] first, int[] end, int node) {
         int d = 0;
-        for (int c = first[node]; c < first[node] + count[node]; c++) {
-            d = Math.max(d, depthOf(first, count, c));
+        for (int c = first[node]; c < end[node]; c++) {
+            d = Math.max(d, depthOf(first, end, c));
         }
         return d + 1;
     }
@@ -140,12 +203,103 @@ public final class FlatClimateTree {
         return above > 0L ? above : Math.max(below, 0L);
     }
 
-    /** Node {@code id}'s distance to the point, as vanilla's {@code Node::distance} computes it. */
-    public long distanceTo(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
-        return nodeDistance(id, q0, q1, q2, q3, q4, q5);
+    /**
+     * {@link #distance} for {@code min <= max} and values within {@link #SMALL}: the larger of the two gaps, floored at
+     * zero. Two independent subtractions and two conditional moves, no branch and no overflow.
+     */
+    private static long distanceFast(long min, long max, long q) {
+        long above = q - max;
+        long below = min - q;
+        long d = above > below ? above : below;
+        return d > 0L ? d : 0L;
     }
 
-    private long nodeDistance(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
+    private int firstOf(int id) {
+        int[] n = this.node;
+        return n != null ? n[(id << 4) + 14] : this.first[id];
+    }
+
+    private int endOf(int id) {
+        int[] n = this.node;
+        return n != null ? n[(id << 4) + 15] : this.end[id];
+    }
+
+    private boolean leafNode(int id) {
+        int[] n = this.node;
+        if (n != null) {
+            int o = id << 4;
+            return n[o + 14] == n[o + 15];
+        }
+        return this.first[id] == this.end[id];
+    }
+
+    /** Small layout only, for {@link #buildGroups}: bound {@code d} of node {@code id}. */
+    private long minBound(int id, int d) {
+        int[] n = this.node;
+        return n != null ? n[(id << 4) + 2 * d] : this.bounds[id * 12 + 2 * d];
+    }
+
+    private long maxBound(int id, int d) {
+        int[] n = this.node;
+        return n != null ? n[(id << 4) + 2 * d + 1] : this.bounds[id * 12 + 2 * d + 1];
+    }
+
+    /** Node {@code id}'s distance to the point, as vanilla's {@code Node::distance} computes it. */
+    public long distanceTo(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
+        return nodeDistance(id, q0, q1, q2, q3, q4, q5, this.small && within(q0, q1, q2, q3, q4, q5));
+    }
+
+    private long nodeDistance(int id, long q0, long q1, long q2, long q3, long q4, long q5, boolean fast) {
+        return this.node != null ? nodeDistanceSmall(id, q0, q1, q2, q3, q4, q5, fast) : nodeDistanceLarge(id, q0, q1, q2, q3, q4, q5);
+    }
+
+    /**
+     * The small layout's distance. Split into two bodies of about 250 bytecodes each, so that C2 inlines the one in use into the
+     * walks; a single body with both paths is over HotSpot's {@code FreqInlineSize} and stays a call per node.
+     */
+    private long nodeDistanceSmall(int id, long q0, long q1, long q2, long q3, long q4, long q5, boolean fast) {
+        return fast && this.nonInverted ? nodeDistanceFast(id, q0, q1, q2, q3, q4, q5) : nodeDistanceExact(id, q0, q1, q2, q3, q4, q5);
+    }
+
+    private long nodeDistanceFast(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distanceFast(n[o], n[o + 1], q0);
+        s += t * t;
+        t = distanceFast(n[o + 2], n[o + 3], q1);
+        s += t * t;
+        t = distanceFast(n[o + 4], n[o + 5], q2);
+        s += t * t;
+        t = distanceFast(n[o + 6], n[o + 7], q3);
+        s += t * t;
+        t = distanceFast(n[o + 8], n[o + 9], q4);
+        s += t * t;
+        t = distanceFast(n[o + 10], n[o + 11], q5);
+        return s + t * t;
+    }
+
+    private long nodeDistanceExact(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distance(n[o], n[o + 1], q0);
+        s += t * t;
+        t = distance(n[o + 2], n[o + 3], q1);
+        s += t * t;
+        t = distance(n[o + 4], n[o + 5], q2);
+        s += t * t;
+        t = distance(n[o + 6], n[o + 7], q3);
+        s += t * t;
+        t = distance(n[o + 8], n[o + 9], q4);
+        s += t * t;
+        t = distance(n[o + 10], n[o + 11], q5);
+        return s + t * t;
+    }
+
+    private long nodeDistanceLarge(int id, long q0, long q1, long q2, long q3, long q4, long q5) {
         long[] b = this.bounds;
         int o = id * 12;
         long s = this.offsetTerm[id];
@@ -172,29 +326,59 @@ public final class FlatClimateTree {
      * A returned value below {@code limit} is the full sum.
      */
     private long nodeDistanceBelow(int id, long q0, long q1, long q2, long q3, long q4, long q5, long limit) {
-        long[] b = this.bounds;
-        int o = id * 12;
-        long s = this.offsetTerm[id];
-        long t;
-        t = distance(b[o + 4], b[o + 5], q2);
+        return this.nonInverted ? belowFast(id, q0, q1, q2, q3, q4, q5, limit) : belowExact(id, q0, q1, q2, q3, q4, q5, limit);
+    }
+
+    /** {@link #nodeDistanceBelow} for {@code min <= max}. A separate body keeps it under HotSpot's inlining limit. */
+    private long belowFast(int id, long q0, long q1, long q2, long q3, long q4, long q5, long limit) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distanceFast(n[o + 4], n[o + 5], q2);
         s += t * t;
-        t = distance(b[o + 6], b[o + 7], q3);
-        s += t * t;
-        if (s >= limit) {
-            return s;
-        }
-        t = distance(b[o], b[o + 1], q0);
-        s += t * t;
-        t = distance(b[o + 2], b[o + 3], q1);
+        t = distanceFast(n[o + 6], n[o + 7], q3);
         s += t * t;
         if (s >= limit) {
             return s;
         }
-        t = distance(b[o + 8], b[o + 9], q4);
+        t = distanceFast(n[o], n[o + 1], q0);
         s += t * t;
-        t = distance(b[o + 10], b[o + 11], q5);
+        t = distanceFast(n[o + 2], n[o + 3], q1);
         s += t * t;
-        return s;
+        if (s >= limit) {
+            return s;
+        }
+        t = distanceFast(n[o + 8], n[o + 9], q4);
+        s += t * t;
+        t = distanceFast(n[o + 10], n[o + 11], q5);
+        return s + t * t;
+    }
+
+    /** {@link #nodeDistanceBelow} with vanilla's formula, for an inverted interval. */
+    private long belowExact(int id, long q0, long q1, long q2, long q3, long q4, long q5, long limit) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distance(n[o + 4], n[o + 5], q2);
+        s += t * t;
+        t = distance(n[o + 6], n[o + 7], q3);
+        s += t * t;
+        if (s >= limit) {
+            return s;
+        }
+        t = distance(n[o], n[o + 1], q0);
+        s += t * t;
+        t = distance(n[o + 2], n[o + 3], q1);
+        s += t * t;
+        if (s >= limit) {
+            return s;
+        }
+        t = distance(n[o + 8], n[o + 9], q4);
+        s += t * t;
+        t = distance(n[o + 10], n[o + 11], q5);
+        return s + t * t;
     }
 
     /**
@@ -226,40 +410,43 @@ public final class FlatClimateTree {
      * or {@code firstKey} does not count.
      */
     private boolean alone(long q0, long q1, long q2, long q3, long q4, long q5, int id, boolean byValue, int[] keys, int firstKey) {
-        if (id < 0 || this.count[0] == 0) {
+        if (id < 0 || !hasSubtrees()) {
             return true;
         }
         Object value = byValue ? this.leaves[id].value : null;
         int key = keys == null ? Integer.MIN_VALUE : keys[id];
-        long d = nodeDistance(id, q0, q1, q2, q3, q4, q5);
-        int[] first = this.first;
-        int[] count = this.count;
-        int[] stack = new int[2 * (this.depth + 1)];
+        boolean bounded = this.small && within(q0, q1, q2, q3, q4, q5);
+        long d = nodeDistance(id, q0, q1, q2, q3, q4, q5, bounded);
+        long[] stack = groupCache().walkStack(this.depth + 1);
         int sp = 0;
-        stack[0] = 0;
-        stack[1] = first[0];
+        stack[0] = frame(firstOf(0), endOf(0));
         while (sp >= 0) {
-            int node = stack[2 * sp];
-            int child = stack[2 * sp + 1];
-            if (child == first[node] + count[node]) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
                 sp--;
                 continue;
             }
-            stack[2 * sp + 1] = child + 1;
-            long c = nodeDistance(child, q0, q1, q2, q3, q4, q5);
+            stack[sp] = state + 1L;
+            // c <= d is c < d + 1, so a partial sum that reaches d + 1 already fails. A value below the limit is the full sum, so c == d stays exact.
+            long c = bounded ? nodeDistanceBelow(child, q0, q1, q2, q3, q4, q5, d + 1L) : nodeDistance(child, q0, q1, q2, q3, q4, q5, false);
             if (c <= d) {
-                if (count[child] == 0) {
+                if (leafNode(child)) {
                     if (child != id && c == d && (!byValue || this.leaves[child].value != value) && (keys == null || keys[child] != key && keys[child] != firstKey)) {
                         return false;
                     }
                 } else {
-                    sp++;
-                    stack[2 * sp] = child;
-                    stack[2 * sp + 1] = first[child];
+                    stack[++sp] = frame(firstOf(child), endOf(child));
                 }
             }
         }
         return true;
+    }
+
+    /** One walk frame: the end child slot in the high 32 bits, the next child in the low 32 bits. */
+    private static long frame(int first, int end) {
+        return ((long) end << 32) | (first & 0xffffffffL);
     }
 
     /**
@@ -267,40 +454,31 @@ public final class FlatClimateTree {
      * {@code last} is a leaf id, or -1 for none.
      */
     public int search(long q0, long q1, long q2, long q3, long q4, long q5, int last) {
-        if (this.count[0] == 0) {
+        if (!hasSubtrees()) {
             return 0;
         }
         int best = last;
-        long bestDistance = last < 0 ? Long.MAX_VALUE : nodeDistance(last, q0, q1, q2, q3, q4, q5);
-        int[] stack = STACK.get();
-        if (stack.length < 2 * (this.depth + 1)) {
-            stack = new int[2 * (this.depth + 1)];
-            STACK.set(stack);
-        }
-        int[] first = this.first;
-        int[] count = this.count;
-        boolean bounded = this.small && within(q0) && within(q1) && within(q2) && within(q3) && within(q4) && within(q5);
-        // stack of (node, next child slot)
+        boolean bounded = this.small && within(q0, q1, q2, q3, q4, q5);
+        long bestDistance = last < 0 ? Long.MAX_VALUE : nodeDistance(last, q0, q1, q2, q3, q4, q5, bounded);
+        long[] stack = groupCache().walkStack(this.depth + 1);
         int sp = 0;
-        stack[0] = 0;
-        stack[1] = first[0];
+        stack[0] = frame(firstOf(0), endOf(0));
         while (sp >= 0) {
-            int node = stack[2 * sp];
-            int child = stack[2 * sp + 1];
-            if (child == first[node] + count[node]) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
                 sp--;
                 continue;
             }
-            stack[2 * sp + 1] = child + 1;
-            long d = bounded ? nodeDistanceBelow(child, q0, q1, q2, q3, q4, q5, bestDistance) : nodeDistance(child, q0, q1, q2, q3, q4, q5);
+            stack[sp] = state + 1L;
+            long d = bounded ? nodeDistanceBelow(child, q0, q1, q2, q3, q4, q5, bestDistance) : nodeDistance(child, q0, q1, q2, q3, q4, q5, false);
             if (bestDistance > d) {
-                if (count[child] == 0) {
+                if (leafNode(child)) {
                     bestDistance = d;
                     best = child;
                 } else {
-                    sp++;
-                    stack[2 * sp] = child;
-                    stack[2 * sp + 1] = first[child];
+                    stack[++sp] = frame(firstOf(child), endOf(child));
                 }
             }
         }
@@ -331,11 +509,12 @@ public final class FlatClimateTree {
      * @param distance receives their distances
      */
     public void searchFittest(long q0, long q1, long q2, long q3, long q4, long q5, int[] keys, int ultimate, int penultimate, int[] ids, long[] distance) {
-        int none = this.first.length;
+        int none = this.nodeCount;
         int u = ultimate;
         int p = penultimate;
-        long du = u < 0 ? Long.MAX_VALUE : nodeDistance(u, q0, q1, q2, q3, q4, q5);
-        long dp = p < 0 ? Long.MAX_VALUE : nodeDistance(p, q0, q1, q2, q3, q4, q5);
+        boolean bounded = this.small && within(q0, q1, q2, q3, q4, q5);
+        long du = u < 0 ? Long.MAX_VALUE : nodeDistance(u, q0, q1, q2, q3, q4, q5, bounded);
+        long dp = p < 0 ? Long.MAX_VALUE : nodeDistance(p, q0, q1, q2, q3, q4, q5, bounded);
         if (du > dp) {
             int t = u;
             u = p;
@@ -344,28 +523,21 @@ public final class FlatClimateTree {
             du = dp;
             dp = td;
         }
-        int[] stack = STACK.get();
-        if (stack.length < 2 * (this.depth + 1)) {
-            stack = new int[2 * (this.depth + 1)];
-            STACK.set(stack);
-        }
-        int[] first = this.first;
-        int[] count = this.count;
-        boolean bounded = this.small && within(q0) && within(q1) && within(q2) && within(q3) && within(q4) && within(q5);
+        long[] stack = groupCache().walkStack(this.depth + 1);
         int sp = 0;
-        stack[0] = 0;
-        stack[1] = first[0];
+        stack[0] = frame(firstOf(0), endOf(0));
         while (sp >= 0) {
-            int node = stack[2 * sp];
-            int child = stack[2 * sp + 1];
-            if (child == first[node] + count[node]) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
                 sp--;
                 continue;
             }
-            stack[2 * sp + 1] = child + 1;
-            long d = bounded ? nodeDistanceBelow(child, q0, q1, q2, q3, q4, q5, dp) : nodeDistance(child, q0, q1, q2, q3, q4, q5);
+            stack[sp] = state + 1L;
+            long d = bounded ? nodeDistanceBelow(child, q0, q1, q2, q3, q4, q5, dp) : nodeDistance(child, q0, q1, q2, q3, q4, q5, false);
             if (dp > d) {
-                if (count[child] == 0) {
+                if (leafNode(child)) {
                     boolean otherBiome = keys[child] != keys[u < 0 ? none : u];
                     if (du > d) {
                         if (otherBiome) {
@@ -379,9 +551,7 @@ public final class FlatClimateTree {
                         dp = d;
                     }
                 } else {
-                    sp++;
-                    stack[2 * sp] = child;
-                    stack[2 * sp + 1] = first[child];
+                    stack[++sp] = frame(firstOf(child), endOf(child));
                 }
             }
         }
@@ -437,7 +607,7 @@ public final class FlatClimateTree {
             this.keys[k + 3] = q3;
             this.keys[k + 4] = q5;
             this.trees[s] = tree;
-            int nodes = tree.first.length;
+            int nodes = tree.nodeCount;
             if (this.parts[s] == null || this.parts[s].length < nodes) {
                 this.parts[s] = new long[nodes];
                 this.stamps[s] = new int[nodes];
@@ -458,7 +628,50 @@ public final class FlatClimateTree {
 
 
     /** {@link #nodeDistance} without the depth term (dimension 4). */
-    private long partWithoutDepth(int id, long q0, long q1, long q2, long q3, long q5) {
+    private long partWithoutDepth(int id, long q0, long q1, long q2, long q3, long q5, boolean fast) {
+        return this.node != null ? partWithoutDepthSmall(id, q0, q1, q2, q3, q5, fast) : partWithoutDepthLarge(id, q0, q1, q2, q3, q5);
+    }
+
+    /** Split like {@link #nodeDistanceSmall}: each body stays under HotSpot's inlining limit. */
+    private long partWithoutDepthSmall(int id, long q0, long q1, long q2, long q3, long q5, boolean fast) {
+        return fast && this.nonInverted ? partFast(id, q0, q1, q2, q3, q5) : partExact(id, q0, q1, q2, q3, q5);
+    }
+
+    private long partFast(int id, long q0, long q1, long q2, long q3, long q5) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distanceFast(n[o], n[o + 1], q0);
+        s += t * t;
+        t = distanceFast(n[o + 2], n[o + 3], q1);
+        s += t * t;
+        t = distanceFast(n[o + 4], n[o + 5], q2);
+        s += t * t;
+        t = distanceFast(n[o + 6], n[o + 7], q3);
+        s += t * t;
+        t = distanceFast(n[o + 10], n[o + 11], q5);
+        return s + t * t;
+    }
+
+    private long partExact(int id, long q0, long q1, long q2, long q3, long q5) {
+        int[] n = this.node;
+        int o = id << 4;
+        long s = n[o + 12];
+        s *= s;
+        long t = distance(n[o], n[o + 1], q0);
+        s += t * t;
+        t = distance(n[o + 2], n[o + 3], q1);
+        s += t * t;
+        t = distance(n[o + 4], n[o + 5], q2);
+        s += t * t;
+        t = distance(n[o + 6], n[o + 7], q3);
+        s += t * t;
+        t = distance(n[o + 10], n[o + 11], q5);
+        return s + t * t;
+    }
+
+    private long partWithoutDepthLarge(int id, long q0, long q1, long q2, long q3, long q5) {
         long[] b = this.bounds;
         int o = id * 12;
         long s = this.offsetTerm[id];
@@ -489,16 +702,22 @@ public final class FlatClimateTree {
     /** Diagnostics. Searches walked because the tree has no groups, the target is out of the small range, or the column is missing outside a biome fill. */
     public static final LongAdder WALK_NO_GROUPS = new LongAdder(),
         WALK_OUT_OF_RANGE = new LongAdder(), WALK_OUTSIDE = new LongAdder();
-    /** Whether the column answers are currently disabled for this tree. Read only, until the deadline passes. */
-    private boolean off() {
+    /**
+     * Whether the column answers are currently disabled for this tree. Read only, until the deadline passes. While they are
+     * off, {@link System#nanoTime} is sampled once per {@link #OFF_SAMPLE} searches on the thread, not on every search.
+     */
+    private boolean off(GroupCache cache) {
         long until = this.offUntil;
-        if (until == 0) {
+        if (until == 0L) {
             return false;
         }
-        if (System.nanoTime() - until < 0) {
+        if ((++cache.offTick & (OFF_SAMPLE - 1)) != 0) {
             return true;
         }
-        this.offUntil = 0;
+        if (System.nanoTime() - until < 0L) {
+            return true;
+        }
+        this.offUntil = 0L;
         return false;
     }
 
@@ -545,6 +764,8 @@ public final class FlatClimateTree {
     private volatile long offUntil;
     private static final int WINDOW = 4096, MIN_REUSE = 4;
     private static final long OFF_NANOS = 2_000_000_000L;
+    /** Searches between two clock reads while the column answers are off ({@link #off}). */
+    private static final int OFF_SAMPLE = 64;
     /** Every flat tree built, weakly held, for the diagnostics. */
     private static final Set<FlatClimateTree> ALL = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
@@ -573,14 +794,18 @@ public final class FlatClimateTree {
     }
 
     private Object buildGroups() {
-        int nodes = this.first.length;
+        int nodes = this.nodeCount;
         if (nodes < MIN_GROUP_NODES) {
             return NO_GROUPS; // A walk over a few nodes costs no more than finding the column's answers.
         }
-        if (!this.small || this.count[0] == 0) {
+        if (!this.small || !hasSubtrees()) {
             if (!this.small) {
                 Ga2Log.get("Biomes").info("climate tree ({} nodes): bounds exceed {} -> tree walk", nodes, SMALL);
             }
+            return NO_GROUPS;
+        }
+        if (!this.nonInverted) {
+            Ga2Log.get("Biomes").info("climate tree ({} nodes): inverted intervals -> tree walk", nodes);
             return NO_GROUPS;
         }
         long[] lo = new long[64], hi = new long[64];
@@ -589,10 +814,10 @@ public final class FlatClimateTree {
         long[] mask = new long[nodes];
         for (int id = 0; id < nodes; id++) {
             leafGroup[id] = -1;
-            if (this.count[id] != 0) {
+            if (!leafNode(id)) {
                 continue;
             }
-            long l = this.bounds[id * 12 + 8], h = this.bounds[id * 12 + 9];
+            long l = minBound(id, 4), h = maxBound(id, 4);
             int g = 0;
             while (g < n && (lo[g] != l || hi[g] != h)) {
                 g++;
@@ -610,11 +835,11 @@ public final class FlatClimateTree {
         }
         // children have larger ids than their parent (breadth-first)
         for (int id = nodes - 1; id >= 0; id--) {
-            if (this.count[id] == 0) {
+            if (leafNode(id)) {
                 mask[id] = 1L << leafGroup[id];
             } else {
                 long m = 0;
-                for (int c = this.first[id]; c < this.first[id] + this.count[id]; c++) {
+                for (int c = firstOf(id), e = endOf(id); c < e; c++) {
                     m |= mask[c];
                 }
                 mask[id] = m;
@@ -660,8 +885,10 @@ public final class FlatClimateTree {
         /** When each slot was last asked ({@link #clock}). */
         final int[] used = new int[SETS * WAYS];
         int clock;
-        /** The stack of the depth-first walks, and the seeds copied from this tree's last column. */
+        /** The node stack of the column fills and the partial distance that went with each node. */
         int[] stack = new int[256];
+        long[] partStack = new long[256];
+        /** The seeds copied from this tree's last column. */
         final int[] seed1 = new int[64], seed2 = new int[64];
         /** The tree whose other leaves {@link #seed2} holds, and the keys used. Copied when a fill replaced them. */
         FlatClimateTree seed2Tree;
@@ -700,16 +927,25 @@ public final class FlatClimateTree {
             return stack;
         }
 
+        long[] partStack(int size) {
+            if (partStack.length < size) {
+                partStack = new long[Math.max(size, partStack.length * 2)];
+            }
+            return partStack;
+        }
+
         /** Counts not yet added to {@link #GROUP_ANSWERED} and {@link #GROUP_WALKED}. */
         int answered, walked;
-        /** The stack and node parts of the column walks. They live here so that a search does one thread-local lookup. */
-        int[] walkStack = new int[64];
+        /** The walk stack of the plain searches, so that a search does one thread-local lookup. */
+        long[] walkStack = new long[64];
         final ColumnParts parts = new ColumnParts();
         /** Biolith's answers of the last {@link #fittestColumns} on this thread. */
         final Fittest fittest = new Fittest();
         /** Inside a chunk's biome fill ({@link #enterFill}). Columns are filled only then. Elsewhere, an uncached column is walked. */
         int inFill;
         int generation;
+        /** Searches since the last clock read while a tree's column answers are off ({@link #off}). */
+        int offTick;
 
         /** Releases every tree this cache refers to, and so the biomes of those trees. */
         void forget() {
@@ -721,13 +957,14 @@ public final class FlatClimateTree {
             Arrays.fill(recentTree, null);
             Arrays.fill(recent, null);
             recentNext = 0;
+            offTick = 0;
             // the column slots keep their arrays for the next world. Without its tree a slot matches no lookup.
             Arrays.fill(parts.trees, null);
         }
 
-        int[] walkStack(int size) {
+        long[] walkStack(int size) {
             if (walkStack.length < size) {
-                walkStack = new int[size];
+                walkStack = new long[size];
             }
             return walkStack;
         }
@@ -793,8 +1030,21 @@ public final class FlatClimateTree {
         c.walked = 0;
     }
 
-    /** Whether some group of {@code mask} still needs leaves at {@code part} or nearer, i.e. the group's bound is not below {@code part}. */
-    private static boolean useful(long mask, long part, long[] bound) {
+    /**
+     * Whether some group of {@code mask} still needs leaves at {@code part} or nearer, i.e. the group's bound is not below
+     * {@code part}. {@code min} and {@code max} are the smallest and largest bound. A bound never increases during a fill, so a
+     * stale {@code max} stays an upper bound. Most subtrees then answer with one comparison.
+     */
+    private static boolean useful(long mask, long part, long[] bound, long min, long max) {
+        if (mask == 0) {
+            return false;
+        }
+        if (part > max) {
+            return false;
+        }
+        if (part <= min) {
+            return true;
+        }
         while (mask != 0) {
             if (part <= bound[Long.numberOfTrailingZeros(mask)]) {
                 return true;
@@ -889,41 +1139,81 @@ public final class FlatClimateTree {
         boolean[] tie1 = a.tie1;
         for (int i = 0; i < n; i++) {
             int l = seed[i];
-            if (l >= this.first.length || l >= 0 && (this.count[l] != 0 || g.leafGroup[l] != i)) {
+            if (l >= this.nodeCount || l >= 0 && (!leafNode(l) || g.leafGroup[l] != i)) {
                 l = -1; // Not a leaf of this group in this tree, so no seed.
             }
-            a1[i] = l >= 0 ? partWithoutDepth(l, q0, q1, q2, q3, q5) : Long.MAX_VALUE;
+            a1[i] = l >= 0 ? partWithoutDepth(l, q0, q1, q2, q3, q5, true) : Long.MAX_VALUE;
             id1[i] = l;
             tie1[i] = false;
         }
-        int[] first = this.first, count = this.count;
+        // The bounds only fall during the fill, so their smallest and largest values prune most nodes before the bit loop.
+        long minBound = Long.MAX_VALUE, maxBound = Long.MIN_VALUE;
+        int maxAt = 0;
+        for (int i = 0; i < n; i++) {
+            long v = a1[i];
+            if (v < minBound) {
+                minBound = v;
+            }
+            if (v > maxBound) {
+                maxBound = v;
+                maxAt = i;
+            }
+        }
         long[] mask = g.mask;
         int[] leafGroup = g.leafGroup;
         int[] stack = cache.stack(this.depth * 8 + 8);
+        long[] partStack = cache.partStack(this.depth * 8 + 8);
         int sp = 0, visited = 0;
-        stack[sp++] = 0;
+        stack[0] = 0;
+        partStack[0] = partWithoutDepth(0, q0, q1, q2, q3, q5, true);
+        sp = 1;
         while (sp > 0) {
             int node = stack[--sp];
+            long nodePart = partStack[sp];
             visited++;
-            for (int c = first[node], end = c + count[node]; c < end; c++) {
-                long p = partWithoutDepth(c, q0, q1, q2, q3, q5);
-                if (!useful(mask[c], p, a1)) {
+            // A sibling pushed earlier may have lowered the bounds here and made this subtree unnecessary.
+            if (!useful(mask[node], nodePart, a1, minBound, maxBound)) {
+                continue;
+            }
+            // Children in reverse, so the first child is popped first and its leaves lower the bounds before its siblings.
+            for (int c = endOf(node) - 1, stop = firstOf(node); c >= stop; c--) {
+                long p = partWithoutDepth(c, q0, q1, q2, q3, q5, true);
+                if (!useful(mask[c], p, a1, minBound, maxBound)) {
                     continue;
                 }
-                if (count[c] == 0) {
+                if (leafNode(c)) {
                     int gi = leafGroup[c];
                     if (p < a1[gi]) {
                         a1[gi] = p;
                         id1[gi] = c;
                         tie1[gi] = false;
+                        if (p < minBound) {
+                            minBound = p;
+                        }
+                        if (gi == maxAt) {
+                            long max = Long.MIN_VALUE;
+                            int at = 0;
+                            for (int i = 0; i < n; i++) {
+                                if (a1[i] > max) {
+                                    max = a1[i];
+                                    at = i;
+                                }
+                            }
+                            maxBound = max;
+                            maxAt = at;
+                        }
                     } else if (c != id1[gi]) {
                         tie1[gi] = true;
                     }
                 } else {
                     if (sp == stack.length) {
-                        stack = cache.stack(sp * 2);
+                        int bigger = sp * 2;
+                        stack = cache.stack(bigger);
+                        partStack = cache.partStack(bigger);
                     }
-                    stack[sp++] = c;
+                    stack[sp] = c;
+                    partStack[sp] = p;
+                    sp++;
                 }
             }
         }
@@ -960,31 +1250,51 @@ public final class FlatClimateTree {
             for (long m = need; m != 0; m &= m - 1) {
                 int i = Long.numberOfTrailingZeros(m);
                 int l = cache.seed2[i];
-                if (l >= 0 && l < this.first.length && this.count[l] == 0 && g.leafGroup[l] == i && keys[l] != keys[a.id1[i]]) {
-                    a2[i] = partWithoutDepth(l, q0, q1, q2, q3, q5);
+                if (l >= 0 && l < this.nodeCount && leafNode(l) && g.leafGroup[l] == i && keys[l] != keys[a.id1[i]]) {
+                    a2[i] = partWithoutDepth(l, q0, q1, q2, q3, q5, true);
                     id2[i] = l;
                 }
             }
         }
-        int[] first = this.first, count = this.count;
+        long minBound = Long.MAX_VALUE, maxBound = Long.MIN_VALUE;
+        int maxAt = 0;
+        for (long m = need; m != 0; m &= m - 1) {
+            int i = Long.numberOfTrailingZeros(m);
+            long v = a2[i];
+            if (v < minBound) {
+                minBound = v;
+            }
+            if (v > maxBound) {
+                maxBound = v;
+                maxAt = i;
+            }
+        }
         long[] mask = g.mask;
         int[] leafGroup = g.leafGroup;
         int[] stack = cache.stack(this.depth * 8 + 8);
+        long[] partStack = cache.partStack(this.depth * 8 + 8);
         int sp = 0, visited = 0;
-        stack[sp++] = 0;
+        stack[0] = 0;
+        partStack[0] = partWithoutDepth(0, q0, q1, q2, q3, q5, true);
+        sp = 1;
         while (sp > 0) {
             int node = stack[--sp];
+            long nodePart = partStack[sp];
             visited++;
-            for (int c = first[node], end = c + count[node]; c < end; c++) {
+            long nodeMask = mask[node] & need;
+            if (!useful(nodeMask, nodePart, a2, minBound, maxBound)) {
+                continue;
+            }
+            for (int c = endOf(node) - 1, stop = firstOf(node); c >= stop; c--) {
                 long m = mask[c] & need;
                 if (m == 0) {
                     continue;
                 }
-                long p = partWithoutDepth(c, q0, q1, q2, q3, q5);
-                if (!useful(m, p, a2)) {
+                long p = partWithoutDepth(c, q0, q1, q2, q3, q5, true);
+                if (!useful(m, p, a2, minBound, maxBound)) {
                     continue;
                 }
-                if (count[c] == 0) {
+                if (leafNode(c)) {
                     int gi = leafGroup[c];
                     if (keys[c] == keys[a.id1[gi]]) {
                         continue;
@@ -993,22 +1303,38 @@ public final class FlatClimateTree {
                         a2[gi] = p;
                         id2[gi] = c;
                         tie2[gi] = false;
+                        if (p < minBound) {
+                            minBound = p;
+                        }
+                        if (gi == maxAt) {
+                            long max = Long.MIN_VALUE;
+                            int at = 0;
+                            for (long m2 = need; m2 != 0; m2 &= m2 - 1) {
+                                int i = Long.numberOfTrailingZeros(m2);
+                                if (a2[i] > max) {
+                                    max = a2[i];
+                                    at = i;
+                                }
+                            }
+                            maxBound = max;
+                            maxAt = at;
+                        }
                     } else if (c != id2[gi]) {
                         tie2[gi] = true;
                     }
                 } else {
                     if (sp == stack.length) {
-                        stack = cache.stack(sp * 2);
+                        int bigger = sp * 2;
+                        stack = cache.stack(bigger);
+                        partStack = cache.partStack(bigger);
                     }
-                    stack[sp++] = c;
+                    stack[sp] = c;
+                    partStack[sp] = p;
+                    sp++;
                 }
             }
         }
         FILL_NODES.add(visited);
-    }
-
-    private static boolean within(long q0, long q1, long q2, long q3, long q4, long q5) {
-        return within(q0) && within(q1) && within(q2) && within(q3) && within(q4) && within(q5);
     }
 
     /**
@@ -1017,7 +1343,7 @@ public final class FlatClimateTree {
      * or the column answers do not apply.
      */
     private int groupNearest(GroupCache cache, long q0, long q1, long q2, long q3, long q4, long q5) {
-        if (off()) {
+        if (off(cache)) {
             return -1;
         }
         Groups g = GROUPS ? groups() : null;
@@ -1063,7 +1389,7 @@ public final class FlatClimateTree {
      */
     private boolean groupFittest(GroupCache cache, long q0, long q1, long q2, long q3, long q4, long q5, int[] keys, int ultimate, int penultimate, int[] ids,
                                  long[] distance) {
-        if (off()) {
+        if (off(cache)) {
             return false;
         }
         Groups g = GROUPS ? groups() : null;
@@ -1165,7 +1491,7 @@ public final class FlatClimateTree {
      * the strict comparisons and the answer are the same (see {@link #searchFittestColumns}).
      */
     public int searchColumns(long q0, long q1, long q2, long q3, long q4, long q5, int last) {
-        if (this.count[0] == 0) {
+        if (!hasSubtrees()) {
             return 0;
         }
         GroupCache c = groupCache();
@@ -1179,37 +1505,34 @@ public final class FlatClimateTree {
     }
 
     private int walkColumns(GroupCache c, long q0, long q1, long q2, long q3, long q4, long q5, int last) {
-        if (this.count[0] == 0) {
+        if (!hasSubtrees()) {
             return 0;
         }
         int best = last;
-        long bestDistance = last < 0 ? Long.MAX_VALUE : nodeDistance(last, q0, q1, q2, q3, q4, q5);
-        int[] stack = c.walkStack(2 * (this.depth + 1));
+        boolean bounded = this.small && within(q0, q1, q2, q3, q4, q5);
+        long bestDistance = last < 0 ? Long.MAX_VALUE : nodeDistance(last, q0, q1, q2, q3, q4, q5, bounded);
+        long[] stack = c.walkStack(this.depth + 1);
         ColumnParts cache = c.parts;
         int slot = cache.slot(this, q0, q1, q2, q3, q5, c.inFill > 0);
         long[] parts = cache.parts[slot];
         int[] stamps = cache.stamps[slot];
         int stamp = cache.slotStamp[slot];
-        long[] b = this.bounds;
-        int[] first = this.first;
-        int[] count = this.count;
-        boolean bounded = this.small && within(q0) && within(q1) && within(q2) && within(q3) && within(q4) && within(q5);
         int sp = 0;
-        stack[0] = 0;
-        stack[1] = first[0];
+        stack[0] = frame(firstOf(0), endOf(0));
         while (sp >= 0) {
-            int node = stack[2 * sp];
-            int child = stack[2 * sp + 1];
-            if (child == first[node] + count[node]) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
                 sp--;
                 continue;
             }
-            stack[2 * sp + 1] = child + 1;
+            stack[sp] = state + 1L;
             long part;
             if (stamps[child] == stamp) {
                 part = parts[child];
             } else {
-                part = partWithoutDepth(child, q0, q1, q2, q3, q5);
+                part = partWithoutDepth(child, q0, q1, q2, q3, q5, bounded);
                 parts[child] = part;
                 stamps[child] = stamp;
             }
@@ -1217,21 +1540,30 @@ public final class FlatClimateTree {
             if (bounded && part >= bestDistance) {
                 d = part;
             } else {
-                long t = distance(b[child * 12 + 8], b[child * 12 + 9], q4);
+                long t = depthDistance(child, q4, bounded);
                 d = part + t * t;
             }
             if (bestDistance > d) {
-                if (count[child] == 0) {
+                if (leafNode(child)) {
                     bestDistance = d;
                     best = child;
                 } else {
-                    sp++;
-                    stack[2 * sp] = child;
-                    stack[2 * sp + 1] = first[child];
+                    stack[++sp] = frame(firstOf(child), endOf(child));
                 }
             }
         }
         return best;
+    }
+
+    /** Vanilla's depth distance of node {@code id}. */
+    private long depthDistance(int id, long q4, boolean fast) {
+        int[] n = this.node;
+        if (n != null) {
+            int o = id << 4;
+            return fast && this.nonInverted ? distanceFast(n[o + 8], n[o + 9], q4) : distance(n[o + 8], n[o + 9], q4);
+        }
+        long[] b = this.bounds;
+        return distance(b[id * 12 + 8], b[id * 12 + 9], q4);
     }
 
     /**
@@ -1262,13 +1594,20 @@ public final class FlatClimateTree {
         walkFittestColumns(groupCache(), q0, q1, q2, q3, q4, q5, keys, ultimate, penultimate, ids, distance);
     }
 
-    private void walkFittestColumns(GroupCache c, long q0, long q1, long q2, long q3, long q4, long q5, int[] keys, int ultimate, int penultimate, int[] ids,
-                                    long[] distance) {
-        int none = this.first.length;
+    /**
+     * {@link #walkFittestColumns} for the small layout. The node array and the choice of formula are read once, outside the loop,
+     * and a node's child slots, leaf test and depth term come straight from its 64-byte run.
+     */
+    private void walkFittestColumnsSmall(GroupCache c, long q0, long q1, long q2, long q3, long q4, long q5, int[] keys, int ultimate, int penultimate,
+                                         int[] ids, long[] distance) {
+        int[] n = this.node;
+        int none = this.nodeCount;
         int u = ultimate;
         int p = penultimate;
-        long du = u < 0 ? Long.MAX_VALUE : nodeDistance(u, q0, q1, q2, q3, q4, q5);
-        long dp = p < 0 ? Long.MAX_VALUE : nodeDistance(p, q0, q1, q2, q3, q4, q5);
+        boolean bounded = within(q0, q1, q2, q3, q4, q5);
+        boolean fast = bounded && this.nonInverted;
+        long du = u < 0 ? Long.MAX_VALUE : nodeDistance(u, q0, q1, q2, q3, q4, q5, bounded);
+        long dp = p < 0 ? Long.MAX_VALUE : nodeDistance(p, q0, q1, q2, q3, q4, q5, bounded);
         if (du > dp) {
             int t = u;
             u = p;
@@ -1277,44 +1616,43 @@ public final class FlatClimateTree {
             du = dp;
             dp = td;
         }
-        int[] stack = c.walkStack(2 * (this.depth + 1));
+        long[] stack = c.walkStack(this.depth + 1);
         ColumnParts cache = c.parts;
         int slot = cache.slot(this, q0, q1, q2, q3, q5, c.inFill > 0);
         long[] parts = cache.parts[slot];
         int[] stamps = cache.stamps[slot];
         int stamp = cache.slotStamp[slot];
-        long[] b = this.bounds;
-        int[] first = this.first;
-        int[] count = this.count;
-        boolean bounded = this.small && within(q0) && within(q1) && within(q2) && within(q3) && within(q4) && within(q5);
         int sp = 0;
-        stack[0] = 0;
-        stack[1] = first[0];
+        stack[0] = frame(n[14], n[15]);
         while (sp >= 0) {
-            int node = stack[2 * sp];
-            int child = stack[2 * sp + 1];
-            if (child == first[node] + count[node]) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
                 sp--;
                 continue;
             }
-            stack[2 * sp + 1] = child + 1;
+            stack[sp] = state + 1L;
             long part;
             if (stamps[child] == stamp) {
                 part = parts[child];
             } else {
-                part = partWithoutDepth(child, q0, q1, q2, q3, q5);
+                part = fast ? partFast(child, q0, q1, q2, q3, q5) : partExact(child, q0, q1, q2, q3, q5);
                 parts[child] = part;
                 stamps[child] = stamp;
             }
+            int o = child << 4;
             long d;
             if (bounded && part >= dp) {
                 d = part;
             } else {
-                long t = distance(b[child * 12 + 8], b[child * 12 + 9], q4);
+                long t = fast ? distanceFast(n[o + 8], n[o + 9], q4) : distance(n[o + 8], n[o + 9], q4);
                 d = part + t * t;
             }
             if (dp > d) {
-                if (count[child] == 0) {
+                int first = n[o + 14];
+                int last = n[o + 15];
+                if (first == last) {
                     boolean otherBiome = keys[child] != keys[u < 0 ? none : u];
                     if (du > d) {
                         if (otherBiome) {
@@ -1328,9 +1666,84 @@ public final class FlatClimateTree {
                         dp = d;
                     }
                 } else {
-                    sp++;
-                    stack[2 * sp] = child;
-                    stack[2 * sp + 1] = first[child];
+                    stack[++sp] = frame(first, last);
+                }
+            }
+        }
+        ids[0] = u;
+        ids[1] = p;
+        distance[0] = du;
+        distance[1] = dp;
+    }
+
+    private void walkFittestColumns(GroupCache c, long q0, long q1, long q2, long q3, long q4, long q5, int[] keys, int ultimate, int penultimate, int[] ids,
+                                    long[] distance) {
+        if (this.node != null) {
+            walkFittestColumnsSmall(c, q0, q1, q2, q3, q4, q5, keys, ultimate, penultimate, ids, distance);
+            return;
+        }
+        int none = this.nodeCount;
+        int u = ultimate;
+        int p = penultimate;
+        boolean bounded = this.small && within(q0, q1, q2, q3, q4, q5);
+        long du = u < 0 ? Long.MAX_VALUE : nodeDistance(u, q0, q1, q2, q3, q4, q5, bounded);
+        long dp = p < 0 ? Long.MAX_VALUE : nodeDistance(p, q0, q1, q2, q3, q4, q5, bounded);
+        if (du > dp) {
+            int t = u;
+            u = p;
+            p = t;
+            long td = du;
+            du = dp;
+            dp = td;
+        }
+        long[] stack = c.walkStack(this.depth + 1);
+        ColumnParts cache = c.parts;
+        int slot = cache.slot(this, q0, q1, q2, q3, q5, c.inFill > 0);
+        long[] parts = cache.parts[slot];
+        int[] stamps = cache.stamps[slot];
+        int stamp = cache.slotStamp[slot];
+        int sp = 0;
+        stack[0] = frame(firstOf(0), endOf(0));
+        while (sp >= 0) {
+            long state = stack[sp];
+            int child = (int) state;
+            int end = (int) (state >>> 32);
+            if (child >= end) {
+                sp--;
+                continue;
+            }
+            stack[sp] = state + 1L;
+            long part;
+            if (stamps[child] == stamp) {
+                part = parts[child];
+            } else {
+                part = partWithoutDepth(child, q0, q1, q2, q3, q5, bounded);
+                parts[child] = part;
+                stamps[child] = stamp;
+            }
+            long d;
+            if (bounded && part >= dp) {
+                d = part;
+            } else {
+                long t = depthDistance(child, q4, bounded);
+                d = part + t * t;
+            }
+            if (dp > d) {
+                if (leafNode(child)) {
+                    boolean otherBiome = keys[child] != keys[u < 0 ? none : u];
+                    if (du > d) {
+                        if (otherBiome) {
+                            p = u;
+                            dp = du;
+                        }
+                        u = child;
+                        du = d;
+                    } else if (otherBiome) {
+                        p = child;
+                        dp = d;
+                    }
+                } else {
+                    stack[++sp] = frame(firstOf(child), endOf(child));
                 }
             }
         }
@@ -1342,12 +1755,12 @@ public final class FlatClimateTree {
 
     /** Number of node ids (leaf ids are below it). */
     public int nodes() {
-        return this.first.length;
+        return this.nodeCount;
     }
 
     /** True when the root is a subtree. The walks above need one. A lone leaf or an empty tree does not qualify. */
     public boolean hasSubtrees() {
-        return this.count[0] != 0;
+        return endOf(0) > firstOf(0);
     }
 
     public Climate.RTree.Leaf<?> leaf(int id) {
