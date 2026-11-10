@@ -6,20 +6,12 @@ import dev.denismasterherobrine.generatoraccelerator2.biome.FlatClimateTree;
 import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateLeaf;
 import dev.denismasterherobrine.generatoraccelerator2.biome.Ga2ClimateTree;
 import dev.denismasterherobrine.generatoraccelerator2.biome.SearchTies;
-import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import java.io.InputStream;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -52,7 +44,8 @@ import org.slf4j.Logger;
  * <p>Only applies to the metric of Biolith's own callers, vanilla's {@code Node::distance}. The metric's lambda class must
  * come from a host class in which every {@code DistanceMetric} lambda is that method. GA2 checks this from the host's
  * bytecode once per class. Anything else runs Biolith's own search: another metric, a tree whose leaves are not all
- * registered biomes, or a Biolith version with another shape.
+ * registered biomes, or a Biolith version with another shape. Biolith's fields and records are reached through
+ * {@link BiolithAccess}.
  */
 public final class BiolithSearch {
     private BiolithSearch() {}
@@ -64,11 +57,8 @@ public final class BiolithSearch {
     public static final LongAdder FLAT = new LongAdder();
     public static final LongAdder BIOLITH = new LongAdder();
 
-    /** Biolith's per-tree last answers and result constructors, or null when this version does not fit. */
-    private record Shape(Field ultimate, Field penultimate, MethodHandle single, MethodHandle pair) {}
-
-    private static volatile Object shape;
-    private static final Object NO_SHAPE = new Object();
+    /** Kept on a flat tree whose leaves are not all registered biomes ({@link #keys}). */
+    private static final Object NO_KEYS = new Object();
 
     private static final ClassValue<Boolean> VANILLA_METRIC = new ClassValue<>() {
         @Override
@@ -114,50 +104,14 @@ public final class BiolithSearch {
     static boolean firstLeafRead(Climate.RTree.Leaf<?> leaf) {
         Set<Object> biomes = leafBiomes;
         if (biomes == null) {
-            leafBiomes = biomes = readLeafBiomes();
+            Set<Object> read = BiolithAccess.subBiomeTargets();
+            leafBiomes = biomes = read != null ? read : ANY_BIOME;
         }
         if (biomes == ANY_BIOME || !(leaf.value instanceof Holder<?> holder)) {
             return true;
         }
         Optional<? extends ResourceKey<?>> key = holder.unwrapKey();
         return key.isEmpty() || biomes.contains(key.get()) || END_BIOMES.contains(key.get());
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Set<Object> readLeafBiomes() {
-        try {
-            ClassLoader loader = Climate.class.getClassLoader();
-            Class<?> coordinator = Class.forName("com.terraformersmc.biolith.impl.biome.BiomeCoordinator", false, loader);
-            Class<?> placement = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement", false, loader);
-            Class<?> replacementSet = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement$ReplacementRequestSet", false, loader);
-            Class<?> replacement = Class.forName("com.terraformersmc.biolith.impl.biome.DimensionBiomePlacement$ReplacementRequest", false, loader);
-            Field subs = placement.getDeclaredField("subBiomeRequests");
-            Field reps = placement.getDeclaredField("replacementRequests");
-            Field requests = replacementSet.getDeclaredField("requests");
-            Method biome = replacement.getDeclaredMethod("biome");
-            subs.setAccessible(true);
-            reps.setAccessible(true);
-            requests.setAccessible(true);
-            biome.setAccessible(true);
-            Set<Object> out = new HashSet<>();
-            for (String dimension : new String[] { "OVERWORLD", "NETHER", "END" }) {
-                Object p = coordinator.getField(dimension).get(null);
-                Map<Object, Object> sub = (Map<Object, Object>) subs.get(p);
-                out.addAll(sub.keySet());
-                for (Map.Entry<Object, Object> e : ((Map<Object, Object>) reps.get(p)).entrySet()) {
-                    for (Object r : (List<Object>) requests.get(e.getValue())) {
-                        if (sub.containsKey(biome.invoke(r))) {
-                            out.add(e.getKey());
-                        }
-                    }
-                }
-            }
-            LOGGER.info("Biolith sub-biome requests: {} biomes {} -> ties of their first answers count by leaf", out.size(), out);
-            return out;
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            LOGGER.info("Biolith sub-biome requests: {} -> every tie of a first answer counts", e.toString());
-            return ANY_BIOME;
-        }
     }
 
     /** Biolith's answer for {@code target}, or null to run Biolith's own search. */
@@ -175,7 +129,7 @@ public final class BiolithSearch {
         if (!BiomeConfig.flatClimateSearch() || metric == null || !VANILLA_METRIC.get(metric.getClass())) {
             return null;
         }
-        Shape s = shape();
+        BiolithAccess.Shape s = BiolithAccess.shape();
         if (s == null) {
             return null;
         }
@@ -188,9 +142,6 @@ public final class BiolithSearch {
             return null;
         }
         ThreadLocal[] lasts = lasts(flat, tree, s);
-        if (lasts == null) {
-            return null;
-        }
         ThreadLocal ultimateLast = lasts[0];
         ThreadLocal penultimateLast = lasts[1];
         Climate.RTree.Leaf<?> ultimateBefore = (Climate.RTree.Leaf<?>) ultimateLast.get();
@@ -265,18 +216,14 @@ public final class BiolithSearch {
         if (last.answer != null && last.ultimate == ultimate && last.penultimate == penultimate && last.du == du && last.dp == dp && last.shape == s) {
             return last.answer;
         }
-        try {
-            Object answer = penultimate == null ? (Object) s.single.invokeExact(ultimate, du) : (Object) s.pair.invokeExact(ultimate, du, penultimate, dp);
-            last.ultimate = ultimate;
-            last.penultimate = penultimate;
-            last.du = du;
-            last.dp = dp;
-            last.shape = s;
-            last.answer = answer;
-            return answer;
-        } catch (Throwable t) {
-            throw Reflect.unchecked(t);
-        }
+        Object answer = penultimate == null ? s.single().make(ultimate, du) : s.pair().make(ultimate, du, penultimate, dp);
+        last.ultimate = ultimate;
+        last.penultimate = penultimate;
+        last.du = du;
+        last.dp = dp;
+        last.shape = s;
+        last.answer = answer;
+        return answer;
     }
 
     /** {@code -Dgeneratoraccelerator2.verify.biomes=N}: every N-th search also runs Biolith's and compares, as for TerraBlender. */
@@ -290,31 +237,21 @@ public final class BiolithSearch {
     }
 
     /** The current thread's last two answers from the Biolith search on {@code tree}. Null when they cannot be read. */
-    @SuppressWarnings("rawtypes")
     public static Object[] lastAnswers(Climate.RTree<?> tree) {
-        Shape s = shape();
+        BiolithAccess.Shape s = BiolithAccess.shape();
         if (s == null) {
             return null;
         }
-        try {
-            return new Object[] { ((ThreadLocal) s.ultimate.get(tree)).get(), ((ThreadLocal) s.penultimate.get(tree)).get() };
-        } catch (IllegalAccessException e) {
-            return null;
-        }
+        return new Object[] { s.ultimateLast(tree).get(), s.penultimateLast(tree).get() };
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public static void restoreLastAnswers(Climate.RTree<?> tree, Object[] answers) {
-        Shape s = shape();
+        BiolithAccess.Shape s = BiolithAccess.shape();
         if (s == null || answers == null) {
             return;
         }
-        try {
-            ((ThreadLocal) s.ultimate.get(tree)).set(answers[0]);
-            ((ThreadLocal) s.penultimate.get(tree)).set(answers[1]);
-        } catch (IllegalAccessException ignored) {
-            // lastAnswers() read these fields before this call, so they are readable here
-        }
+        s.ultimateLast(tree).set(answers[0]);
+        s.penultimateLast(tree).set(answers[1]);
     }
 
     /** Compares GA2's result and last answers with Biolith's. Records compare leaves by identity and distances by value. */
@@ -347,7 +284,7 @@ public final class BiolithSearch {
         if (data instanceof int[] keys) {
             return keys;
         }
-        if (data == NO_SHAPE) {
+        if (data == NO_KEYS) {
             return null;
         }
         int nodes = flat.nodes();
@@ -361,12 +298,12 @@ public final class BiolithSearch {
                 continue;
             }
             if (!(leaf.value instanceof Holder<?> holder)) {
-                flat.compatData = NO_SHAPE;
+                flat.compatData = NO_KEYS;
                 return null;
             }
             Optional<? extends ResourceKey<?>> key = holder.unwrapKey();
             if (key.isEmpty()) {
-                flat.compatData = NO_SHAPE;
+                flat.compatData = NO_KEYS;
                 return null;
             }
             keys[id] = numbers.computeIfAbsent(key.get().location(), k -> numbers.size());
@@ -375,67 +312,20 @@ public final class BiolithSearch {
         return keys;
     }
 
-    private static Shape shape() {
-        Object s = shape;
-        if (s == null) {
-            synchronized (BiolithSearch.class) {
-                s = shape;
-                if (s == null) {
-                    s = resolve();
-                    shape = s;
-                }
-            }
-        }
-        return s instanceof Shape found ? found : null;
-    }
-
     /**
      * The tree's two thread-local last answers (Biolith's final fields on the tree), read once per tree and kept on its flat copy.
-     * Reading them by reflection on every search was 0.8% of the workers' time in a 575-mod pack.
+     * Reading them on every search was 0.8% of the workers' time in a 575-mod pack.
      */
     @SuppressWarnings("rawtypes")
-    private static ThreadLocal[] lasts(FlatClimateTree flat, Climate.RTree<?> tree, Shape s) {
+    private static ThreadLocal[] lasts(FlatClimateTree flat, Climate.RTree<?> tree, BiolithAccess.Shape s) {
         if (flat.compatFields instanceof ThreadLocal[] kept) {
             return kept;
         }
-        try {
-            ThreadLocal[] read = { (ThreadLocal) s.ultimate.get(tree), (ThreadLocal) s.penultimate.get(tree) };
-            if (Modifier.isFinal(s.ultimate.getModifiers()) && Modifier.isFinal(s.penultimate.getModifiers())) {
-                flat.compatFields = read;
-            }
-            return read;
-        } catch (IllegalAccessException e) {
-            return null;
+        ThreadLocal[] read = { s.ultimateLast(tree), s.penultimateLast(tree) };
+        if (s.fixed()) {
+            flat.compatFields = read;
         }
-    }
-
-    private static Object resolve() {
-        try {
-            Field ultimate = null;
-            Field penultimate = null;
-            for (Field f : Climate.RTree.class.getDeclaredFields()) {
-                if (f.getType() == ThreadLocal.class && f.getName().endsWith("previousUltimateNode")) {
-                    ultimate = f;
-                } else if (f.getType() == ThreadLocal.class && f.getName().endsWith("previousPenultimateNode")) {
-                    penultimate = f;
-                }
-            }
-            if (ultimate == null || penultimate == null) {
-                throw new NoSuchFieldException("Climate.RTree.previousUltimateNode / previousPenultimateNode");
-            }
-            ultimate.setAccessible(true);
-            penultimate.setAccessible(true);
-            Class<?> nodes = Class.forName("com.terraformersmc.biolith.api.biome.BiolithFittestNodes", false, Climate.RTree.class.getClassLoader());
-            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-            MethodHandle single = lookup.findConstructor(nodes, MethodType.methodType(void.class, Climate.RTree.Leaf.class, long.class))
-                .asType(MethodType.methodType(Object.class, Climate.RTree.Leaf.class, long.class));
-            MethodHandle pair = lookup.findConstructor(nodes, MethodType.methodType(void.class, Climate.RTree.Leaf.class, long.class, Climate.RTree.Leaf.class, long.class))
-                .asType(MethodType.methodType(Object.class, Climate.RTree.Leaf.class, long.class, Climate.RTree.Leaf.class, long.class));
-            return new Shape(ultimate, penultimate, single, pair);
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            LOGGER.warn("Biolith climate search: unknown shape ({}) -> Biolith's own search", e.toString());
-            return NO_SHAPE;
-        }
+        return read;
     }
 
     /**
