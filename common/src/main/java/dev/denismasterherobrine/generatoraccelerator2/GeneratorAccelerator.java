@@ -43,6 +43,7 @@ import dev.denismasterherobrine.generatoraccelerator2.light.LightConfig;
 import dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims;
 import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
+import dev.denismasterherobrine.generatoraccelerator2.memory.WriteBacklog;
 import dev.denismasterherobrine.generatoraccelerator2.noise.SelfCheck;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightConfig;
@@ -186,6 +187,7 @@ public final class GeneratorAccelerator {
         StructureSteps.clear();
         TemplateLoads.serverStopped();
         UnloadBacklog.serverStopped();
+        WriteBacklog.serverStopped();
         FlatClimateTree.forgetWorlds();
         BiolithSearch.forgetWorlds();
         if (Compat.isLoaded(LootrMixins.MOD_ID)) {

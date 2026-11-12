@@ -1,10 +1,12 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkload;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
+import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyRequests;
 import dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater;
 import dev.denismasterherobrine.generatoraccelerator2.memory.NoiseChunkRelease;
 import dev.denismasterherobrine.generatoraccelerator2.memory.ProtoDrops;
 import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
+import dev.denismasterherobrine.generatoraccelerator2.memory.WriteBacklog;
 import it.unimi.dsi.fastutil.longs.Long2LongLinkedOpenHashMap;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -166,6 +168,8 @@ public final class ChunkLoadStats {
         }
         GRAPH_TRAVEL_MAX.set(0);
         UnloadBacklog.reset();
+        WriteBacklog.reset();
+        ChunkyRequests.HELD_FOR_WRITES.reset();
         ChunkyHolds.resetCounts();
         ProtoDrops.resetCounts();
         PresentChunks.ANSWERED.reset();
@@ -188,8 +192,9 @@ public final class ChunkLoadStats {
             + ", read back within " + RELOAD_WINDOW_MS / 1000 + " s of their unload " + String.format(Locale.ROOT, "%,d", RELOADS.sum())
             + (RELOADS.sum() > 0 ? String.format(Locale.ROOT, " (%.1f s after it on average)", RELOAD_AGE_MS.sum() / 1000.0 / RELOADS.sum()) : ""));
         out.add(String.format(Locale.ROOT, "saves: early saves left to the unload %,d; chunks read from disk and unloaded unchanged, not written again %,d; "
-            + "NoiseChunks released after their last step %,d; unload backlog %s", EARLY_SAVES_LEFT.sum(), CLEAN_UNLOADS.sum(),
-            NoiseChunkRelease.RELEASED.sum(), UnloadBacklog.describe()));
+            + "NoiseChunks released after their last step %,d; unload backlog %s; saves waiting for their write %s, Chunky held back for them %,d times",
+            EARLY_SAVES_LEFT.sum(), CLEAN_UNLOADS.sum(), NoiseChunkRelease.RELEASED.sum(), UnloadBacklog.describe(), WriteBacklog.describe(),
+            ChunkyRequests.HELD_FOR_WRITES.sum()));
         String holds = ChunkyHolds.report();
         if (holds != null) {
             out.add(holds);

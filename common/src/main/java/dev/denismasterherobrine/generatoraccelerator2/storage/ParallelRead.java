@@ -18,8 +18,8 @@ import org.slf4j.LoggerFactory;
  * Loading a saved chunk. Vanilla has one IO thread per region storage. That thread reads the chunk's sectors from the
  * region file, then decompresses and parses them into NBT. It handles one chunk after another, between its chunk writes,
  * so loads queue behind a single thread. With this class the IO thread still reads the bytes, in the same task and in the
- * same order relative to writes. A chunk waiting to be written is still copied from its pending write. The bytes are then
- * decompressed and parsed on the worker pool. The tag is the same. A failure is logged and handed on as vanilla's, with
+ * same order relative to writes. A chunk waiting to be written is still copied from its pending write, on the worker pool.
+ * The bytes are decompressed and parsed on the worker pool. The tag is the same. A failure is logged and handed on as vanilla's, with
  * the same logger, the same message and the same exception.
  *
  * <p>Only chunk and entity storage use this. The server thread waits for POI reads ({@code SectionStorage.getOrLoad} joins
@@ -53,6 +53,29 @@ public final class ParallelRead {
 
     /** A chunk's bytes, read by the IO thread, still to be decompressed and parsed. */
     public record Unparsed(DataInputStream stream) {}
+
+    /** A chunk's waiting save, found by the IO thread, still to be copied. */
+    public record Pending(CompoundTag tag) {}
+
+    /**
+     * Copies a waiting save's tag on the worker pool, as {@code PendingStore.copyData} does on the IO thread. While many saves
+     * wait, chunks are often loaded again before their write. Copying their whole tags then no longer holds up the writes.
+     */
+    public static void copyLater(Pending pending, CompletableFuture<Optional<CompoundTag>> out) {
+        Runnable task = () -> {
+            try {
+                out.complete(Optional.of(pending.tag().copy()));
+            } catch (Throwable t) {
+                out.completeExceptionally(t);
+                throw t;
+            }
+        };
+        try {
+            Util.backgroundExecutor().execute(task);
+        } catch (RejectedExecutionException e) {
+            task.run();
+        }
+    }
 
     /** Decompresses and parses {@code raw} on the worker pool and completes {@code out} with the tag or vanilla's failure. */
     public static void parseLater(Unparsed raw, ChunkPos pos, CompletableFuture<Optional<CompoundTag>> out) {

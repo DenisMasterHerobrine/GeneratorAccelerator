@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
 import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
+import dev.denismasterherobrine.generatoraccelerator2.memory.WriteBacklog;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.SchedulingConfig;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
@@ -25,6 +26,9 @@ import org.slf4j.Logger;
  * Chunky's task thread waits before each new request until fewer than Chunky's own 50 are open ({@code mixin.GenerationTaskMixin}).
  * A large pack's heavy chunks on top of GA2's count once filled a 12 GB heap, and the collector then took the rate from 250 to 20
  * chunks a second. Fewer open requests let the loaded chunks go.
+ *
+ * <p>While the IO threads are far behind with chunk saves ({@link WriteBacklog}), the task thread makes no new request until they
+ * have caught up to half of that backlog. This holds whoever set Chunky's count, since every new chunk adds a save to the heap.
  */
 public final class ChunkyRequests {
     private ChunkyRequests() {}
@@ -110,12 +114,16 @@ public final class ChunkyRequests {
     static final long MAX_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
     /** Requests Chunky's task thread held back while the heap was nearly full. */
     public static final LongAdder HELD_BACK = new LongAdder();
+    /** Requests Chunky's task thread held back while the chunk saves waited for the disk. */
+    public static final LongAdder HELD_FOR_WRITES = new LongAdder();
 
     /**
-     * On Chunky's task thread, before it takes a permit of {@code working} for its next request. While the heap is nearly full and
-     * GA2 raised Chunky's count, waits until fewer than {@link #CHUNKY_DEFAULT} requests are open.
+     * On Chunky's task thread, before it takes a permit of {@code working} for its next request. While the IO threads are far
+     * behind with chunk saves, waits until they caught up. While the heap is nearly full and GA2 raised Chunky's count, waits until
+     * fewer than {@link #CHUNKY_DEFAULT} requests are open.
      */
     public static void waitForRoom(Semaphore working) {
+        waitForWrites();
         if (!ours || !behind()) {
             return;
         }
@@ -126,6 +134,23 @@ public final class ChunkyRequests {
         HELD_BACK.increment();
         long until = System.nanoTime() + MAX_WAIT_NANOS;
         while (behind() && crowded(max, working.availablePermits()) && System.nanoTime() < until) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    /** Waits while the IO threads are far behind with chunk saves ({@link WriteBacklog}), at most {@link #MAX_WAIT_NANOS}. */
+    private static void waitForWrites() {
+        if (!WriteBacklog.high()) {
+            return;
+        }
+        HELD_FOR_WRITES.increment();
+        long until = System.nanoTime() + MAX_WAIT_NANOS;
+        while (WriteBacklog.high() && System.nanoTime() < until) {
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {

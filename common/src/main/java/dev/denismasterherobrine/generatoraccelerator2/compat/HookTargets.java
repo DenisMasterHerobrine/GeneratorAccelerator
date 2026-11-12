@@ -241,6 +241,8 @@ public final class HookTargets {
     public static final String STORAGE_REGION_WRITE = "storage.regionWrite";
     public static final String STORAGE_OLD_CHUNK_SCAN = "storage.oldChunkScan";
     public static final String STORAGE_PRECOMPRESS = "storage.precompress";
+    /** {@code IOWorker.tellStorePending} and {@code storePendingChunk}: the oldest waiting save written after each request while many wait ({@code memory.WriteBacklog}). */
+    public static final String STORAGE_WRITE_ALONG = "storage.writeAlong";
     public static final String STORAGE_SECTION_CODEC = "storage.sectionCodec";
     /** {@code ChunkSerializer.packOffsets}: a saved chunk's post-processing lists, packed into their tags directly ({@code storage.PostProcessingTags}). */
     public static final String STORAGE_POST_PROCESSING = "storage.postProcessing";

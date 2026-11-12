@@ -657,6 +657,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 List.of("submitTask(Ljava/util/function/Supplier;)Ljava/util/concurrent/CompletableFuture;")),
             new FeatureHook(HookTargets.STORAGE_PRECOMPRESS, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "store(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/CompoundTag;)Ljava/util/concurrent/CompletableFuture;",
                 "runStore(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/storage/IOWorker$PendingStore;)V")),
+            // a save written after a request takes the oldest one and writes it the way storePendingChunk does
+            new FeatureHook(HookTargets.STORAGE_WRITE_ALONG, List.of("tellStorePending()V", "storePendingChunk()V"),
+                List.of("runStore(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/storage/IOWorker$PendingStore;)V")),
             // the scan asks the worker's own isOldChunk (Tectonic's version check there keeps working)
             new FeatureHook(HookTargets.STORAGE_OLD_CHUNK_SCAN, List.of("<init>(Lnet/minecraft/world/level/chunk/storage/RegionStorageInfo;Ljava/nio/file/Path;Z)V", "createOldDataForRegion(II)Ljava/util/concurrent/CompletableFuture;",
                 "scanChunk(Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/nbt/StreamTagVisitor;)Ljava/util/concurrent/CompletableFuture;"),
