@@ -9,6 +9,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
@@ -120,6 +121,34 @@ public final class ChunkyHolds {
         this.area = side * side;
         this.cap = cap;
     }
+
+    /**
+     * Whether {@code type} is a pregenerator's ticket the holds follow: Chunky's, or since Nov 2026 any other mod's region ticket that
+     * keeps one chunk full ({@link #isOtherPregenerator}). Other pregenerators and Distant Horizons' server generation move over the
+     * world the way Chunky does, and leave the same partly generated edges behind.
+     */
+    public static boolean followed(TicketType<?> type) {
+        return isChunky(type) || isOtherPregenerator(type);
+    }
+
+    /** {@code -Dgeneratoraccelerator2.pregenHolds=false}: only Chunky's tickets are followed. */
+    private static final boolean OTHERS = SWITCH && !"false".equals(System.getProperty("generatoraccelerator2.pregenHolds"));
+
+    /**
+     * A region ticket at distance 0 of a type that is neither vanilla's nor GA2's. Vanilla's own region tickets (spawn, portals, the
+     * dragon fight, teleports) use larger distances, and its chunk requests use another path. Some chunk loaders of other mods use
+     * distance 0 for chunks they keep for long. Those are only held after their ticket goes, under the same cap and idle time.
+     */
+    static boolean isOtherPregenerator(TicketType<?> type) {
+        if (!OTHERS) {
+            return false;
+        }
+        String name = type.toString();
+        return !name.startsWith("generatoraccelerator2:") && !name.startsWith("ga2_") && !VANILLA_TICKETS.contains(name);
+    }
+
+    private static final Set<String> VANILLA_TICKETS = Set.of("start", "dragon", "player", "forced", "light", "portal", "post_teleport", "unknown",
+        "ender_pearl");
 
     /** Whether {@code type} is Chunky's ticket. */
     public static boolean isChunky(TicketType<?> type) {

@@ -206,8 +206,8 @@ public final class StepsCommand {
         long columnAnswers = FlatClimateTree.GROUP_ANSWERED.sum();
         if (columnAnswers > 0 || ClimateSearch.VERIFIED.get() > 0) {
             long fills = FlatClimateTree.GROUP_FILLS.sum();
-            send(source, String.format(Locale.ROOT, "climate searches answered per quart column: %,d (walked for shared distances %,d, trees without groups %,d, out of range %,d; columns filled %,d, %.1f nodes each; turned off for a while %,d times)",
-                columnAnswers, FlatClimateTree.GROUP_WALKED.sum(),
+            send(source, String.format(Locale.ROOT, "climate searches answered per quart column: %,d (shared distances settled from the column %,d, walked %,d, trees without groups %,d, out of range %,d; columns filled %,d, %.1f nodes each; turned off for a while %,d times)",
+                columnAnswers, FlatClimateTree.TIES_SETTLED.sum(), FlatClimateTree.GROUP_WALKED.sum(),
                 FlatClimateTree.WALK_NO_GROUPS.sum(), FlatClimateTree.WALK_OUT_OF_RANGE.sum(), fills,
                 fills == 0 ? 0.0 : (double) FlatClimateTree.FILL_NODES.sum() / fills, FlatClimateTree.COLUMNS_OFF.sum())
                 + (ClimateSearch.VERIFIED.get() > 0 ? "; verified against the walk "

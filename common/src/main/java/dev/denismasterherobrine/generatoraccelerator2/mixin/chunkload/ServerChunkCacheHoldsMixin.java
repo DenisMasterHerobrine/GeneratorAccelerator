@@ -2,11 +2,13 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.chunkload;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHoldTickets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
 import java.util.function.BooleanSupplier;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import org.spongepowered.asm.mixin.Final;
@@ -35,19 +37,25 @@ public abstract class ServerChunkCacheHoldsMixin implements ChunkyHolds.Owner {
     @Final
     Thread mainThread;
 
+    @Shadow
+    @Final
+    ServerLevel level;
+
     @Unique
     private ChunkyHolds ga2$holds;
 
     @Inject(method = "addRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;)V", at = @At("TAIL"))
     private void ga2$chunkyAsked(TicketType<?> type, ChunkPos pos, int distance, Object value, CallbackInfo ci) {
-        if (distance == 0 && ChunkyHolds.isChunky(type) && Thread.currentThread() == this.mainThread) {
+        if (distance == 0 && ChunkyHolds.followed(type) && Thread.currentThread() == this.mainThread) {
             this.ga2$holds().asked(pos.x, pos.z, System.nanoTime());
+            // the pregenerator's next chunks: the GPU can start their region before the chunks' biome steps ask for it
+            Gpu.hint(this.level, pos);
         }
     }
 
     @Inject(method = "removeRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;)V", at = @At("TAIL"))
     private void ga2$chunkyDone(TicketType<?> type, ChunkPos pos, int distance, Object value, CallbackInfo ci) {
-        if (distance == 0 && this.ga2$holds != null && ChunkyHolds.isChunky(type) && Thread.currentThread() == this.mainThread) {
+        if (distance == 0 && this.ga2$holds != null && ChunkyHolds.followed(type) && Thread.currentThread() == this.mainThread) {
             this.ga2$holds.done(pos.x, pos.z, System.nanoTime());
         }
     }

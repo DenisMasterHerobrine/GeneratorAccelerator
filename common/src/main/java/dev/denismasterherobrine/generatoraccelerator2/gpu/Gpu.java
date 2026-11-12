@@ -34,6 +34,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -235,6 +236,20 @@ public final class Gpu {
         return wg;
     }
 
+    /**
+     * A pregenerator asked for {@code pos} in {@code level} (server thread). The dimension's GPU path launches the chunk's region ahead
+     * when it has room ({@code GpuWorldgen.hint}). Nothing when the dimension has no GPU path yet.
+     */
+    public static void hint(ServerLevel level, ChunkPos pos) {
+        GpuWorldgen wg;
+        synchronized (WORLDS) {
+            wg = WORLDS.get(level.getChunkSource().randomState());
+        }
+        if (wg != null) {
+            wg.hint(pos);
+        }
+    }
+
     /** The server level a chunk was made for, or null (a chunk made outside a level, as in tests). */
     public static ServerLevel level(ChunkAccess chunk) {
         return ((ChunkAccessAccessor) chunk).ga2$levelHeightAccessor() instanceof ServerLevel l ? l : null;
@@ -399,8 +414,10 @@ public final class Gpu {
         out.add(String.format(Locale.ROOT, "  surface on the GPU: %,d asked, %,d written, %,d left to the CPU, %,d late; %,d batches %s%s",
             GpuSurfaceJob.ASKED.sum(), GpuSurfaceJob.APPLIED.sum(), GpuSurfaceJob.CPU.sum(), GpuSurfaceJob.LATE.sum(),
             SurfaceBatches.BATCHES.sum(), SurfaceBatches.BATCH_LAT.describe(), declines.isEmpty() ? "" : "; not asked: " + declines));
-        out.add(String.format(Locale.ROOT, "  answers later than %d ms (the CPU did those chunks): %,d; dimensions paused for a while (GPU busy elsewhere): %,d",
-            GpuWorldgen.ANSWER_MS, GpuWorldgen.LATE_ANSWERS.sum(), GpuWorldgen.PAUSES.sum()));
+        out.add(String.format(Locale.ROOT, "  answers later than %d ms (the CPU did those chunks): %,d, and %,d more that waited for their region"
+                + " (not counted against the GPU); pauses for a while (GPU busy elsewhere): %,d; regions launched ahead from Chunky's requests %,d",
+            GpuWorldgen.ANSWER_MS, GpuWorldgen.LATE_ANSWERS.sum(), GpuWorldgen.LATE_FOR_REGION.sum(), GpuWorldgen.PAUSES.sum(),
+            GpuWorldgen.HINTED.sum()));
         out.add(String.format(Locale.ROOT, "  waits for answers made longer while the whole JVM stood still: %,d (it stood still %.1f s in all)",
             JvmStalls.STRETCHED.sum(),
             JvmStalls.total() / 1e9));

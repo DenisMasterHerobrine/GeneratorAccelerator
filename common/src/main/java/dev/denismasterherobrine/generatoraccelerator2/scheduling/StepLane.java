@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.scheduling;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import net.minecraft.Util;
@@ -37,6 +38,13 @@ public final class StepLane {
     private static final ThreadLocal<int[]> CURRENT = ThreadLocal.withInitial(() -> new int[] { -1 });
 
     public static final LongAdder STEPS = new LongAdder();
+    /** Steps queued and not started yet. The GPU's batches wait for more chunks while the workers have plenty to do. */
+    private static final AtomicInteger QUEUED = new AtomicInteger();
+
+    /** Steps queued on the lanes and not started yet (racy, for decisions that only need the order of magnitude). */
+    public static int queued() {
+        return QUEUED.get();
+    }
     /** {@code -Dgeneratoraccelerator2.stepLane=false} hands steps to the pool in arrival order, as before (for comparison). */
     public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.stepLane"));
 
@@ -55,11 +63,14 @@ public final class StepLane {
         }
         ConcurrentLinkedQueue<Runnable> bucket = BUCKETS[Math.max(0, Math.min(UNKNOWN, level))];
         bucket.add(task);
+        QUEUED.incrementAndGet();
         try {
             Util.backgroundExecutor().execute(StepLane::runOne);
         } catch (RejectedExecutionException e) {
             // the pool is shutting down: the step fails as vanilla's would
-            bucket.remove(task);
+            if (bucket.remove(task)) {
+                QUEUED.decrementAndGet();
+            }
             throw e;
         }
         STEPS.increment();
@@ -79,10 +90,13 @@ public final class StepLane {
             return;
         }
         HOLDING.add(task);
+        QUEUED.incrementAndGet();
         try {
             Util.backgroundExecutor().execute(StepLane::runOne);
         } catch (RejectedExecutionException e) {
-            HOLDING.remove(task);
+            if (HOLDING.remove(task)) {
+                QUEUED.decrementAndGet();
+            }
             throw e;
         }
         STEPS.increment();
@@ -96,12 +110,14 @@ public final class StepLane {
     private static void runOne() {
         Runnable holding = HOLDING.poll();
         if (holding != null) {
+            QUEUED.decrementAndGet();
             holding.run();
             return;
         }
         for (ConcurrentLinkedQueue<Runnable> bucket : BUCKETS) {
             Runnable task = bucket.poll();
             if (task != null) {
+                QUEUED.decrementAndGet();
                 task.run();
                 return;
             }

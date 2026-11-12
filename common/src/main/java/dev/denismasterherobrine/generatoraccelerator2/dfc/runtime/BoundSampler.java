@@ -75,8 +75,23 @@ public final class BoundSampler {
         this.pure = pure;
     }
 
+    /**
+     * The last sampler this thread looked up and its binding. A biome fill asks for the same sampler at every quart, 1,536 times
+     * per chunk. A thread-local read costs less than the weak map's. Only found bindings are kept. {@link #release} clears it.
+     */
+    private static final ThreadLocal<Object[]> LAST = ThreadLocal.withInitial(() -> new Object[2]);
+
     public static BoundSampler lookup(Climate.Sampler sampler) {
-        return REGISTRY.get(sampler);
+        Object[] last = LAST.get();
+        if (last[0] == sampler) {
+            return (BoundSampler) last[1];
+        }
+        BoundSampler bound = REGISTRY.get(sampler);
+        if (bound != null) {
+            last[0] = sampler;
+            last[1] = bound;
+        }
+        return bound;
     }
 
     /**
@@ -89,6 +104,12 @@ public final class BoundSampler {
         BoundSampler bound = REGISTRY.get(sampler);
         if (bound != null && bound.perThread == null) {
             REGISTRY.remove(sampler, bound);
+        }
+        Object[] last = LAST.get();
+        if (last[0] == sampler) {
+            // the fill's thread releases its sampler. The memo must not keep the sampler and its NoiseChunk alive either
+            last[0] = null;
+            last[1] = null;
         }
     }
 

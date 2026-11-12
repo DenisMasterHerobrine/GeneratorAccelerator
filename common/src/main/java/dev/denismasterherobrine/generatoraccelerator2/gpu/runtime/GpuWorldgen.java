@@ -26,6 +26,7 @@ import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.GpuBiomeSourceIn
 import dev.denismasterherobrine.generatoraccelerator2.mixin.surface.XoroshiroFactoryAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.JvmStalls;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepLane;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
@@ -47,6 +48,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -87,7 +89,8 @@ import javax.annotation.Nullable;
  * <p>A region's kernels (flat caches, hoisted values, shared corners, surface levels, aquifer cells, biomes) run when the
  * region's first chunk asks for biomes or blocks. The blocks of requesting chunks are decided in batches of up to
  * {@link GpuConfig#batchChunks} chunks from one region. A batch launches as soon as the GPU is idle, the batch is full or the
- * oldest request has waited long enough.
+ * oldest request has waited long enough. While the workers have more steps queued than they can start, an idle GPU waits for
+ * that too, so batches come out larger where the processors are the limit.
  */
 public final class GpuWorldgen implements GpuDevice.Pump {
     public enum State { PREPARING, READY, FAILED }
@@ -357,6 +360,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         this.randomState = randomState;
         this.governor = new Governor(name, PAUSE_NS);
         this.biomeGovernor = new Governor(name, "biome answers", "biomes", PAUSE_NS);
+        this.surfaceGovernor = new Governor(name, "surfaces", "surfaces", PAUSE_NS);
+        if (SURFACE_FIRST) {
+            this.governor.relief = this.surfaceGovernor;
+            this.governor.reliefUseful = () -> this.surfaces != null;
+        }
     }
 
     public State state() {
@@ -1073,10 +1081,55 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * only the GPU's biomes.
      */
     private final Governor biomeGovernor;
+    /**
+     * Surface answers, counted apart. The surface's packing is most of a chunk's device time (three quarters in Terralith), so a GPU
+     * that falls behind gives up its surfaces first: late blocks pause the surfaces while the surfaces still run, and only late
+     * blocks with the surfaces paused pause the blocks. On an RTX 2060 the shared rule paused blocks and surfaces together for 2 s,
+     * 15 to 168 times per run. {@code -Dgeneratoraccelerator2.gpu.surfaceFirst=false} pauses both together, as before.
+     */
+    private final Governor surfaceGovernor;
+    private static final boolean SURFACE_FIRST = !"false".equals(System.getProperty("generatoraccelerator2.gpu.surfaceFirst"));
 
     /** False while late answers keep this dimension's blocks and surfaces on the CPU ({@link #timed}). */
     public boolean asking() {
         return governor.asking();
+    }
+
+    /** False while late answers keep this dimension's surfaces on the CPU. */
+    public boolean askingSurfaces() {
+        return governor.asking() && surfaceGovernor.asking();
+    }
+
+    /** Counts one surface answer: on time, or late (the CPU built the surface). */
+    public void surfaceAnswered(boolean late) {
+        if (SURFACE_FIRST) {
+            surfaceGovernor.answered(late);
+        } else if (late) {
+            governor.answered(true);
+        }
+    }
+
+    /**
+     * When each region's work was seen done ({@link #trackRegions}), by region key, while the region is held. A block answer that
+     * waited for its region says nothing about how fast the device is. Such waits are paid once per region, and the region limit of
+     * sharing bounds them. So a late block answer counts for the governor only when its region was done for at least the whole
+     * answer time.
+     */
+    private final ConcurrentHashMap<Long, Long> regionDoneAt = new ConcurrentHashMap<>();
+    /** Late block answers not counted, because their region was not done long enough. */
+    public static final LongAdder LATE_FOR_REGION = new LongAdder();
+
+    /** {@link #timed} for a block answer of {@code pos}. */
+    public <T> CompletableFuture<T> timed(CompletableFuture<T> answer, ChunkPos pos) {
+        long key = regionKey(pos);
+        return timed(answer, governor, () -> {
+            Long done = regionDoneAt.get(key);
+            boolean counts = done != null && System.nanoTime() - done >= ANSWER_MS * 1_000_000L;
+            if (!counts) {
+                LATE_FOR_REGION.increment();
+            }
+            return counts;
+        });
     }
 
     /** False while late biome answers keep this dimension's biomes on the CPU ({@link #timedBiomes}). */
@@ -1091,22 +1144,23 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * Such a GPU is slower than the CPU it was meant to relieve, and more asks only add load. Counting starts after the asks are made, so the CPU's own queues do not count.
      */
     public <T> CompletableFuture<T> timed(CompletableFuture<T> answer) {
-        return timed(answer, governor);
+        return timed(answer, governor, null);
     }
 
     /** {@link #timed} for a biome answer, counted by the biomes' own governor. */
     public <T> CompletableFuture<T> timedBiomes(CompletableFuture<T> answer) {
-        return timed(answer, biomeGovernor);
+        return timed(answer, biomeGovernor, null);
     }
 
-    private static <T> CompletableFuture<T> timed(CompletableFuture<T> answer, Governor g) {
+    /** {@code countsLate}, when given, decides at the deadline whether the late answer counts for the governor. */
+    private static <T> CompletableFuture<T> timed(CompletableFuture<T> answer, Governor g, BooleanSupplier countsLate) {
         if (answer.isDone()) {
             g.answered(false);
             return answer;
         }
         CompletableFuture<T> out = new CompletableFuture<>();
         deadline(answer, ANSWER_MS, () -> {
-            if (out.complete(null)) {
+            if (out.complete(null) && (countsLate == null || countsLate.getAsBoolean())) {
                 g.answered(true);
             }
         });
@@ -1206,6 +1260,12 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         private volatile int lateWindows;
         /** The length of the last pause (tests). */
         volatile long lastPauseNs;
+        /**
+         * Paused instead of this governor when this governor's window is late, while it asks and {@link #reliefUseful} holds: the
+         * surfaces, which cost the device most, before the blocks. Null for none.
+         */
+        Governor relief;
+        BooleanSupplier reliefUseful;
 
         Governor(String name, long pauseNs) {
             this(name, "chunks", "blocks and surfaces", pauseNs);
@@ -1248,22 +1308,33 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 int lateOnes = windowLate.getAndSet(0);
                 windowAsked.set(0);
                 if (lateOnes > 4) {
-                    int inRow = lateWindows;
-                    long pause = Math.min(pauseNs, firstPauseNs << Math.min(inRow, 30));
-                    if (pause <= 0) {
-                        pause = pauseNs;
+                    Governor r = relief;
+                    if (r != null && reliefUseful != null && reliefUseful.getAsBoolean() && r.asking()) {
+                        // the surfaces go to the CPU first. This governor keeps asking, and its next window decides again
+                        r.pause(lateOnes, answers);
+                    } else {
+                        pause(lateOnes, answers);
                     }
-                    lateWindows = inRow + 1;
-                    lastPauseNs = pause;
-                    pausedUntil = System.nanoTime() + pause;
-                    paused = true;
-                    PAUSES.increment();
-                    GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s ({} late window(s) in a row)",
-                        lateOnes, answers, name, ANSWER_MS, work, String.format(Locale.ROOT, "%.1f", pause / 1e9), inRow + 1);
                 } else {
                     lateWindows = 0;
                 }
             }
+        }
+
+        /** Stops asking for a while: {@code lateOnes} of the last 64 {@code counted} were late. */
+        private void pause(int lateOnes, String counted) {
+            int inRow = lateWindows;
+            long pause = Math.min(pauseNs, firstPauseNs << Math.min(inRow, 30));
+            if (pause <= 0) {
+                pause = pauseNs;
+            }
+            lateWindows = inRow + 1;
+            lastPauseNs = pause;
+            pausedUntil = System.nanoTime() + pause;
+            paused = true;
+            PAUSES.increment();
+            GpuDevice.LOGGER.info("{}/64 recent {} of {} answered after >{} ms -> {} on the CPU for {} s ({} late window(s) in a row)",
+                lateOnes, counted, name, ANSWER_MS, work, String.format(Locale.ROOT, "%.1f", pause / 1e9), inRow + 1);
         }
     }
 
@@ -1327,6 +1398,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 it.remove();
                 long now = System.nanoTime();
                 r.doneAt = now;
+                regionDoneAt.put(r.key, now);
                 // Time the whole JVM stood still is not the GPU's. Just after a stall the watch may not have counted it, and the
                 // region's time then says nothing.
                 if (!JvmStalls.current()) {
@@ -1390,6 +1462,10 @@ public final class GpuWorldgen implements GpuDevice.Pump {
     /** The SURFACE step on the GPU ({@code gpu.surface}), or null with the reason in {@link #surfaceOff}. */
     public SurfaceSpec surfaceSpec;
     public volatile SurfaceBatches surfaces;
+    /** {@code -Dgeneratoraccelerator2.gpu.batchWhileBusy=false}: an idle GPU always takes a batch at once. */
+    private static final boolean BATCH_WHILE_BUSY = !"false".equals(System.getProperty("generatoraccelerator2.gpu.batchWhileBusy"));
+    /** Queued steps beyond which the workers count as busy: more than they can start at once. */
+    private static final int BUSY_QUEUE = Runtime.getRuntime().availableProcessors();
     public volatile String surfaceOff = "not set up";
     private NoiseBasedChunkGenerator surfaceGenerator;
     private long worldSeed;
@@ -1421,6 +1497,11 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             terrainSpec = s = s == null ? Boolean.FALSE : s;
         }
         return s instanceof GpuTerrain.Spec spec ? spec : null;
+    }
+
+    /** True once {@link #terrainSpec} made a spec. Before the first chunk with GPU terrain, and without a spec, false. */
+    public boolean terrainKnown() {
+        return terrainSpec instanceof GpuTerrain.Spec;
     }
 
     /** The biomes of a chunk. Completes with null when the GPU cannot give them exactly, and exceptionally on a GPU failure. */
@@ -1535,6 +1616,62 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             }
             freeRegionBuffers.add(rb);
             rb = null;
+            keep(quartChars);
+            keep(quarts);
+            keep(fallbacks);
+            keep(targets);
+            keep(hand);
+            quartChars = null;
+            quarts = null;
+            fallbacks = null;
+            targets = null;
+            hand = null;
+        }
+    }
+
+    /**
+     * Answer arrays of released regions, by length, for the next regions (GPU thread). A cached region keeps its answers for
+     * seconds, so a new array per region outlived young collections and was copied, then tenured. In a vanilla pregeneration
+     * these arrays were 72% of the bytes young collections promoted. Every element is written before a region is answered.
+     */
+    private final ArrayDeque<char[]> freeChars = new ArrayDeque<>();
+    private final Map<Integer, ArrayDeque<int[]>> freeInts = new HashMap<>();
+    /**
+     * Bytes the kept arrays may hold. Regions are released in groups (a finished square, idle ones after 5 s), and the next square
+     * makes as many again. 64 MB holds about 80 regions' answers in vanilla, at most a 32nd of the heap.
+     */
+    private static final long KEPT_BYTES = Math.min(64L << 20, Runtime.getRuntime().maxMemory() / 32);
+    private long keptBytes;
+
+    private char[] chars(int n) {
+        char[] a = freeChars.poll();
+        if (a != null) {
+            keptBytes -= 2L * a.length;
+        }
+        return a != null && a.length == n ? a : new char[n];
+    }
+
+    private int[] ints(int n) {
+        ArrayDeque<int[]> q = freeInts.get(n);
+        int[] a = q == null ? null : q.poll();
+        if (a == null) {
+            return new int[n];
+        }
+        keptBytes -= 4L * n;
+        return a;
+    }
+
+    private void keep(@Nullable char[] a) {
+        if (a != null && keptBytes + 2L * a.length <= KEPT_BYTES && !MemoryPressure.high()) {
+            freeChars.add(a);
+            keptBytes += 2L * a.length;
+        }
+    }
+
+    private void keep(@Nullable int[] a) {
+        if (a != null && keptBytes + 4L * a.length <= KEPT_BYTES && !MemoryPressure.high()) {
+            freeInts.computeIfAbsent(a.length, k -> new ArrayDeque<>()).add(a);
+            keptBytes += 4L * a.length;
         }
     }
 
@@ -1821,18 +1958,22 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             long h0 = System.nanoTime(); finishBatch(b); HOST_NS[1].add(System.nanoTime() - h0);
         }
         trackRegions();
+        prefetchHinted();
         // new batches
         long wait = Long.MAX_VALUE;
         int max = Math.max(1, GpuConfig.batchChunks());
         long maxWait = 1_000_000L;
         boolean launched = false;
+        // An idle GPU takes a batch at once, unless the workers have more queued than they can start: the processors are the limit
+        // then, and a batch that waits up to a millisecond for more chunks costs the driver fewer launches per chunk.
+        boolean workersBusy = BATCH_WHILE_BUSY && StepLane.queued() > BUSY_QUEUE;
         while (!pending.isEmpty()) {
             // the oldest request whose region is done goes first. A batch launched for a region still running holds its slot, since
             // its kernels wait for the region on the device. Meanwhile, requests of finished regions would queue behind it.
             NoiseReq first = readyFirst();
             long age = now - first.since;
             boolean full = pending.size() >= max;
-            if (!full && age < maxWait && !inflight.isEmpty()) {
+            if (!full && age < maxWait && (!inflight.isEmpty() || workersBusy)) {
                 wait = Math.min(wait, maxWait - age);
                 break;
             }
@@ -1917,6 +2058,9 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             it.remove();
             r.release();
         }
+        freeChars.clear();
+        freeInts.clear();
+        keptBytes = 0;
         RegionBuffers b;
         while ((b = freeRegionBuffers.poll()) != null) {
             releaseRegionBuffers(b);
@@ -2094,6 +2238,57 @@ public final class GpuWorldgen implements GpuDevice.Pump {
      * forgotten past a few thousand.
      */
     private final LongOpenHashSet doneRegions = new LongOpenHashSet();
+
+    /**
+     * Regions of the chunks a pregenerator just asked for (Chunky's tickets, {@link #hint}), oldest first. Generation that moves to a
+     * new area otherwise starts with every request in flight waiting for the same new regions at once. A ticket comes well before
+     * its chunk's biome step: the structure steps around it run first. {@code -Dgeneratoraccelerator2.gpu.prefetch=0} turns it off.
+     */
+    private final ConcurrentLinkedQueue<Long> hinted = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger hintedCount = new AtomicInteger();
+    /** The last regions hinted (server thread). Chunky asks a region's chunks one after another. */
+    private final long[] recentHints = { Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE,
+        Long.MIN_VALUE, Long.MIN_VALUE };
+    private int recentHintNext;
+    /** Regions launched ahead from a pregenerator's tickets. */
+    public static final LongAdder HINTED = new LongAdder();
+
+    /** A pregenerator asked for {@code pos} (server thread). Its region is launched ahead when a region queue would idle. */
+    public synchronized void hint(ChunkPos pos) {
+        if (PREFETCH <= 0 || state != State.READY) {
+            return;
+        }
+        long key = regionKey(pos);
+        for (long k : recentHints) {
+            if (k == key) {
+                return;
+            }
+        }
+        recentHints[recentHintNext] = key;
+        recentHintNext = (recentHintNext + 1) & 7;
+        if (hintedCount.incrementAndGet() > 64) {
+            // the GPU is behind on its regions: an old hint is of no more use than a new one
+            hintedCount.decrementAndGet();
+            return;
+        }
+        hinted.add(key);
+    }
+
+    /** Launches hinted regions while a region queue would otherwise idle (GPU thread). The rest wait for the next pump. */
+    private void prefetchHinted() {
+        Long k;
+        while ((k = hinted.peek()) != null) {
+            if (MemoryPressure.high() || SHARE && busy.size() >= Math.min(device.regionQueues.length, regionLimit())) {
+                return;
+            }
+            hinted.poll();
+            hintedCount.decrementAndGet();
+            if (!doneRegions.contains(k) && !regions.containsKey((long) k)) {
+                region(k, ChunkPos.getX(k), ChunkPos.getZ(k));
+                HINTED.increment();
+            }
+        }
+    }
 
     /** Launches the region holding chunk {@code x, z} unless it was let go. */
     private void prefetchRegion(int x, int z) {
@@ -2486,29 +2681,29 @@ public final class GpuWorldgen implements GpuDevice.Pump {
         int per = 16 * (height / 4);
         IntBuffer answers = r.biomeHost.clear().asIntBuffer();
         if (leaves.length <= 0x8000) {
-            char[] q = new char[side * side * per];
+            char[] q = chars(side * side * per);
             for (int i = 0; i < q.length; i++) {
                 int v = answers.get(i);
                 q[i] = (char) (v & 0x7fff | (v < 0 ? 0x8000 : 0));
             }
             r.quartChars = q;
         } else {
-            int[] q = new int[side * side * per];
+            int[] q = ints(side * side * per);
             answers.get(q);
             r.quarts = q;
         }
         if (tbRegions != null) {
-            int[] f = new int[side * side * per];
+            int[] f = ints(side * side * per);
             r.host.fallbacks.clear().asIntBuffer().get(f);
             r.fallbacks = f;
         }
         if (targetsOn) {
-            int[] t = new int[targetInts()];
+            int[] t = ints(targetInts());
             r.host.targets.clear().asIntBuffer().get(t);
             r.targets = t;
         }
         if (handsBiomes) {
-            int[] t = new int[side * side * per * 4];
+            int[] t = ints(side * side * per * 4);
             r.host.hand.clear().asIntBuffer().get(t);
             r.hand = t;
         }
@@ -3078,6 +3273,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
                 }
                 it.remove();
                 regions.remove(r.key);
+                regionDoneAt.remove(r.key);
                 r.release();
                 if (doneRegions.size() >= 4096) {
                     doneRegions.clear();
@@ -3177,6 +3373,7 @@ public final class GpuWorldgen implements GpuDevice.Pump {
             r.release();
         }
         regions.clear();
+        regionDoneAt.clear();
         busy.clear();
         completed.clear();
         doneRegions.clear();

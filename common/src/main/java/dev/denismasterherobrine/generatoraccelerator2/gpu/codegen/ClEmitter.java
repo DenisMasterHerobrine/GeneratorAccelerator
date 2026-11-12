@@ -3952,7 +3952,8 @@ public final class ClEmitter {
     static final String BEARD = """
         double bury(double a, double b, double cz) { double d = sqrt(a * a + b * b + cz * cz); return jclampedMap(d, 0.0, 6.0, 1.0, 0.0); }
         double fast_inv_sqrt(double n) { double d0 = 0.5 * n; long i = as_long(n); i = 6910469410427058090L - (i >> 1); double x = as_double(i); return x * (1.5 - d0 * x * x); }
-        /* EnhancedTerrainAdaptation.computeDensityFactor of YUNG's API (t[7] == 0) and Integrated API, over the batch's adaptation table */
+        /* EnhancedTerrainAdaptation.computeDensityFactor of YUNG's API (bit 0 of t[7] clear) and Integrated API, over the batch's
+           adaptation table. Bit 1: the mod takes Mth.invSqrt (JOML's 1 / sqrt), else Mth.fastInvSqrt */
         double enh_factor(__global const int* ek, __global const int* t, int dx, int dy, int dz, int yRel) {
           int size = t[0]; int rad = size / 2;
           int i = dx + rad, j = dy + rad, k = dz + rad;
@@ -3960,12 +3961,13 @@ public final class ClEmitter {
           float kv = as_float(ek[t[1] + (k * size * size + i * size + j)]);
           double d0 = (double) yRel + 0.5;
           double d1 = (double) dx * (double) dx + d0 * d0 + (double) dz * (double) dz;
-          if (t[7] == 0) {
-            double d2 = fabs((d0 * fast_inv_sqrt(d1 / 2.0)) / 2.0);
+          double root = (t[7] & 2) != 0 ? 1.0 / sqrt(d1 / 2.0) : fast_inv_sqrt(d1 / 2.0);
+          if ((t[7] & 1) == 0) {
+            double d2 = fabs((d0 * root) / 2.0);
             int mod = d0 > 0.0 ? t[2] : t[3];
             return (d2 * (double) kv) * (double) mod;
           }
-          double d2 = ((-d0) * fast_inv_sqrt(d1 / 2.0)) / 2.0;
+          double d2 = ((-d0) * root) / 2.0;
           if (d2 > 0.0 && !t[5]) return 0.0;
           if (d2 < 0.0 && !t[4]) return 0.0;
           return d2 * (double) kv;

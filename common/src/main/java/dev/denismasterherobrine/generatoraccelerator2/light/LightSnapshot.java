@@ -52,7 +52,7 @@ public final class LightSnapshot extends Long2ObjectOpenHashMap<DataLayer> {
     private static final Logger LOGGER = Ga2Log.get("Light");
 
     /** Not final so tests can compare both ways. Call {@link #refresh()} after a change. */
-    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.lightSnapshots"));
+    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.lightSnapshots")) && !LucisCompat.ACTIVE;
 
     /** Read at every publish. Set by {@link #refresh()}. */
     public static boolean on;

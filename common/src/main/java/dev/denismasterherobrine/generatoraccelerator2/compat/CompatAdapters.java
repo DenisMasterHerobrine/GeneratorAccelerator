@@ -20,10 +20,28 @@ public final class CompatAdapters {
 
     private static final Logger LOGGER = Ga2Log.get("Compat");
     private static final Map<String, BooleanSupplier> CHECKS = new ConcurrentHashMap<>();
+    private static final Map<String, String> REASONS = new ConcurrentHashMap<>();
     private static final Map<String, Boolean> RESULTS = new ConcurrentHashMap<>();
+
+    private static volatile boolean registered;
 
     public static void register(String hook, String mixin, BooleanSupplier ready) {
         CHECKS.put(hook + "|" + mixin, ready);
+    }
+
+    /** As {@link #register(String, String, BooleanSupplier)}, for a check that fails by design: {@code whyNot} says when, for the log. */
+    public static void register(String hook, String mixin, BooleanSupplier ready, String whyNot) {
+        CHECKS.put(hook + "|" + mixin, ready);
+        REASONS.put(hook + "|" + mixin, whyNot);
+    }
+
+    /** Called once every compat module registered its checks. Until then a hook with handled mixins answers no, without keeping it. */
+    public static void markRegistered() {
+        registered = true;
+    }
+
+    public static boolean registered() {
+        return registered;
     }
 
     /** True when every one of {@code mixins} (handled for {@code hook}) has a registered check that passes. */
@@ -67,7 +85,10 @@ public final class CompatAdapters {
                 ok = false;
                 LOGGER.warn("hook '{}': adapter for {} failed to init -> disabled", hook, mixin, e);
             }
-            if (!ok) {
+            String reason = REASONS.get(key);
+            if (!ok && reason != null) {
+                LOGGER.info("hook '{}': {} ({}) -> disabled", hook, reason, mixin);
+            } else if (!ok) {
                 LOGGER.warn("hook '{}': adapter for {} incompatible with this mod version -> disabled",
                     hook, mixin);
             }

@@ -87,6 +87,26 @@ class GovernorTest {
         assertTrue(windows <= 5, "longest pause after " + windows + " windows");
     }
 
+    /** Late blocks pause the surfaces first. Only late blocks while the surfaces are paused pause the blocks. */
+    @Test
+    void lateBlocksPauseTheSurfacesFirst() throws Exception {
+        GpuWorldgen.Governor blocks = new GpuWorldgen.Governor("test", "chunks", "blocks", PAUSE_NS, PAUSE_NS);
+        GpuWorldgen.Governor surfaces = new GpuWorldgen.Governor("test", "surfaces", "surfaces", PAUSE_NS, PAUSE_NS);
+        blocks.relief = surfaces;
+        blocks.reliefUseful = () -> true;
+        lateWindow(blocks);
+        assertTrue(blocks.asking(), "the blocks go on");
+        assertFalse(surfaces.asking(), "the surfaces stop");
+        lateWindow(blocks);
+        assertFalse(blocks.asking(), "late again with the surfaces paused: the blocks stop too");
+        waitOut(blocks);
+        waitOut(surfaces);
+        blocks.reliefUseful = () -> false;
+        lateWindow(blocks);
+        assertFalse(blocks.asking(), "no surfaces on the GPU: the blocks stop at once");
+        assertTrue(surfaces.asking());
+    }
+
     private static void lateWindow(GpuWorldgen.Governor g) {
         for (int i = 0; i < 64; i++) {
             g.answered(i % 8 == 0);

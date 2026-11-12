@@ -64,7 +64,8 @@ public final class ClimateSearch {
         }
         FlatClimateTree flat = ((Ga2ClimateTree) (Object) tree).ga2$flat();
         int lastId = last == null ? -1 : ((Ga2ClimateLeaf) (Object) last).ga2$index();
-        int id = FlatClimateTree.COLUMNS ? flat.searchColumns(q0, q1, q2, q3, q4, q5, lastId) : flat.search(q0, q1, q2, q3, q4, q5, lastId);
+        FlatClimateTree.GroupCache thread = FlatClimateTree.thread();
+        int id = FlatClimateTree.COLUMNS ? flat.searchColumns(thread, q0, q1, q2, q3, q4, q5, lastId) : flat.search(q0, q1, q2, q3, q4, q5, lastId);
         if (VERIFY_EVERY > 0 && SEEN.incrementAndGet() % VERIFY_EVERY == 0) {
             // -Dgeneratoraccelerator2.verify.biomes=N also walks every N-th search, from the same last result.
             int walked = flat.search(q0, q1, q2, q3, q4, q5, lastId);
@@ -74,9 +75,10 @@ public final class ClimateSearch {
                     q0, q1, q2, q3, q4, q5, lastId, id, walked);
             }
         }
-        // the search returns the leaf's value. A tie with a leaf of the same value gives the same answer
-        if (SearchTies.watching() && !flat.alone(q0, q1, q2, q3, q4, q5, id, true)) {
-            SearchTies.unsure(SearchTies.TIE);
+        // the search returns the leaf's value. A tie with a leaf of the same value gives the same answer. A leaf from the column
+        // answers is alone at its distance already
+        if (SearchTies.watching(thread.watch) && !(FlatClimateTree.COLUMNS && thread.lastUnique) && !flat.alone(q0, q1, q2, q3, q4, q5, id, true)) {
+            SearchTies.unsure(thread.watch, SearchTies.TIE);
         }
         Climate.RTree.Leaf<T> leaf = (Climate.RTree.Leaf<T>) flat.leaf(id);
         if (leaf != last) {

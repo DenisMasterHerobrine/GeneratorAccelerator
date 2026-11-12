@@ -18,5 +18,8 @@ public final class NaturesSpiritMixins {
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(
         new KnownMixins.Entry(MOD_ID, HookTargets.SURFACE_BUILD, SURFACE, Set.of("injectPillars"),
-            "Nature's Spirit's pillars still generate. GA2 runs them inside its own faster surface step."));
+            "Nature's Spirit's pillars still generate. GA2 runs them inside its own faster surface step."),
+        new KnownMixins.Entry(MOD_ID, HookTargets.GPU_SURFACE, SURFACE, Set.of("injectPillars"),
+            "Nature's Spirit's pillars still generate. Chunks with its sugi forests and stratified deserts build their surface on the "
+                + "processor, the rest on the graphics card."));
 }

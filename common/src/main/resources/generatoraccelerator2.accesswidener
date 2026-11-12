@@ -53,6 +53,8 @@ accessible field net/minecraft/world/level/levelgen/placement/RandomOffsetPlacem
 # features: single-value shortcut for PalettedContainer.getAll (decoration biome set)
 accessible field net/minecraft/world/level/chunk/PalettedContainer data Lnet/minecraft/world/level/chunk/PalettedContainer$Data;
 accessible class net/minecraft/world/level/chunk/PalettedContainer$Data
+# memory: one PalettedContainer.Configuration per distinct value (memory.ContainerLocks)
+accessible class net/minecraft/world/level/chunk/PalettedContainer$Configuration
 
 # surface: the rule compiler reads the vanilla rule and condition source records, and builds a
 # vanilla Context only to run rule types it does not know (other mods' rules)

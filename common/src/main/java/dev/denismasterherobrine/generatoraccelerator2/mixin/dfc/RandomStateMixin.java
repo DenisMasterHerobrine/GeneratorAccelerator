@@ -82,4 +82,18 @@ public abstract class RandomStateMixin implements Ga2RandomState {
     public ProgramSet ga2$programs() {
         return this.ga2$programs;
     }
+
+    /** {@code HeightProbes}' table. Its fields are final, so a thread that reads it sees it whole. */
+    @Unique
+    private Object ga2$heightProbes;
+
+    @Override
+    public Object ga2$heightProbes() {
+        return this.ga2$heightProbes;
+    }
+
+    @Override
+    public void ga2$setHeightProbes(Object table) {
+        this.ga2$heightProbes = table;
+    }
 }

@@ -1,6 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.storage;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.scheduling.StepLane;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -37,6 +38,8 @@ import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 public final class Precompress {
     /** Not final so tests can compare both ways. */
     public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.precompress"));
+    /** {@code -Dgeneratoraccelerator2.precompress.ahead=false} queues the jobs behind the chunk steps, as before. */
+    static final boolean AHEAD = !"false".equals(System.getProperty("generatoraccelerator2.precompress.ahead"));
 
     public static final LongAdder USED = new LongAdder();
     public static final LongAdder INLINE = new LongAdder();
@@ -127,7 +130,13 @@ public final class Precompress {
             replaced.takeBack();
         }
         try {
-            Util.backgroundExecutor().execute(job);
+            if (AHEAD) {
+                // ahead of the queued chunk steps. In the pool's own first-in-first-out queue a third of the jobs had not started
+                // when the IO thread wanted the bytes, and the IO thread compressed those itself
+                StepLane.execute(0, job);
+            } else {
+                Util.backgroundExecutor().execute(job);
+            }
         } catch (RejectedExecutionException e) {
             this.pending.remove(key(pos), job);
             job.takeBack();

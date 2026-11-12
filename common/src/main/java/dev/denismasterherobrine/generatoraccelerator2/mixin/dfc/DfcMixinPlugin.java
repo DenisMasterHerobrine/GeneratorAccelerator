@@ -3,12 +3,15 @@ package dev.denismasterherobrine.generatoraccelerator2.mixin.dfc;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.chunkload.ChunkLoadConfig;
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CallbackReplay;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Coremods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.BeardifierChain;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.KnownMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.LateInspection;
 import dev.denismasterherobrine.generatoraccelerator2.compat.LateOverwrites;
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.structurify.StructurifyMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MergedMethods;
 import dev.denismasterherobrine.generatoraccelerator2.compat.MixinTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Takeover;
@@ -149,6 +152,15 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("DecorationStepSetMixin", new FeatureHook("decorationSteps", List.of(
             "applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"),
             List.of(), MergedMethods.Mode.WRAP, List.of("IntArraySet"))),
+        // the structure starts of a structure the decorated chunk has no reference to: the empty list without the manager
+        Map.entry("StructureStartsLookupMixin", new FeatureHook("structureStarts", List.of(
+            "applyBiomeDecoration(Lnet/minecraft/world/level/WorldGenLevel;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/StructureManager;)V"),
+            List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/world/level/StructureManager;"))),
+        // the world seed's hash kept per seed. Any other change to the method keeps it per call
+        Map.entry("BiomeManagerSeedMixin", new FeatureHook("biomeSeed", List.of("obfuscateSeed(J)J"), MergedMethods.Mode.BYPASS)),
+        Map.entry("StructureStartsInspectMixin", new FeatureHook("structureStarts", List.of(
+            "startsForStructure(Lnet/minecraft/core/SectionPos;Lnet/minecraft/world/level/levelgen/structure/Structure;)Ljava/util/List;"),
+            MergedMethods.Mode.BYPASS)),
         // the beehive decorator the tree transcription places itself, with the leaves packed (features.tree.TreeBees)
         Map.entry("TreeBeesInspectMixin", new FeatureHook("treeBees", List.of("place"), MergedMethods.Mode.BYPASS)),
         // the entry the commonest features skip their context at (features.fast.RawPlace)
@@ -218,6 +230,9 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
                 List.of(), MergedMethods.Mode.WRAP, List.of()))),
         // the POI skip (state.PoiStates). GA2 wraps the call in setBlock. The call and the lookup it relies on count wherever
         // changed.
+        // GA2's placement check reads the spacing through the accessors where Structurify changes its reads (compat.structurify)
+        Map.entry("RandomSpreadPlacementMixin", List.of(
+            new FeatureHook(HookTargets.STRUCTURE_PLACEMENT_CHUNK, List.of("getPotentialStructureChunk(JII)Lnet/minecraft/world/level/ChunkPos;"), MergedMethods.Mode.BYPASS))),
         Map.entry("PoiSkipMixin", List.of(
             new FeatureHook(HookTargets.STATE_POI_SKIP, List.of("setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z"),
                 List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/server/level/ServerLevel;")))),
@@ -562,6 +577,20 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         Map.entry("ServerChunkCachePresentMixin", List.of(
             new FeatureHook(HookTargets.CHUNK_PRESENT_OFF_THREAD,
                 List.of("getChunk(IILnet/minecraft/world/level/chunk/status/ChunkStatus;Z)Lnet/minecraft/world/level/chunk/ChunkAccess;"), MergedMethods.Mode.BYPASS))),
+        // the tick walks the block ticking holders. The set follows the levels updateFutures reads, so an overwrite or a change
+        // to those reads counts
+        Map.entry("ServerChunkCacheTickingMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_TICKING_HOLDERS, List.of("tickChunks()V"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/server/level/ChunkMap;", "Lnet/minecraft/server/level/ChunkHolder;")))),
+        Map.entry("ChunkHolderTickingMixin", List.of(
+            new FeatureHook(HookTargets.CHUNK_TICKING_HOLDERS, List.of("updateFutures(Lnet/minecraft/server/level/ChunkMap;Ljava/util/concurrent/Executor;)V"),
+                List.of(), MergedMethods.Mode.WRAP, List.of("Lnet/minecraft/server/level/ChunkLevel;", "Lnet/minecraft/server/level/FullChunkStatus;")))),
+        // containers without their own lock objects: acquire and release are taken over, the detector's construction is wrapped.
+        // A mixin that uses the detector field counts too (see inspect)
+        Map.entry("PalettedContainerLockMixin", List.of(
+            new FeatureHook(HookTargets.MEMORY_CONTAINER_LOCKS, List.of("acquire()V", "release()V"), MergedMethods.Mode.BYPASS),
+            new FeatureHook(HookTargets.MEMORY_CONTAINER_LOCKS, List.of("<init>"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/util/ThreadingDetector;")))),
         // a loaded section's palettes are decoded entry by entry, then built by unpack, as the codecs would
         Map.entry("PaletteCodecInspectMixin", List.of(
             new FeatureHook(HookTargets.STORAGE_FAST_PALETTES, List.of(
@@ -599,6 +628,20 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
             new FeatureHook(HookTargets.STORAGE_SAVE_PREP, List.of("scheduleUnload(JLnet/minecraft/server/level/ChunkHolder;)V",
                 "processUnloads(Ljava/util/function/BooleanSupplier;)V", "tick(Ljava/util/function/BooleanSupplier;)V"),
                 List.of(), MergedMethods.Mode.WRAP, List.of("Ljava/util/concurrent/CompletableFuture;")))),
+        // clean loads: read's three marks are wrapped, save gets a callback at its head, the fixer's call is wrapped. Any change to
+        // the fixer itself counts, since an unchanged tag instance stands for a tag the fixer left alone
+        Map.entry("ChunkSerializerCleanLoadMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_CLEAN_LOADS, List.of(CHUNK_READ), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/world/level/chunk/ChunkAccess;")))),
+        Map.entry("ChunkMapCleanLoadMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_CLEAN_LOADS, List.of("save(Lnet/minecraft/world/level/chunk/ChunkAccess;)Z",
+                "upgradeChunkTag(Lnet/minecraft/nbt/CompoundTag;)Lnet/minecraft/nbt/CompoundTag;"), List.of(), MergedMethods.Mode.WRAP,
+                List.of("Lnet/minecraft/world/level/chunk/ChunkAccess;", "Lnet/minecraft/server/level/ChunkMap;")))),
+        Map.entry("ChunkStorageUpgradeInspectMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_CLEAN_LOADS, List.of("upgradeChunkTag(Lnet/minecraft/resources/ResourceKey;Ljava/util/function/Supplier;"
+                + "Lnet/minecraft/nbt/CompoundTag;Ljava/util/Optional;)Lnet/minecraft/nbt/CompoundTag;"), MergedMethods.Mode.BYPASS))),
+        Map.entry("ChunkAccessCleanLoadMixin", List.of(
+            new FeatureHook(HookTargets.STORAGE_CLEAN_LOADS, List.of("setLightCorrect(Z)V")))),
         // the tick lists. When encoded ahead, they are taken in place of the containers' save calls. The encoding writes what
         // vanilla's save methods write, so a change to those methods leaves the save to them.
         Map.entry("ChunkSerializerTicksMixin", List.of(
@@ -742,7 +785,14 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         if (!late) {
             LOGGER.warn("{}: fast {} off (late mixin inspection unavailable)",
                 Names.mojangClass(targetClass.name), methods);
+        } else if (!LithiumMixins.overwriteCallsFit(targetClass)) {
+            LOGGER.info("{}: {} with a Lithium counter callback GA2 does not know -> GA2 versions not applied",
+                Names.mojangClass(targetClass.name), methods);
         } else if (changedBy.isEmpty() || forced) {
+            if (simpleName.equals("RandomSpreadPlacementMixin")) {
+                StructurifyMixins.spreadAccessors = MergedMethods.foreignCalls(targetClass, methods, List.of(), MergedMethods.Mode.BYPASS, List.of(), OWN_MIXIN_PACKAGE)
+                    .stream().anyMatch(c -> c.mixin().equals(StructurifyMixins.SPREAD));
+            }
             LateOverwrites.install(targetClass, methods);
         } else {
             LOGGER.info("{}: {} shared with {} -> GA2 versions not applied",
@@ -837,7 +887,12 @@ public final class DfcMixinPlugin implements IMixinConfigPlugin {
         List<FeatureHook> stepHooks = STEP_HOOKS.get(mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1));
         if (stepHooks != null && mixinClassName.startsWith(OWN_MIXIN_PACKAGE)) {
             for (FeatureHook hook : stepHooks) {
-                HookTargets.recordChanges(hook.name(), Coremods.with(targetClass.name, hook.methods(), hook.inspectCalls(targetClass)));
+                HookTargets.recordChanges(hook.name(), CallbackReplay.take(hook.name(), targetClass,
+                    Coremods.with(targetClass.name, hook.methods(), hook.inspectCalls(targetClass))));
+            }
+            if (mixinClassName.endsWith(".PalettedContainerLockMixin")) {
+                // the detector is left null. A mixin that reads the field would find no detector
+                HookTargets.recordChanges(HookTargets.MEMORY_CONTAINER_LOCKS, MergedMethods.fieldUsers(targetClass, "threadingDetector", OWN_MIXIN_PACKAGE));
             }
             return;
         }

@@ -90,12 +90,15 @@ public final class RegionSync {
      * Whether a synced write costs enough here for batching to pay, decided once per run by {@link #probe}. Null until probed.
      * Measured on a Windows desktop: a write-through write of a chunk and its header costs 0.3 to 0.5 ms more than a plain
      * write on a hard disk (the disk's own cache takes the write) and 0.16 ms on an NVMe drive, while a full flush costs 35 to
-     * 40 ms on the hard disks and 2 ms on the NVMe drive. Batching loses there. It pays where the system waits for the platter
-     * on every write-through write, 10 to 30 ms each.
+     * 40 ms on the hard disks and 2 ms on the NVMe drive. Batching loses on those hard disks. It pays where the system waits for
+     * the platter on every write-through write, 10 to 30 ms each, and on a drive whose force is cheap: a batch of 64 costs the
+     * NVMe drive 0.06 ms per write against 0.19 write-through. The probe times both ways.
      */
     private static volatile Boolean worthIt;
     /** Write-through cost, in ms per 8 KB write, from which batching pays. 0 skips the probe and batches everywhere. {@code -Dgeneratoraccelerator2.syncProbeMs}. */
     static final double PROBE_THRESHOLD_MS = Double.parseDouble(System.getProperty("generatoraccelerator2.syncProbeMs", "2.0"));
+    /** Batching also pays where a batched write costs less than this share of a write-through write. */
+    static final double BATCH_SHARE = 0.6;
     private static volatile double probedMs = Double.NaN;
 
     /**
@@ -139,23 +142,41 @@ public final class RegionSync {
                 buffer.put(i, (byte) (i * 31));
             }
             double ms;
+            double plainMs;
+            double forceMs;
+            int writes = 4;
             try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                 StandardOpenOption.DSYNC)) {
                 buffer.position(0);
                 channel.write(buffer, 0L); // the file's first write, which also makes it
-                int writes = 4;
                 long start = System.nanoTime();
                 for (int i = 1; i <= writes; i++) {
                     buffer.position(0);
                     channel.write(buffer, (long) i * 8192L);
                 }
                 ms = (System.nanoTime() - start) / 1e6 / writes;
+            }
+            // the batched way: plain writes, then one force of the file
+            try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
+                long start = System.nanoTime();
+                for (int i = 1; i <= writes; i++) {
+                    buffer.position(0);
+                    channel.write(buffer, (long) (i + writes) * 8192L);
+                }
+                long written = System.nanoTime();
+                channel.force(false);
+                plainMs = (written - start) / 1e6 / writes;
+                forceMs = (System.nanoTime() - written) / 1e6;
             } finally {
                 Files.deleteIfExists(file);
             }
             probedMs = ms;
-            boolean worth = ms >= PROBE_THRESHOLD_MS;
-            LOGGER.info("region write-through costs {} ms per write -> {}", String.format(Locale.ROOT, "%.2f", ms),
+            // A batch of MAX_BATCH writes costs its plain writes and one force. On an NVMe drive that is 0.03 + 2 / 64 ms per write
+            // against 0.19 ms write-through. On a hard disk with a write cache the force alone costs 35-40 ms, and batching loses.
+            double batchedMs = plainMs + forceMs / MAX_BATCH;
+            boolean worth = ms >= PROBE_THRESHOLD_MS || batchedMs < BATCH_SHARE * ms;
+            LOGGER.info("region write-through costs {} ms per write, batched {} ms (force {} ms) -> {}", String.format(Locale.ROOT, "%.2f", ms),
+                String.format(Locale.ROOT, "%.3f", batchedMs), String.format(Locale.ROOT, "%.1f", forceMs),
                 worth ? "files synced in batches" : "vanilla's write-through kept");
             return worth;
         } catch (IOException e) {

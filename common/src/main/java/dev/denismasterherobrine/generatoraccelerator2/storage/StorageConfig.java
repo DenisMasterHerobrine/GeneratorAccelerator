@@ -21,6 +21,7 @@ public final class StorageConfig {
     public static final ConfigSpec.IntValue COMPRESSION_LEVEL;
     public static final ConfigSpec.BooleanValue PARALLEL_READ;
     public static final ConfigSpec.BooleanValue LOAD_PREP;
+    public static final ConfigSpec.BooleanValue CLEAN_LOADS;
 
     static {
         ConfigSpec.Builder b = new ConfigSpec.Builder();
@@ -54,6 +55,9 @@ public final class StorageConfig {
         LOAD_PREP = b.comment("Loading saved chunks: decode the sections' block and biome palettes, build the sections (block counts) and read the",
             "scheduled tick lists on the worker pool before the server thread reads the chunk; the server thread takes the results",
             "(the same objects it would build) when the tags are unchanged.").define("loadPrep", true);
+        CLEAN_LOADS = b.comment("A full chunk read from disk is saved again only when something changed it. Vanilla writes every loaded chunk back at",
+            "its unload, also one that was only looked at. Chunks that start ticking, have scheduled ticks or mod data attachments, or were",
+            "upgraded from an older version are saved as vanilla saves them.").define("skipUnchangedSaves", true);
         b.pop();
         SPEC = b.build();
     }
@@ -125,6 +129,14 @@ public final class StorageConfig {
     public static boolean loadPrep() {
         try {
             return !SPEC.isLoaded() || LOAD_PREP.get();
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    public static boolean cleanLoads() {
+        try {
+            return !SPEC.isLoaded() || CLEAN_LOADS.get();
         } catch (RuntimeException e) {
             return true;
         }

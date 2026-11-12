@@ -6,6 +6,8 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
@@ -33,10 +35,40 @@ public final class LightTasks {
     private static final Logger LOGGER = Ga2Log.get("Light");
     private static final AtomicLong FAILED = new AtomicLong();
 
-    public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.directLightTasks"));
+    public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.directLightTasks")) && !LucisCompat.ACTIVE;
 
     /** Tasks per update in vanilla's {@code ThreadedLevelLightEngine.runUpdate}. */
     public static final int BATCH = 1000;
+
+    /**
+     * Updates start as soon as a task is queued, so during generation they are small: about 1,200 light entries on average, while
+     * the GPU takes batches from 4,096 and the helper threads split only large ones. An update about to start with fewer than
+     * {@link #COLLECT_BELOW} tasks, within {@link #BUSY_NANOS} of the last update's end, waits {@code collectMicros} first, once.
+     * A light step lasts about 22 ms, so the wait is a small part of it. The light is the same: tasks keep their order.
+     * {@code -Dgeneratoraccelerator2.light.collectMicros=0} starts every update at once.
+     */
+    public static final long COLLECT_NANOS = Long.getLong("generatoraccelerator2.light.collectMicros", 1000L) * 1000L;
+    public static final int COLLECT_BELOW = 256;
+    public static final long BUSY_NANOS = 20_000_000L;
+    /** Updates that waited for more tasks. */
+    public static final LongAdder COLLECTED = new LongAdder();
+    private static final ScheduledThreadPoolExecutor COLLECT = collector();
+
+    private static ScheduledThreadPoolExecutor collector() {
+        ScheduledThreadPoolExecutor e = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "GA2 light collector");
+            t.setDaemon(true);
+            return t;
+        });
+        e.setRemoveOnCancelPolicy(true);
+        return e;
+    }
+
+    /** Runs {@code start} after the collecting window. */
+    public static void later(Runnable start) {
+        COLLECTED.increment();
+        COLLECT.schedule(start, COLLECT_NANOS, TimeUnit.NANOSECONDS);
+    }
 
     /** Whether a light engine made now takes its tasks directly. */
     public static boolean on() {
@@ -171,7 +203,8 @@ public final class LightTasks {
         lines.add("light tasks: " + (!ENABLED ? "through vanilla's sorter (-Dgeneratoraccelerator2.directLightTasks=false)"
             : !LightConfig.directTasks() ? "through vanilla's sorter (light.toml directTasks)"
             : !HookTargets.allowed(HookTargets.LIGHT_TASKS) ? "through vanilla's sorter (another mod changes how light tasks are queued)"
-            : "straight to the light thread") + ", " + QUEUED.sum() + " queued so far");
+            : "straight to the light thread") + ", " + QUEUED.sum() + " queued so far; small updates that waited "
+            + COLLECT_NANOS / 1000 + " µs for more " + COLLECTED.sum());
         long tasks = 0;
         long nanos = 0;
         for (int i = 0; i < COUNT.length; i++) {

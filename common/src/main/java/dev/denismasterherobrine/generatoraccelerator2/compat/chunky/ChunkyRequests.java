@@ -2,6 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.compat.chunky;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
+import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
 import dev.denismasterherobrine.generatoraccelerator2.scheduling.SchedulingConfig;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
@@ -20,9 +21,10 @@ import org.slf4j.Logger;
  * {@code -Dchunky.maxWorkingCount} JVM argument is kept. Nothing is saved differently, and without GA2 Chunky is back at its own
  * default.
  *
- * <p>While the heap is nearly full ({@link MemoryPressure}), Chunky's task thread waits before each new request until fewer than
- * Chunky's own 50 are open ({@code mixin.GenerationTaskMixin}). A large pack's heavy chunks on top of GA2's count once filled a 12 GB
- * heap, and the collector then took the rate from 250 to 20 chunks a second. Fewer open requests let the loaded chunks go.
+ * <p>While the heap is nearly full ({@link MemoryPressure}) or the server thread is far behind with unloads ({@link UnloadBacklog}),
+ * Chunky's task thread waits before each new request until fewer than Chunky's own 50 are open ({@code mixin.GenerationTaskMixin}).
+ * A large pack's heavy chunks on top of GA2's count once filled a 12 GB heap, and the collector then took the rate from 250 to 20
+ * chunks a second. Fewer open requests let the loaded chunks go.
  */
 public final class ChunkyRequests {
     private ChunkyRequests() {}
@@ -114,7 +116,7 @@ public final class ChunkyRequests {
      * GA2 raised Chunky's count, waits until fewer than {@link #CHUNKY_DEFAULT} requests are open.
      */
     public static void waitForRoom(Semaphore working) {
-        if (!ours || !MemoryPressure.high()) {
+        if (!ours || !behind()) {
             return;
         }
         int max = Integer.getInteger(PROPERTY, CHUNKY_DEFAULT);
@@ -123,7 +125,7 @@ public final class ChunkyRequests {
         }
         HELD_BACK.increment();
         long until = System.nanoTime() + MAX_WAIT_NANOS;
-        while (MemoryPressure.high() && crowded(max, working.availablePermits()) && System.nanoTime() < until) {
+        while (behind() && crowded(max, working.availablePermits()) && System.nanoTime() < until) {
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {
@@ -131,6 +133,11 @@ public final class ChunkyRequests {
                 return;
             }
         }
+    }
+
+    /** The heap is nearly full, or the server thread is far behind with unloading chunks ({@link UnloadBacklog}). */
+    private static boolean behind() {
+        return MemoryPressure.high() || UnloadBacklog.high();
     }
 
     /** Whether {@code max - available} open requests are as many as Chunky's own default or more. */

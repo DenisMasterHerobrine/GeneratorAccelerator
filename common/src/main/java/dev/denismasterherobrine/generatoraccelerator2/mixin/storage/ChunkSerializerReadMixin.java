@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
+import dev.denismasterherobrine.generatoraccelerator2.storage.CleanLoads;
 import dev.denismasterherobrine.generatoraccelerator2.storage.LoadPrep;
 import java.util.Set;
 import java.util.function.Function;
@@ -127,6 +128,10 @@ public abstract class ChunkSerializerReadMixin {
     @WrapOperation(method = "read", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/Heightmap;primeHeightmaps(Lnet/minecraft/world/level/chunk/ChunkAccess;Ljava/util/Set;)V"))
     private static void ga2$primeOnlyWhenNeeded(ChunkAccess chunk, Set<Heightmap.Types> types, Operation<Void> original) {
+        if (!types.isEmpty()) {
+            // a heightmap missing from the tag is made here, so the chunk differs from the file
+            CleanLoads.notClean(chunk);
+        }
         if (!LoadPrep.skipPrime(types)) {
             original.call(chunk, types);
         }

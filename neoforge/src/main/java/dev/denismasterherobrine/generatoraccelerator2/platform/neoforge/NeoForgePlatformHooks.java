@@ -1,5 +1,7 @@
 package dev.denismasterherobrine.generatoraccelerator2.platform.neoforge;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.Coremods;
+import dev.denismasterherobrine.generatoraccelerator2.mixin.features.ClimateInspectMixin;
 import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
@@ -70,7 +72,16 @@ public final class NeoForgePlatformHooks implements PlatformHooks.Service {
 
     @Override
     public Biome.ClimateSettings climateSettings(Biome biome) {
+        // as Biome's own methods read it: the plain field where NeoForge's coremod could not put its getter in
+        if (RawClimate.READ) {
+            return ((ClimateInspectMixin) (Object) biome).ga2$climateSettings();
+        }
         return biome.modifiableBiomeInfo().get().climateSettings();
+    }
+
+    /** Decided at the first biome. {@code Biome} was inspected when it loaded. */
+    private static final class RawClimate {
+        static final boolean READ = Coremods.platformGetterMissing("net/minecraft/world/level/biome/Biome", "climateSettings");
     }
 
     /** NeoForge's {@code processBlockInfos} calls {@code process}, which hands the template on and by default calls {@code processBlock}. */

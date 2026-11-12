@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.Takeover;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -47,7 +48,7 @@ public final class TemplateLoads {
         ConcurrentMap<Object, Object> templates = (ConcurrentMap<Object, Object>) map;
         Object kept = templates.get(id);
         if (kept != null) {
-            return kept;
+            return keepRecent(map, kept);
         }
         Object lock = new Object();
         Object held = LOADING.putIfAbsent(id, lock);
@@ -68,11 +69,38 @@ public final class TemplateLoads {
                 }
                 LOADED.increment();
                 kept = templates.putIfAbsent(id, loaded);
-                return kept != null ? kept : loaded;
+                return keepRecent(map, kept != null ? kept : loaded);
             }
         } finally {
             LOADING.remove(id, lock);
         }
+    }
+
+    /**
+     * The soft repository GA2 made ({@link #repository}). A full collection clears soft values. Under a nearly full heap that came
+     * back every few seconds, and every chunk load with structure pieces read its templates from their files again: 5% of the
+     * server thread in one pack. So the last {@link #RECENT_SIZE} templates asked for are also held strongly. A template asked often
+     * stays in the ring.
+     */
+    private static volatile Map<?, ?> softRepository;
+    static final int RECENT_SIZE = 256;
+    private static final Object[] RECENT = new Object[RECENT_SIZE];
+    private static int recentNext;
+
+    private static Object keepRecent(Map<Object, Object> map, Object template) {
+        if (map == softRepository) {
+            // racy on purpose: a lost write only lets one template go soft earlier
+            int i = recentNext;
+            RECENT[i] = template;
+            recentNext = (i + 1) & (RECENT_SIZE - 1);
+        }
+        return template;
+    }
+
+    /** The server stopped. Its templates go with it. */
+    public static void serverStopped() {
+        softRepository = null;
+        Arrays.fill(RECENT, null);
     }
 
     /**
@@ -85,6 +113,8 @@ public final class TemplateLoads {
         if (!Takeover.cancelled().containsKey(ModernFixMixins.DYNAMIC_STRUCTURES)) {
             return null;
         }
-        return CacheBuilder.newBuilder().softValues().<K, V>build().asMap();
+        Map<K, V> map = CacheBuilder.newBuilder().softValues().<K, V>build().asMap();
+        softRepository = map;
+        return map;
     }
 }

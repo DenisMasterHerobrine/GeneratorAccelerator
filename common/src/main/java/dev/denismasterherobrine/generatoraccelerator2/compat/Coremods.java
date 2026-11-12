@@ -111,7 +111,7 @@ public final class Coremods {
         }
         Map<String, Change> changed = new HashMap<>();
         try {
-            ClassNode original = original(internal);
+            ClassNode original = original(internal, current);
             if (original == null) {
                 LOGGER.debug("{}: no jar bytes -> coremod check skipped", className);
             } else {
@@ -198,7 +198,7 @@ public final class Coremods {
         return CHANGES.containsKey(internalName);
     }
 
-    private static ClassNode original(String internal) throws IOException {
+    private static ClassNode original(String internal, ClassNode loaded) throws IOException {
         byte[] bytes = null;
         for (ClassLoader loader : new ClassLoader[] { Coremods.class.getClassLoader(), Thread.currentThread().getContextClassLoader() }) {
             if (loader == null) {
@@ -217,13 +217,30 @@ public final class Coremods {
         ClassNode node = new ClassNode();
         new ClassReader(bytes).accept(node, ClassReader.SKIP_FRAMES);
         if (NEOFORGE) {
-            applyNeoForge(node);
+            applyNeoForge(node, loaded);
         }
         return node;
     }
 
-    /** NeoForge's own coremods, applied to the jar's copy the way NeoForge applies them to the loaded class. */
-    static void applyNeoForge(ClassNode node) {
+    /**
+     * Fields whose getter NeoForge's field-to-method coremod did not put in, as "class.field". The coremod refuses a field that is not
+     * private, and another mod's access transformer can widen one. The class then keeps reading the field.
+     */
+    private static final Set<String> GETTERS_MISSING = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Whether the loaded class still reads {@code field} directly where NeoForge's coremod puts its getter. Its methods then see the
+     * unmodified value, and so must GA2. Known once a GA2 mixin's target class was inspected.
+     */
+    public static boolean platformGetterMissing(String internalName, String field) {
+        return GETTERS_MISSING.contains(internalName + "." + field);
+    }
+
+    /**
+     * NeoForge's own coremods, applied to the jar's copy the way NeoForge applied them to {@code loaded}, the class as the transformers
+     * left it (null: as NeoForge applies them when nothing stops it). A getter the loaded class lacks is left out.
+     */
+    static void applyNeoForge(ClassNode node, ClassNode loaded) {
         Map<String, String> getters = NEOFORGE_GETTERS.get(node.name);
         if (getters != null) {
             for (Map.Entry<String, String> g : getters.entrySet()) {
@@ -237,8 +254,14 @@ public final class Coremods {
                     continue;
                 }
                 String getterDesc = "()" + fieldDesc;
+                if (loaded != null && readsField(loaded, g.getKey(), getterDesc)) {
+                    GETTERS_MISSING.add(node.name + "." + g.getKey());
+                    LOGGER.info("{}.{} is not read through NeoForge's {} (the field is not private) -> read as the class reads it",
+                        node.name.replace('/', '.'), g.getKey(), g.getValue());
+                    continue;
+                }
                 for (MethodNode m : node.methods) {
-                    if (m.name.equals(g.getValue()) && m.desc.equals(getterDesc) || m.desc.equals(getterDesc)) {
+                    if (m.desc.equals(getterDesc)) {
                         continue; // NeoForge skips the getter and every method with its descriptor
                     }
                     for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
@@ -264,6 +287,22 @@ public final class Coremods {
                 }
             }
         }
+    }
+
+    /** Whether a method of {@code loaded} reads {@code field} of its own class where the platform's getter would. */
+    private static boolean readsField(ClassNode loaded, String field, String getterDesc) {
+        for (MethodNode m : loaded.methods) {
+            if (m.desc.equals(getterDesc)) {
+                continue;
+            }
+            for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (insn.getOpcode() == Opcodes.GETFIELD && insn instanceof FieldInsnNode f && f.owner.equals(loaded.name)
+                    && f.name.equals(field)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** The change from {@code original} to {@code current}, or null when they are the same code. */

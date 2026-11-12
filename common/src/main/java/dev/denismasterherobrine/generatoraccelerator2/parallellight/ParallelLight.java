@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.parallellight;
 
+import dev.denismasterherobrine.generatoraccelerator2.light.LucisCompat;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LayerLightSectionStorageAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.mixin.LightEngineAccessor;
 import it.unimi.dsi.fastutil.longs.LongIterator;
@@ -30,7 +31,7 @@ public final class ParallelLight {
     private ParallelLight() {}
 
     /** {@code -Dgeneratoraccelerator2.parallelLight=false} turns it off. Not final, so tests can compare both ways. */
-    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.parallelLight"));
+    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.parallelLight")) && !LucisCompat.ACTIVE;
     /** Tests: also engines that do not belong to a server level. */
     public static volatile boolean anyEngine;
     /** Tests: helper threads and batch threshold instead of the config's (-1 = config). */

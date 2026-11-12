@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.chunkio;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumSections;
 import java.util.EnumSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.BitStorage;
@@ -244,6 +245,8 @@ public final class ChunkBlocks {
                 }
             }
         }
+        // Lithium counts the section's blocks again when it next asks
+        LithiumSections.forgetCounts(section);
     }
 
     /** {@code chunk.markPosForPostprocessing(pos)} at a world position. */

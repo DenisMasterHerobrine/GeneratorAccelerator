@@ -42,6 +42,14 @@ public final class ModernFixMixins {
      */
     public static final String DYNAMIC_STRUCTURES = "org.embeddedt.modernfix.common.mixin.perf.dynamic_structure_manager.StructureManagerMixin";
 
+    /**
+     * ModernFix's {@code perf.release_protochunks}: chunks idle at levels 35 to 44 are saved and let go. GA2 takes the two mixins over
+     * and does the same itself ({@code memory.ProtoDrops}). ModernFix's third mixin of the package, on {@code ImposterProtoChunk},
+     * stays.
+     */
+    public static final String RELEASE_PROTOCHUNKS_HOLDER = "org.embeddedt.modernfix.common.mixin.perf.release_protochunks.ChunkHolderMixin";
+    public static final String RELEASE_PROTOCHUNKS_MAP = "org.embeddedt.modernfix.common.mixin.perf.release_protochunks.ChunkMapMixin";
+
     private static final String DEADLOCK = "ModernFix's chunk deadlock fix still works. It acts on the server thread, and GA2 only hands ready chunks to other threads.";
 
     public static final List<KnownMixins.Entry> ENTRIES = List.of(

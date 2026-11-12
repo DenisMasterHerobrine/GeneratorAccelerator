@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.light;
 
+import dev.denismasterherobrine.generatoraccelerator2.light.LucisCompat;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.StateReads;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Gpu;
@@ -83,7 +84,7 @@ public final class GpuLight implements ParallelLight.IncreaseOffload {
     public static final GpuLight INSTANCE = new GpuLight();
 
     /** {@code -Dgeneratoraccelerator2.gpu.light=false} turns it off. */
-    public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.gpu.light"));
+    public static final boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.gpu.light")) && !LucisCompat.ACTIVE;
     /** Batches below this much work stay on the CPU (sky entries count 1, block light entries 16, as for the parallel light). */
     public static final int MIN_WORK = Integer.getInteger("generatoraccelerator2.gpu.lightMinWork", 4096);
     /** Most sections a batch may reach (about 60 MB on the device at 2,048). A larger batch stays on the CPU. */

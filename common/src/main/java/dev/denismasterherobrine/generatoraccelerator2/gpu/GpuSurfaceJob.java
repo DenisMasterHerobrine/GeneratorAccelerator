@@ -88,7 +88,8 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         NOT_A_REGION("no generation region"),
         STALE("tags or rules changed since the build"),
         NO_NEIGHBOUR("a neighbour without biomes"),
-        OTHER_BIOME("a biome another mod writes in or the program lacks");
+        OTHER_BIOME("a biome another mod writes in or the program lacks"),
+        PAUSED("paused after late answers");
 
         final String what;
 
@@ -187,6 +188,10 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
         }
         if (!allowed() || structures == null || cpuNow()) {
             return decline(Decline.NOT_ALLOWED);
+        }
+        if (!wg.askingSurfaces()) {
+            // late answers gave the surfaces to the CPU for a while (GpuWorldgen.surfaceGovernor)
+            return decline(Decline.PAUSED);
         }
         if (GpuWorldgen.SHARE && batches.behind()) {
             // the GPU's surface batches are behind: the SURFACE step builds this one on the CPU
@@ -300,13 +305,14 @@ public record GpuSurfaceJob(GpuWorldgen wg, CompletableFuture<SurfaceBatches.Res
             r = QuietWait.get(job.future, WAIT_MS);
         } catch (TimeoutException e) {
             LATE.increment();
-            // A late surface means the GPU is busy elsewhere. The governor counts it with the late blocks and biomes.
-            job.wg.answered(true);
+            // A late surface means the GPU is busy elsewhere. The surfaces' governor counts it
+            job.wg.surfaceAnswered(true);
             return false;
         } catch (Exception e) {
             GpuSteps.GPU_ERRORS.increment();
             return false;
         }
+        job.wg.surfaceAnswered(false);
         if (r == null || r.cpu()) {
             CPU.increment();
             return false;

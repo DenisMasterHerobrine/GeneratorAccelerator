@@ -52,10 +52,15 @@ public class CompressionBench {
         System.out.println(String.format(Locale.ROOT, "compression bench: %s, %d full chunks, %.1f KB of NBT per chunk", dir, raw.size(),
             rawBytes / 1024.0 / raw.size()));
         int rounds = Integer.getInteger("ga2.bench.rounds", 6);
-        int[] levels = { 6, 1, 2, 3, 4 };
+        // level and zlib strategy: Huffman-only skips the match search, filtered prefers literals (ST3)
+        int[][] configs = { { 6, Deflater.DEFAULT_STRATEGY }, { 1, Deflater.DEFAULT_STRATEGY }, { 1, Deflater.FILTERED }, { 1, Deflater.HUFFMAN_ONLY },
+            { 2, Deflater.DEFAULT_STRATEGY } };
+        String[] strategies = { "", " filtered", " huffman" };
         for (int round = 0; round < rounds; round++) {
-            for (int level : levels) {
+            for (int[] config : configs) {
+                int level = config[0];
                 Deflater deflater = new Deflater(level);
+                deflater.setStrategy(config[1]);
                 Inflater inflater = new Inflater();
                 byte[] out = new byte[1 << 20];
                 byte[] back = new byte[1 << 22];
@@ -93,7 +98,7 @@ public class CompressionBench {
                 long t2 = System.nanoTime();
                 deflater.end();
                 inflater.end();
-                report(round, rounds, "deflate " + level, packed, raw, t0, t1, t2);
+                report(round, rounds, "deflate " + level + strategies[config[1]], packed, raw, t0, t1, t2);
             }
             List<byte[]> packed = new ArrayList<>(raw.size());
             long t0 = System.nanoTime();

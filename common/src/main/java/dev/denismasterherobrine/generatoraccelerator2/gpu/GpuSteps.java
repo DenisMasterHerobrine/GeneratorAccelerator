@@ -1,5 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.Reflect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.MethodHandle;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CallbackReplay;
 import dev.denismasterherobrine.generatoraccelerator2.aquifer.LiquidRegions;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.BeardExtras;
 import dev.denismasterherobrine.generatoraccelerator2.beardifier.EnhancedBeard;
@@ -13,6 +18,7 @@ import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Apply;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.BiomeHand;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.GpuWorldgen;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.runtime.Lat;
+import dev.denismasterherobrine.generatoraccelerator2.memory.NoiseChunkRelease;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.dfc.BeardifierAccessor;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkFactoryInvoker;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.gpu.NoiseChunkSamplerInvoker;
@@ -197,10 +203,10 @@ public final class GpuSteps {
         // If the GPU does not answer in time (busy with other work), the chunk goes to the CPU (GpuWorldgen.timed).
         if (early != null) {
             NOISE_EARLY.increment();
-            gpu = wg.timed(early);
+            gpu = wg.timed(early, pos);
         } else {
             gpu = CompletableFuture.supplyAsync(() -> beard(wg, randomState, structures, pos), ex != null ? ex : Runnable::run)
-                .thenCompose(b -> b == null ? CompletableFuture.completedFuture(null) : wg.timed(wg.noise(pos, b)));
+                .thenCompose(b -> b == null ? CompletableFuture.completedFuture(null) : wg.timed(wg.noise(pos, b), pos));
         }
         gpu = gpu.exceptionally(e -> {
             GPU_ERRORS.increment();
@@ -225,6 +231,8 @@ public final class GpuSteps {
                     }
                     gc.ga2$setGpuTerrain(terrain);
                     GpuTerrain.CHUNKS.increment();
+                    // the biome step's NoiseChunk, if it made one, has no reader left
+                    NoiseChunkRelease.release(chunk);
                     // The GPU computes the surface while the chunk waits for its SURFACE step.
                     GpuSurfaceJob.ask(wg, chunk, structures, terrain, res);
                 } else {
@@ -240,6 +248,40 @@ public final class GpuSteps {
         }, ex);
     }
 
+    private static final String DO_CREATE_BIOMES = "doCreateBiomes";
+    /** The callbacks' type: the generator, then doCreateBiomes' arguments and the info object. */
+    private static final MethodType BIOME_CALLBACK = MethodType.methodType(void.class, NoiseBasedChunkGenerator.class, Blender.class, RandomState.class,
+        StructureManager.class, ChunkAccess.class, CallbackInfo.class);
+    /** Other mods' callbacks at the return of doCreateBiomes ({@link CallbackReplay}), which the GPU's fill does the work of. Null until asked. */
+    private static volatile MethodHandle[] biomeReturns;
+    private static volatile boolean biomeCallbacksOk;
+
+    /** Whether every such callback can be called. Without it, the GPU leaves the biomes to the CPU's step. */
+    private static boolean biomeCallbacksReady() {
+        if (biomeReturns == null) {
+            boolean any = CallbackReplay.any(HookTargets.GPU_BIOMES, DO_CREATE_BIOMES);
+            biomeCallbacksOk = !any || CallbackReplay.complete(HookTargets.GPU_BIOMES, DO_CREATE_BIOMES, BIOME_CALLBACK, BIOME_CALLBACK);
+            biomeReturns = any && biomeCallbacksOk ? CallbackReplay.handles(HookTargets.GPU_BIOMES, DO_CREATE_BIOMES, CallbackReplay.Point.RETURN, BIOME_CALLBACK)
+                : new MethodHandle[0];
+        }
+        return biomeCallbacksOk;
+    }
+
+    /** Runs the callbacks where vanilla's doCreateBiomes returns: once the chunk's biomes are in. */
+    private static void biomeReturns(NoiseBasedChunkGenerator generator, Blender blender, RandomState randomState, StructureManager structures, ChunkAccess chunk) {
+        MethodHandle[] callbacks = biomeReturns;
+        if (callbacks == null || callbacks.length == 0) {
+            return;
+        }
+        CallbackInfo ci = new CallbackInfo(DO_CREATE_BIOMES, false);
+        try {
+            for (MethodHandle h : callbacks) {
+                h.invokeExact(generator, blender, randomState, structures, chunk, ci);
+            }
+        } catch (Throwable t) {
+            throw Reflect.unchecked(t);
+        }
+    }
     public static CompletableFuture<ChunkAccess> createBiomes(NoiseBasedChunkGenerator generator, Holder<NoiseGeneratorSettings> settings,
                                                               Supplier<Aquifer.FluidPicker> picker, RandomState randomState, Blender blender,
                                                               StructureManager structures, ChunkAccess chunk) {
@@ -253,6 +295,10 @@ public final class GpuSteps {
         if (!wg.takesRegion(chunk.getPos())) {
             // the GPU is behind on its regions: the CPU does this chunk's biomes now instead of waiting for a new one
             GpuWorldgen.SHARED_BIOMES.increment();
+            return null;
+        }
+        if (!wg.handsBiomes() && !biomeCallbacksReady()) {
+            // another mod's callback at the return of doCreateBiomes that GA2 cannot call: the CPU's biome step runs it
             return null;
         }
         Executor ex = executor();
@@ -294,6 +340,7 @@ public final class GpuSteps {
             // The thread's last climate search results before the fill. Verification also starts the CPU's fill from them.
             var start = res != null && GpuVerify.active() ? wg.lastResults() : null;
             if (res != null && Apply.biomes(wg, chunk, res, tieSampler)) {
+                biomeReturns(generator, blender, randomState, structures, chunk);
                 BIOMES_APPLY.since(t1);
                 BIOMES_GPU.increment();
                 GpuVerify.biomes(generator, randomState, chunk, structures, wg, res, start);
@@ -330,6 +377,11 @@ public final class GpuSteps {
         GpuWorldgen.Beard b = beard(wg, randomState, structures, chunk.getPos());
         if (b != null) {
             gc.ga2$setGpuNoise(wg.noise(chunk.getPos(), b));
+            if (wg.terrainKnown() && GpuTerrain.enabled() && (wg.surfaceSpec != null || GpuTerrain.WITHOUT_SURFACE)) {
+                // The chunk waits for its blocks without the biome step's NoiseChunk. A chunk the GPU then declines gets a new one
+                // at NOISE, with the same values.
+                NoiseChunkRelease.release(chunk);
+            }
         }
     }
 

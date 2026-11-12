@@ -1,8 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
 import java.util.List;
@@ -163,16 +165,34 @@ public class CoremodsTest {
                 }
             }
         }
-        Coremods.applyNeoForge(jar);
+        Coremods.applyNeoForge(jar, loaded);
         for (MethodNode m : loaded.methods) {
             MethodNode o = method(jar, m.name);
             if (o.desc.equals(m.desc)) {
                 assertNull(Coremods.compare(owner, o, m), m.name + m.desc + " (" + replaced + " reads replaced)");
             }
         }
+        assertFalse(Coremods.platformGetterMissing(owner, "settings"));
         // and a real change next to them still counts
         MethodNode biomes = loaded.methods.stream().filter(m -> m.name.equals("biomes")).findFirst().orElseThrow();
         biomes.instructions.insert(new InsnNode(Opcodes.NOP));
         assertNotNull(Coremods.compare(owner, method(jar, "biomes"), biomes));
+    }
+
+    /**
+     * The coremod refuses a field another mod's access transformer made non-private, and the loaded class keeps reading the field. The
+     * jar's copy then gets no getter either, so nothing counts as an unknown coremod.
+     */
+    @Test
+    void refusedGetterIsNoChange() throws Exception {
+        String owner = "net/minecraft/world/level/biome/Biome";
+        ClassNode jar = read(owner);
+        ClassNode loaded = read(owner);
+        Coremods.applyNeoForge(jar, loaded);
+        for (MethodNode m : loaded.methods) {
+            MethodNode o = jar.methods.stream().filter(x -> x.name.equals(m.name) && x.desc.equals(m.desc)).findFirst().orElseThrow();
+            assertNull(Coremods.compare(owner, o, m), m.name + m.desc);
+        }
+        assertTrue(Coremods.platformGetterMissing(owner, "climateSettings"));
     }
 }

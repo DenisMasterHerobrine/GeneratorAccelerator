@@ -55,16 +55,34 @@ public class ColumnGroupSearchTest {
         System.out.printf("ColumnGroupSearchTest overworld: %d queries, %d answered per column (both searches), %d walked, %d fills%n", queries.size(), answered,
             FlatClimateTree.GROUP_WALKED.sum(), FlatClimateTree.GROUP_FILLS.sum());
         Assertions.assertTrue(answered > queries.size(), "the column answers ran");
+
     }
 
     @Test
     void tiedRandomTreesMatchTheWalk() {
-        Random r = new Random(11);
+        tiedRandomTrees(11, new long[] { 0, 10000, 2000, 11000, -5000 }, new long[] { 0, 10000, 9000, 11000, 5000 });
+    }
+
+
+    /** More depth groups than the links hold, which keep their masks in arrays. */
+    @Test
+    void manyGroupsMatchTheWalk() {
+        long[] lo = new long[12], hi = new long[12];
+        for (int g = 0; g < 12; g++) {
+            lo[g] = g * 1000L - 2000;
+            hi[g] = lo[g] + (g % 3) * 500L;
+        }
+        Assertions.assertTrue(tiedRandomTrees(13, lo, hi) > 0, "some trees have more than eight groups");
+    }
+
+    /** Random trees with coarse values. Returns how many of them have more than eight depth groups. */
+    private static int tiedRandomTrees(long seed, long[] depthLo, long[] depthHi) {
+        Random r = new Random(seed);
+        int manyGroups = 0;
         for (int tree = 0; tree < 40; tree++) {
             int size = 2 + r.nextInt(tree < 20 ? 12 : 400);
             int biomes = 1 + r.nextInt(6);
             List<Pair<Climate.ParameterPoint, Integer>> entries = new ArrayList<>();
-            long[] depthLo = { 0, 10000, 2000, 11000, -5000 }, depthHi = { 0, 10000, 9000, 11000, 5000 };
             int groups = 1 + r.nextInt(depthLo.length);
             for (int i = 0; i < size; i++) {
                 Climate.Parameter[] p = new Climate.Parameter[6];
@@ -80,6 +98,7 @@ public class ColumnGroupSearchTest {
             }
             Climate.ParameterList<Integer> list = new Climate.ParameterList<>(entries);
             FlatClimateTree flat = flat(list);
+            manyGroups += flat.groupCount() > 8 ? 1 : 0;
             if (!flat.hasSubtrees()) {
                 continue;
             }
@@ -112,8 +131,9 @@ public class ColumnGroupSearchTest {
             compare(flat, keys, filled, new Random(tree));
         }
         FlatClimateTree.flushGroupCounts();
-        System.out.printf("ColumnGroupSearchTest random trees: %d answered per column, %d walked, %d fills in all%n", FlatClimateTree.GROUP_ANSWERED.sum(),
-            FlatClimateTree.GROUP_WALKED.sum(), FlatClimateTree.GROUP_FILLS.sum());
+        System.out.printf("ColumnGroupSearchTest random trees: %d with more than eight groups, %d answered per column, %d walked, %d fills in all%n", manyGroups,
+            FlatClimateTree.GROUP_ANSWERED.sum(), FlatClimateTree.GROUP_WALKED.sum(), FlatClimateTree.GROUP_FILLS.sum());
+        return manyGroups;
     }
 
     /**

@@ -11,6 +11,7 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -267,6 +268,29 @@ public final class MergedMethods {
     /** The mixin that merged {@code m} into its class (its {@code @MixinMerged} annotation), or null for the class's own method. */
     public static String mergedBy(MethodNode m) {
         return mergingMixin(m);
+    }
+
+    /**
+     * Other mods' merged methods that read or write the class's field {@code field} (Mojang name). Accessors count too. A hook that
+     * leaves the field unset counts these as changes.
+     */
+    public static List<Change> fieldUsers(ClassNode target, String field, String ownPackage) {
+        List<Change> out = new ArrayList<>();
+        for (MethodNode m : target.methods) {
+            String mixin = mergingMixin(m);
+            if (mixin == null || mixin.startsWith(ownPackage)) {
+                continue;
+            }
+            int index = 0;
+            for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext(), index++) {
+                if (insn instanceof FieldInsnNode f && f.owner.equals(target.name) && field.equals(Names.mojangField(f.name))) {
+                    String key = Names.mojangMethodKey(m.name, m.desc);
+                    out.add(new Change(mixin, key, key, index));
+                    break;
+                }
+            }
+        }
+        return out;
     }
 
     private static String mergingMixin(MethodNode m) {

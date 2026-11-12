@@ -9,8 +9,9 @@ architectury {
 }
 
 // Full version is `<minecraft_version>-<mod_version>.<build_number>`, e.g. 1.21.1-2.0.19.143.
-// The build number lives in build_number.properties and is bumped after every successful local `build`.
-// CI builds use the committed number as-is.
+// The build number lives in build_number.properties and is bumped once by every local build that compiled the mod's code,
+// right after the compiles, so the jars of that build carry the old number and the next build gets the new one. A failed
+// or cancelled test run later in the build no longer holds it back. CI builds use the committed number as-is.
 def isCi = providers.environmentVariable('CI').map { it.toBoolean() }.getOrElse(false)
 def buildNumberFile = file('build_number.properties')
 def buildNumberProps = new Properties()
@@ -26,8 +27,9 @@ def incrementBuildNumber = tasks.register('incrementBuildNumber') {
     group = 'versioning'
     description = 'Increments the build number in build_number.properties.'
 
-    def buildTasks = providers.provider { gradle.taskGraph.allTasks.findAll { it.name == 'build' } }
-    onlyIf { !isCi && buildTasks.get().every { it.state.executed && it.state.failure == null } }
+    // the main source sets' compiles in this build: one did work and none failed
+    def compiles = providers.provider { gradle.taskGraph.allTasks.findAll { it.name == 'compileJava' } }
+    onlyIf { !isCi && compiles.get().every { it.state.failure == null } && compiles.get().any { it.state.didWork } }
 
     doLast {
         buildNumberFile.text = buildNumberFile.text.replaceFirst(/(?m)^build_number=\d+/, "build_number=${buildNumber + 1}")
@@ -101,7 +103,7 @@ subprojects {
         it.options.release = 21
     }
 
-    tasks.named('build') {
+    tasks.named('compileJava') {
         finalizedBy incrementBuildNumber
     }
 

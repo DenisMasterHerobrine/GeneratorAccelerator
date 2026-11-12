@@ -2,7 +2,7 @@ package dev.denismasterherobrine.generatoraccelerator2.features.fast;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.FeatureTargets;
 import dev.denismasterherobrine.generatoraccelerator2.features.region.Ga2Region;
-import dev.denismasterherobrine.generatoraccelerator2.mixin.features.ClimateInspectMixin;
+import dev.denismasterherobrine.generatoraccelerator2.platform.PlatformHooks;
 import dev.denismasterherobrine.generatoraccelerator2.surface.BiomeZoom;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
@@ -50,7 +50,8 @@ final class WarmBiomes {
         if (!CLIMATE.allowed()) {
             return false;
         }
-        Biome.ClimateSettings c = ((ClimateInspectMixin) (Object) biome).ga2$climateSettings();
+        // as the biome's own methods read it (on NeoForge through its getter, with biome modifiers)
+        Biome.ClimateSettings c = PlatformHooks.climateSettings(biome);
         if (c.temperatureModifier() != Biome.TemperatureModifier.NONE) {
             return false;
         }

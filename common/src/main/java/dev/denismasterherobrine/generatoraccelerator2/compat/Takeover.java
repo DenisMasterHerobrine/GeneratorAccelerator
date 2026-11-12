@@ -3,12 +3,14 @@ package dev.denismasterherobrine.generatoraccelerator2.compat;
 import dev.denismasterherobrine.generatoraccelerator2.ConfigFiles;
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
 import dev.denismasterherobrine.generatoraccelerator2.compat.modernfix.ModernFixMixins;
+import dev.denismasterherobrine.generatoraccelerator2.memory.ProtoDrops;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 
 /**
@@ -29,12 +31,19 @@ public final class Takeover {
 
     private static final Logger LOGGER = Ga2Log.get("Compat");
 
-    /** A cancelled mixin (exact class name, or a package prefix ending in '.') and why GA2 replaces it. */
-    private record Rule(String mod, String mixin, String reason) {
+    /** A cancelled mixin (exact class name, or a package prefix ending in '.'), why GA2 replaces it, and when. */
+    private record Rule(String mod, String mixin, String reason, BooleanSupplier when) {
+        Rule(String mod, String mixin, String reason) {
+            this(mod, mixin, reason, () -> true);
+        }
+
         boolean matches(String className) {
-            return mixin.endsWith(".") ? className.startsWith(mixin) : className.equals(mixin);
+            return (mixin.endsWith(".") ? className.startsWith(mixin) : className.equals(mixin)) && when.getAsBoolean();
         }
     }
+
+    private static final String PROTO_DROPS = "Replaced by GA2's version, which lets the same idle chunks go with less work on the server thread and keeps "
+        + "the chunks GA2 holds for Chunky.";
 
     private static final List<Rule> RULES = List.of(
         // C2ME
@@ -80,6 +89,9 @@ public final class Takeover {
             "Replaced by GA2's template loads. Loaded templates are still kept the soft way ModernFix keeps them, so memory use stays the same."),
         new Rule("modernfix", "org.embeddedt.modernfix.common.mixin.perf.worldgen_allocation.ClimateParameterListMixin",
             "Replaced by GA2's exact biome search, which uses the biome tree this tweak delays."),
+        // ModernFix's release of idle proto chunks. Both mixins go together: the holder's casts the chunk map to the other's interface
+        new Rule("modernfix", ModernFixMixins.RELEASE_PROTOCHUNKS_HOLDER, PROTO_DROPS, ProtoDrops::takesOver),
+        new Rule("modernfix", ModernFixMixins.RELEASE_PROTOCHUNKS_MAP, PROTO_DROPS, ProtoDrops::takesOver),
         // Lithium: only Lithium's section packing goes. The packing reuses the order of a hash palette, so the saved bytes
         // are not vanilla's. Lithium's lock removal, palettes and the rest stay
         new Rule("lithium", "net.caffeinemc.mods.lithium.mixin.chunk.serialization.PalettedContainerMixin",
@@ -112,6 +124,9 @@ public final class Takeover {
         }
         for (Rule rule : RULES) {
             if (rule.matches(mixinClassName)) {
+                if (mixinClassName.equals(ModernFixMixins.RELEASE_PROTOCHUNKS_MAP)) {
+                    ProtoDrops.tookOver();
+                }
                 if (CANCELLED.putIfAbsent(mixinClassName, rule.mod + ": " + rule.reason) == null) {
                     LOGGER.info("takeover {}: cancelled {} on {} ({})", rule.mod, mixinClassName, targets, rule.reason);
                 }

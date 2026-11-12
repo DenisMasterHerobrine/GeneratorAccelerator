@@ -815,6 +815,15 @@ public final class SurfaceSpec {
               }
               *over = 1;
             }
+            /* the slot of state s in the table sp_note filled; every state of the section and its writes is there */
+            int sp_find(__local const int* key, int s) {
+              int h = (int) (((uint) s * 0x9E3779B1u) >> 26);
+              for (int p = 0; p < 64; p++) {
+                int slot = (h + p) & 63;
+                if (key[slot] == s) return slot;
+              }
+              return 0;
+            }
             __kernel __attribute__((reqd_work_group_size(256, 1, 1)))
             void k_spack(__global const ushort* blk0, __global const ushort* blk, __global const int* meta, int n, __global long* sstore,
                          __global int* smeta, __global long* smarks) {
@@ -833,6 +842,9 @@ public final class SurfaceSpec {
               __local int hkey[64]; __local int hfirst[64]; __local int hrank[64];
               __local ushort mk16[256];
               __local int changed, lsize, lbits, nnew, over;
+              /* the resizes in rounds: palette membership, first write from the cursor on, first storage index at the resize, ranks */
+              __local int inPal[64]; __local int fa[64]; __local int frank[64]; __local int fidx[64]; __local int prank[64];
+              __local int ncand, npresent, cursor, rsize, rbits, rfail, rdone, trig;
               if (lid == 0) { changed = 0; nnew = 0; over = 0; }
               if (lid < 64) { hkey[lid] = -1; hfirst[lid] = 0x7fffffff; }
               barrier(CLK_LOCAL_MEM_FENCE);
@@ -888,6 +900,82 @@ public final class SurfaceSpec {
                 /* no resize: the section's palette, then the new states by first write */
                 if (lid < 64) { int p = hfirst[lid]; if (p >= 0 && p < 4096) pal[psize + hrank[lid]] = hkey[lid]; }
                 if (lid == 0) { lsize = psize + nnew; lbits = 4; }
+              } else if (!over && SP_PARALLEL) {
+                /* Resizes in rounds, every work-item at once. From the cursor on, the states not in the palette join it in the order of
+                   their first write. While there is room, that is the answer. Otherwise the one that finds the palette full resizes it at
+                   its first write R: PalettedContainer.onResize keeps the states the storage holds before R, in index order, then the new
+                   state. The next round starts after R. At most four rounds (4 to 8 bits). */
+                if (lid < 64) inPal[lid] = hkey[lid] != -1 && hfirst[lid] < 0;
+                if (lid == 0) { cursor = 0; rsize = psize; rbits = 4; rfail = 0; rdone = 0; }
+                barrier(CLK_LOCAL_MEM_FENCE);
+                for (;;) {
+                  if (lid < 64) fa[lid] = 0x7fffffff;
+                  if (lid == 0) { ncand = 0; npresent = 0; }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  int cur = cursor;
+                  {
+                    int last = -1;
+                    for (int ly = 15; ly >= 0; ly--) {
+                      int p = lid * 16 + 15 - ly;
+                      if (p < cur) continue;
+                      int ai = la[lid * 16 + ly], fi = lf[lid * 16 + ly];
+                      if (ai != fi && fi != last) {
+                        int sl = sp_find(hkey, fi);
+                        if (!inPal[sl]) atomic_min(&fa[sl], p);
+                        last = fi;
+                      }
+                    }
+                  }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  if (lid < 64 && fa[lid] != 0x7fffffff) {
+                    int p = fa[lid], r = 0;
+                    /* a position writes one state, so two states never share a first write */
+                    for (int j = 0; j < 64; j++) r += fa[j] < p;
+                    frank[lid] = r;
+                    atomic_inc(&ncand);
+                  }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  int size = rsize, room = (1 << rbits) - size, nc = ncand;
+                  if (lid < 64 && fa[lid] != 0x7fffffff) {
+                    if (frank[lid] < room) pal[size + frank[lid]] = hkey[lid];
+                    else if (frank[lid] == room) trig = lid;
+                  }
+                  if (nc <= room) {
+                    if (lid == 0) rsize = size + nc;
+                    break;
+                  }
+                  if (rbits >= 8) {
+                    /* past 8 bits vanilla's container takes the global palette: the CPU packs it */
+                    if (lid == 0) rfail = 1;
+                    break;
+                  }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  int t = trig, at = fa[t];
+                  if (lid < 64) fidx[lid] = 0x7fffffff;
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  for (int idx = lid; idx < 4096; idx += 256) {
+                    int c2 = (idx & 15) * 16 + ((idx >> 4) & 15), iy = idx >> 8;
+                    int st = c2 * 16 + (15 - iy) < at ? lf[c2 * 16 + iy] : la[c2 * 16 + iy];
+                    atomic_min(&fidx[sp_find(hkey, st)], idx);
+                  }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  if (lid < 64) {
+                    int q = fidx[lid];
+                    if (q != 0x7fffffff) {
+                      int r = 0;
+                      for (int j = 0; j < 64; j++) r += fidx[j] < q;
+                      prank[lid] = r;
+                      atomic_inc(&npresent);
+                    }
+                    inPal[lid] = q != 0x7fffffff || lid == t;
+                  }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                  if (lid < 64 && fidx[lid] != 0x7fffffff) pal[prank[lid]] = hkey[lid];
+                  if (lid == 0) { pal[npresent] = hkey[t]; rsize = npresent + 1; rbits = rbits + 1; cursor = at + 1; }
+                  barrier(CLK_LOCAL_MEM_FENCE);
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+                if (lid == 0) { lsize = rfail ? -1 : rsize; lbits = rbits; }
               } else if (lid == 0) {
                 int size = psize, bits = 4, fail = 0;
                 pal[0] = 0;
@@ -962,9 +1050,16 @@ public final class SurfaceSpec {
               }
               stops[g * 2] = ws; stops[g * 2 + 1] = of;
             }
-            """.replace("SPM", Integer.toString(SECTION_META)));
+            """.replace("SPM", Integer.toString(SECTION_META)).replace("SP_PARALLEL", PARALLEL_RESIZE ? "1" : "0"));
         return b.toString();
     }
+
+    /**
+     * {@code -Dgeneratoraccelerator2.gpu.parallelResize=false}: a section whose palette outgrows 16 states is packed by one work-item
+     * replaying every write, while the other 255 wait. In Terralith that branch made the packing three times the column walk's device
+     * time.
+     */
+    private static final boolean PARALLEL_RESIZE = !"false".equals(System.getProperty("generatoraccelerator2.gpu.parallelResize"));
 
     /** Ints per section in {@code k_spack}'s meta output: [0] palette size (0 unchanged, -1 needs the CPU), [1] bits, palette, counts. */
     public static final int SECTION_META = 2 + 256 + 256;

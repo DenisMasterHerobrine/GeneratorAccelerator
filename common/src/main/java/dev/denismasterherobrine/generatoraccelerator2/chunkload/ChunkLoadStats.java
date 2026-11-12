@@ -2,6 +2,9 @@ package dev.denismasterherobrine.generatoraccelerator2.chunkload;
 
 import dev.denismasterherobrine.generatoraccelerator2.compat.chunky.ChunkyHolds;
 import dev.denismasterherobrine.generatoraccelerator2.fluid.StillWater;
+import dev.denismasterherobrine.generatoraccelerator2.memory.NoiseChunkRelease;
+import dev.denismasterherobrine.generatoraccelerator2.memory.ProtoDrops;
+import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
 import it.unimi.dsi.fastutil.longs.Long2LongLinkedOpenHashMap;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -64,6 +67,10 @@ public final class ChunkLoadStats {
     public static final LongAdder UNLOADS = new LongAdder();
     public static final LongAdder RELOADS = new LongAdder();
     public static final LongAdder RELOAD_AGE_MS = new LongAdder();
+    /** Full chunks without a ticket that the per-tick early save left to their unload ({@code ChunkMapKeptSaveMixin}). */
+    public static final LongAdder EARLY_SAVES_LEFT = new LongAdder();
+    /** Chunks read from disk that unloaded with nothing changed and were not written again ({@code storage.CleanLoads}). */
+    public static final LongAdder CLEAN_UNLOADS = new LongAdder();
     // points of interest
     public static final LongAdder POI_PREFETCHED = new LongAdder();
     public static final LongAdder POI_PREFETCH_USED = new LongAdder();
@@ -152,13 +159,15 @@ public final class ChunkLoadStats {
         for (Timer t : List.of(SLOT_WAIT, TICKET_READY, DISK_LOAD, POI_WAIT, MAIN_TASKS, ENTITY_ADDS, POST_PROCESS, SEND, PREPARE, CLIENT_CHUNK, GRAPH_REBUILD)) {
             t.reset();
         }
-        for (LongAdder a : List.of(TICKETS_QUEUED, UNLOADS, RELOADS, RELOAD_AGE_MS, POI_PREFETCHED, POI_PREFETCH_USED, POI_READS,
+        for (LongAdder a : List.of(TICKETS_QUEUED, UNLOADS, RELOADS, RELOAD_AGE_MS, EARLY_SAVES_LEFT, CLEAN_UNLOADS, POI_PREFETCHED, POI_PREFETCH_USED, POI_READS,
             ENTITY_CHUNKS, ENTITY_DEFERRED, FLUID_TICKS, FLUID_TICKS_SKIPPED, PREPARED, PREPARED_USED, PREPARED_STALE, WATER_MESHED, WATER_HIDDEN,
             GRAPH_SHOWN, GRAPH_TRAVEL, GRAPH_KEPT, GRAPH_KEPT_TIMES)) {
             a.reset();
         }
         GRAPH_TRAVEL_MAX.set(0);
+        UnloadBacklog.reset();
         ChunkyHolds.resetCounts();
+        ProtoDrops.resetCounts();
         PresentChunks.ANSWERED.reset();
         UNLOADED.clear();
         since = System.nanoTime();
@@ -178,9 +187,16 @@ public final class ChunkLoadStats {
         out.add("chunks read from disk on the server thread: " + DISK_LOAD.describe() + "; unloaded " + String.format(Locale.ROOT, "%,d", UNLOADS.sum())
             + ", read back within " + RELOAD_WINDOW_MS / 1000 + " s of their unload " + String.format(Locale.ROOT, "%,d", RELOADS.sum())
             + (RELOADS.sum() > 0 ? String.format(Locale.ROOT, " (%.1f s after it on average)", RELOAD_AGE_MS.sum() / 1000.0 / RELOADS.sum()) : ""));
+        out.add(String.format(Locale.ROOT, "saves: early saves left to the unload %,d; chunks read from disk and unloaded unchanged, not written again %,d; "
+            + "NoiseChunks released after their last step %,d; unload backlog %s", EARLY_SAVES_LEFT.sum(), CLEAN_UNLOADS.sum(),
+            NoiseChunkRelease.RELEASED.sum(), UnloadBacklog.describe()));
         String holds = ChunkyHolds.report();
         if (holds != null) {
             out.add(holds);
+        }
+        String drops = ProtoDrops.describe();
+        if (drops != null) {
+            out.add(drops);
         }
         long present = PresentChunks.ANSWERED.sum();
         if (present > 0) {

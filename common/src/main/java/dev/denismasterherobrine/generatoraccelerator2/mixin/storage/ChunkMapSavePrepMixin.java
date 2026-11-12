@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
+import dev.denismasterherobrine.generatoraccelerator2.memory.ProtoDrops;
 import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import java.util.ArrayList;
 import java.util.Queue;
@@ -63,6 +64,12 @@ public abstract class ChunkMapSavePrepMixin implements SavePrep.Owner {
         target = "Ljava/util/concurrent/CompletableFuture;thenRunAsync(Ljava/lang/Runnable;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"))
     private CompletableFuture<Void> ga2$encodeAhead(CompletableFuture<?> saveSync, Runnable task, Executor executor, Operation<CompletableFuture<Void>> original,
                                                     @Local(argsOnly = true) ChunkHolder holder) {
+        if (ProtoDrops.runNow) {
+            // an idle proto chunk let go (ProtoDrops): vanilla's unload task runs here and now, as ModernFix ran it. Its save is
+            // done when the holder's futures are cleared right after
+            ProtoDrops.runNow = false;
+            return original.call(saveSync, task, (Executor) Runnable::run);
+        }
         if (!SavePrep.enabled()) {
             return original.call(saveSync, task, executor);
         }

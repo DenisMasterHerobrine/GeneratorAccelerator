@@ -1,10 +1,8 @@
 package dev.denismasterherobrine.generatoraccelerator2.structure;
 
-import com.google.common.collect.MapMaker;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2RandomState;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.ProgramSet;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
@@ -39,20 +37,22 @@ public final class HeightProbes {
 
     private record Entry(int x, int z, int type, int height) {}
 
+    /**
+     * The answers of one generator for the last height range asked. Kept on the random state ({@link Ga2RandomState}), so a probe
+     * finds it with a field read. In practice a random state serves one generator, one per dimension.
+     */
     private static final class Table {
+        final NoiseBasedChunkGenerator generator;
         final int minY;
         final int height;
         final AtomicReferenceArray<Entry> entries = new AtomicReferenceArray<>(SLOTS);
 
-        Table(int minY, int height) {
+        Table(NoiseBasedChunkGenerator generator, int minY, int height) {
+            this.generator = generator;
             this.minY = minY;
             this.height = height;
         }
     }
-
-    /** Per generator and random state: the table of the last height range asked. In practice there is one per dimension. */
-    private static final ConcurrentMap<NoiseBasedChunkGenerator, ConcurrentMap<RandomState, Table>> TABLES =
-        new MapMaker().weakKeys().concurrencyLevel(8).makeMap();
 
     private static final HookTargets.Hook HOOK = HookTargets.hook(HookTargets.STRUCTURE_HEIGHT_PROBE);
 
@@ -61,20 +61,14 @@ public final class HeightProbes {
         if (!ENABLED || generator.getClass() != NoiseBasedChunkGenerator.class || !HOOK.allowed()) {
             return null;
         }
-        ConcurrentMap<RandomState, Table> byState = TABLES.get(generator);
-        if (byState == null) {
-            if (!create) {
-                return null;
-            }
-            byState = TABLES.computeIfAbsent(generator, g -> new MapMaker().weakKeys().concurrencyLevel(8).makeMap());
-        }
-        Table t = byState.get(random);
+        Ga2RandomState state = (Ga2RandomState) (Object) random;
+        Table t = state.ga2$heightProbes() instanceof Table kept && kept.generator == generator ? kept : null;
         if (t == null || t.minY != level.getMinBuildHeight() || t.height != level.getHeight()) {
             if (!create || !compiledWhole(random)) {
                 return null;
             }
-            t = new Table(level.getMinBuildHeight(), level.getHeight());
-            byState.put(random, t);
+            t = new Table(generator, level.getMinBuildHeight(), level.getHeight());
+            state.ga2$setHeightProbes(t);
         }
         return t;
     }

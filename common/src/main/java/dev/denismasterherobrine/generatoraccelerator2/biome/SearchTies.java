@@ -16,9 +16,8 @@ public final class SearchTies {
 
     /** Threads watching. While zero, searches skip the check. */
     private static final AtomicInteger WATCHING = new AtomicInteger();
-    private static final ThreadLocal<Watch> WATCH = ThreadLocal.withInitial(Watch::new);
 
-    /** One thread's watch. */
+    /** One thread's watch. It lives in the thread's climate cache, which a search reads anyway ({@code FlatClimateTree.thread}). */
     public static final class Watch {
         boolean on;
         boolean unsure;
@@ -27,7 +26,7 @@ public final class SearchTies {
     /** Starts this thread's watch, or returns null when it already watches (an inner lookup then counts for the outer one). */
     @Nullable
     public static Watch start() {
-        Watch w = WATCH.get();
+        Watch w = FlatClimateTree.watch();
         if (w.on) {
             return null;
         }
@@ -46,7 +45,12 @@ public final class SearchTies {
 
     /** True when this thread watches. */
     public static boolean watching() {
-        return WATCHING.get() != 0 && WATCH.get().on;
+        return WATCHING.get() != 0 && FlatClimateTree.watch().on;
+    }
+
+    /** {@link #watching} with this thread's watch at hand. */
+    static boolean watching(Watch w) {
+        return WATCHING.get() != 0 && w.on;
     }
 
     /** Why a lookup was unsure: a tie in GA2's search, in Biolith's first or second answer, a search GA2 does not see. */
@@ -59,11 +63,15 @@ public final class SearchTies {
     /** A search whose answer may depend on the last result, or one GA2 does not see. */
     public static void unsure(int reason) {
         if (WATCHING.get() != 0) {
-            Watch w = WATCH.get();
-            if (w.on) {
-                w.unsure = true;
-                REASONS[reason].increment();
-            }
+            unsure(FlatClimateTree.watch(), reason);
+        }
+    }
+
+    /** {@link #unsure} with this thread's watch at hand. */
+    static void unsure(Watch w, int reason) {
+        if (w.on) {
+            w.unsure = true;
+            REASONS[reason].increment();
         }
     }
 }

@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.gpu.runtime;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.lithium.LithiumSections;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.SectionWriter;
 import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
 import dev.denismasterherobrine.generatoraccelerator2.compat.lithostitched.LithostitchedGpuBiomes;
@@ -98,7 +99,7 @@ public final class Apply {
                 }
                 PalettedContainer<BlockState> container = secs[base + sec].getStates();
                 @SuppressWarnings("unchecked")
-                PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, Mth.ceillog2(psize));
+                PalettedContainer.Data<BlockState> data = SectionWriter.grownData(container, null, psize);
                 Palette<BlockState> palette = data.palette();
                 palette.idFor(AIR);
                 for (int a = 1; a < psize; a++) {
@@ -130,6 +131,7 @@ public final class Apply {
                 target.nonEmptyBlockCount = (short) (target.nonEmptyBlockCount + nonEmpty);
                 target.tickingBlockCount = (short) (target.tickingBlockCount + ticking);
                 target.tickingFluidCount = (short) (target.tickingFluidCount + fluids);
+                LithiumSections.forgetCounts(target);
             }
         } finally {
             for (LevelChunkSection section : secs) {
@@ -190,7 +192,9 @@ public final class Apply {
             }
             PalettedContainer<BlockState> container = secs[sec].getStates();
             @SuppressWarnings("unchecked")
-            PalettedContainer.Data<BlockState> data = ((PalettedContainerInvoker) (Object) container).ga2$createOrReuseData(null, r.bits()[sec]);
+            // the section's palette as the surface's writes grow it: the same kind while it has room (another mod's strategy may give
+            // the GPU's bits another kind when asked for them at once)
+            PalettedContainer.Data<BlockState> data = SectionWriter.grownData(container, container.data, pal.length);
             Palette<BlockState> palette = data.palette();
             for (int id : pal) {
                 palette.idFor(spec.states.get(id));
@@ -198,6 +202,12 @@ public final class Apply {
             if (palette.getSize() != pal.length || !(data.storage() instanceof SimpleBitStorage) || data.storage().getBits() != r.bits()[sec]
                 || data.storage().getRaw().length != r.storage()[sec].length) {
                 return false;
+            }
+            for (int p = 0; p < pal.length; p++) {
+                if (palette.valueFor(p) != spec.states.get(pal[p])) {
+                    // the kept palette's entries are not in the order the GPU packed
+                    return false;
+                }
             }
             System.arraycopy(r.storage()[sec], 0, data.storage().getRaw(), 0, r.storage()[sec].length);
             built[sec] = data;
@@ -232,6 +242,7 @@ public final class Apply {
                 secs[sec].nonEmptyBlockCount = (short) nonEmpty;
                 secs[sec].tickingBlockCount = (short) ticking;
                 secs[sec].tickingFluidCount = (short) fluids;
+                LithiumSections.forgetCounts(secs[sec]);
             }
         } finally {
             for (LevelChunkSection section : secs) {

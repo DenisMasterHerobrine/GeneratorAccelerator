@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.dfc.analysis;
 
+import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.program.Interpreter;
@@ -207,6 +208,8 @@ public final class CellBounds {
             case Node.BlendOffset x -> true;
             // only cells no structure piece reaches are classified, where the beardifier adds exactly 0.0
             case Node.Beardifier x -> true;
+            // a block coordinate as a double (Lithostitched's axis function, lifted bytecode)
+            case Node.IntToDouble i -> intCovered(i.value());
             case Node.Marker m -> switch (m.type()) {
                 // an interpolated marker without corners is filled the vanilla way. The cell program never sees that cell
                 case INTERPOLATED -> lerpIndex.containsKey(m);
@@ -500,6 +503,13 @@ public final class CellBounds {
                 set(0.0, 0.0);
             }
             case Node.Beardifier x -> set(0.0, 0.0);
+            case Node.IntToDouble i -> {
+                // an int converts to a double exactly, so the int range is the double range
+                if (!evalInt(i.value())) {
+                    return false;
+                }
+                set((double) intLo, (double) intHi);
+            }
             case Node.Marker m -> {
                 Integer r = m.type() == Node.MarkerType.INTERPOLATED ? lerpIndex.get(m) : null;
                 if (r != null && rootLo != null) {
@@ -525,6 +535,92 @@ public final class CellBounds {
             }
         }
         return true;
+    }
+
+    /** The last {@link #evalInt} interval. */
+    private long intLo;
+    private long intHi;
+
+    /**
+     * Sets {@link #intLo}/{@link #intHi} to the range of an integer expression over the cell's blocks. Covered: constants, the
+     * block coordinates, negation, and sums, differences and products, shifts right and divisions by a positive constant. Each
+     * is monotone in its arguments or bounded by its corner cases. False when a value could leave the int range: the program's
+     * int arithmetic would wrap there, and wrapping is not monotone.
+     */
+    private boolean evalInt(INode n) {
+        switch (n) {
+            case INode.IntConst c -> {
+                intLo = c.value();
+                intHi = c.value();
+            }
+            case INode.IntCoord c -> {
+                intLo = c.axis() == 0 ? x0 : c.axis() == 1 ? y0 : z0;
+                intHi = c.axis() == 0 ? x1 : c.axis() == 1 ? y1 : z1;
+            }
+            case INode.IntNeg g -> {
+                if (!evalInt(g.a())) {
+                    return false;
+                }
+                long l = -intHi;
+                intHi = -intLo;
+                intLo = l;
+            }
+            case INode.IntBin b -> {
+                if (!evalInt(b.a())) {
+                    return false;
+                }
+                long al = intLo, ah = intHi;
+                if (!evalInt(b.b())) {
+                    return false;
+                }
+                long bl = intLo, bh = intHi;
+                switch (b.op()) {
+                    case ADD -> {
+                        intLo = al + bl;
+                        intHi = ah + bh;
+                    }
+                    case SUB -> {
+                        intLo = al - bh;
+                        intHi = ah - bl;
+                    }
+                    case MUL -> {
+                        long p = al * bl, q = al * bh, r = ah * bl, s = ah * bh;
+                        intLo = Math.min(Math.min(p, q), Math.min(r, s));
+                        intHi = Math.max(Math.max(p, q), Math.max(r, s));
+                    }
+                    case SHR, DIV -> {
+                        // a constant right operand: arithmetic shift and truncating division by a positive number never decrease
+                        if (bl != bh || bl <= 0 || b.op() == INode.IntOp.SHR && bl > 31) {
+                            return false;
+                        }
+                        intLo = b.op() == INode.IntOp.SHR ? al >> bl : al / bl;
+                        intHi = b.op() == INode.IntOp.SHR ? ah >> bl : ah / bl;
+                    }
+                    default -> {
+                        return false;
+                    }
+                }
+            }
+            default -> {
+                return false;
+            }
+        }
+        return intLo >= Integer.MIN_VALUE && intHi <= Integer.MAX_VALUE;
+    }
+
+    /** Whether {@link #evalInt} covers the expression's node kinds. */
+    private static boolean intCovered(INode n) {
+        return switch (n) {
+            case INode.IntConst c -> true;
+            case INode.IntCoord c -> true;
+            case INode.IntNeg g -> intCovered(g.a());
+            case INode.IntBin b -> switch (b.op()) {
+                case ADD, SUB, MUL -> intCovered(b.a()) && intCovered(b.b());
+                case SHR, DIV -> intCovered(b.a()) && b.b() instanceof INode.IntConst;
+                default -> false;
+            };
+            default -> false;
+        };
     }
 
     /** The last {@link #scaled} interval. */

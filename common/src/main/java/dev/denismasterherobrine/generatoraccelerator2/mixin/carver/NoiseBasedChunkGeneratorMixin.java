@@ -6,6 +6,7 @@ import dev.denismasterherobrine.generatoraccelerator2.carver.CarverRunner;
 import dev.denismasterherobrine.generatoraccelerator2.chunkio.ChunkCopy;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.runtime.Ga2NoiseChunk;
 import dev.denismasterherobrine.generatoraccelerator2.gpu.Ga2GpuChunk;
+import dev.denismasterherobrine.generatoraccelerator2.memory.NoiseChunkRelease;
 import dev.denismasterherobrine.generatoraccelerator2.mixin.scheduling.ChunkAccessAccessor;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.WorldGenRegion;
@@ -92,5 +93,7 @@ public abstract class NoiseBasedChunkGeneratorMixin {
         if (gpu != null && gpu.ga2$gpuTerrain() != null) {
             gpu.ga2$setGpuTerrain(null);
         }
+        // no later step reads the NoiseChunk. Vanilla would keep it on the chunk until the chunk is full
+        NoiseChunkRelease.release(chunk);
     }
 }

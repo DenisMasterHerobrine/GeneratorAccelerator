@@ -33,7 +33,7 @@ public final class LightLayers {
     private static final Logger LOGGER = Ga2Log.get("Light");
 
     /** Not final so benchmarks can compare both ways. Read when a light engine is made. */
-    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.lightLayers"));
+    public static boolean ENABLED = !"false".equals(System.getProperty("generatoraccelerator2.lightLayers")) && !LucisCompat.ACTIVE;
 
     /** Fewer recorded block light calls than this, with no block light work queued, run on the light thread. */
     public static final int MIN_CALLS = 4;

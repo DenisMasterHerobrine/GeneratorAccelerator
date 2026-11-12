@@ -33,6 +33,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.twilightforest.Twil
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.yungscavebiomes.YungsCaveBiomesMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.structurify.StructurifyMixins;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -61,9 +62,15 @@ public final class KnownMixins {
      */
     public record Entry(String modId, String hook, String mixin, Set<String> handlers, String what) {}
 
-    private static final List<Entry> ENTRIES;
+    /**
+     * Every table's entries, read on first use. The tables call {@link #overwrite} while they initialize, so this class must not
+     * read them while it initializes itself.
+     */
+    private static final class All {
+        static final List<Entry> ENTRIES = collect();
+    }
 
-    static {
+    private static List<Entry> collect() {
         List<Entry> all = new ArrayList<>();
         all.addAll(NaturesSpiritMixins.ENTRIES);
         all.addAll(EclipticSeasonsMixins.ENTRIES);
@@ -99,7 +106,8 @@ public final class KnownMixins {
         all.addAll(BetterChunkLoadingMixins.ENTRIES);
         all.addAll(GtceuMixins.ENTRIES);
         all.addAll(FtbChunksMixins.ENTRIES);
-        ENTRIES = List.copyOf(all);
+        all.addAll(StructurifyMixins.ENTRIES);
+        return List.copyOf(all);
     }
 
     /** MixinExtras routes a handler that takes sugar (@Local, @Share) through a generated bridge named after it. */
@@ -111,7 +119,7 @@ public final class KnownMixins {
      * @param merged names of the merged methods the inspection found (handlers, their bridges, or an overwritten method)
      */
     public static Entry find(String hook, String mixin, Collection<String> merged) {
-        for (Entry e : ENTRIES) {
+        for (Entry e : All.ENTRIES) {
             if (!e.hook().equals(hook) || !e.mixin().equals(mixin)) {
                 continue;
             }

@@ -31,7 +31,8 @@ public final class ModdedStructures {
      * {@code init} writes the same values from the config each time (the biome step calls it on every worker thread too), and a
      * flag stops a repeated log in {@code replaceBiomes}. Mowzie's Mobs: the boss's constructor stores a config value.
      * Supplementaries 3.1.43: the way sign's biome set is filled from a tag when tags load, on the server thread, and cleared with
-     * them. A start only reads it.
+     * them. A start only reads it. Lithostitched 1.8.1: the alternate jigsaw's {@code config} is replaced only by its pool alias
+     * modifiers, which run when the registries load. A start only reads it.
      */
     private static final Set<String> REVIEWED = Set.of(
         "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.biomeSize",
@@ -39,7 +40,8 @@ public final class ModdedStructures {
         "com/github/alexmodguy/alexscaves/server/level/biome/ACBiomeRarity.initialized",
         "com/github/alexmodguy/alexscaves/server/level/structure/piece/AbstractCaveGenerationStructurePiece.replaceBiomesError",
         "com/bobmowzie/mowziesmobs/server/entity/umvuthana/EntityUmvuthi.HEALTH_LOST_BETWEEN_SUNBLOCKERS",
-        "net/mehvahdjukaar/supplementaries/common/worldgen/WaySignStructure.VALID_BIOMES");
+        "net/mehvahdjukaar/supplementaries/common/worldgen/WaySignStructure.VALID_BIOMES",
+        "dev/worldgen/lithostitched/worldgen/structure/AlternateJigsawStructure.config");
     private static final Object NONE = new Object();
     /** Classes already logged. Several threads may compute a class value at once. */
     private static final Set<String> LOGGED = ConcurrentHashMap.newKeySet();

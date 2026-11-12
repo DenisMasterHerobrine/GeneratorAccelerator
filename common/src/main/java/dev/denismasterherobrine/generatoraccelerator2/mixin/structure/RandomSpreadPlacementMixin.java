@@ -1,5 +1,6 @@
 package dev.denismasterherobrine.generatoraccelerator2.mixin.structure;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.structurify.StructurifyMixins;
 import dev.denismasterherobrine.generatoraccelerator2.structure.PlacementRandoms;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
@@ -22,19 +23,26 @@ public abstract class RandomSpreadPlacementMixin extends StructurePlacement {
     @Shadow @Final private int separation;
     @Shadow @Final private RandomSpreadType spreadType;
 
+    @Shadow public abstract int spacing();
+
+    @Shadow public abstract int separation();
+
     protected RandomSpreadPlacementMixin() {
         super(null, null, 0.0F, 0, null);
     }
 
     @Unique
     private ChunkPos ga2$getPotentialStructureChunk(long seed, int x, int z) {
-        int i = Math.floorDiv(x, this.spacing);
-        int j = Math.floorDiv(z, this.spacing);
+        // Structurify's change gives each read its configured value, the accessors' value (compat.structurify)
+        int spacing = StructurifyMixins.spreadAccessors ? this.spacing() : this.spacing;
+        int separation = StructurifyMixins.spreadAccessors ? this.separation() : this.separation;
+        int i = Math.floorDiv(x, spacing);
+        int j = Math.floorDiv(z, spacing);
         WorldgenRandom worldgenrandom = PlacementRandoms.worldgen();
         worldgenrandom.setLargeFeatureWithSalt(seed, i, j, this.salt());
-        int k = this.spacing - this.separation;
+        int k = spacing - separation;
         int l = this.spreadType.evaluate(worldgenrandom, k);
         int i1 = this.spreadType.evaluate(worldgenrandom, k);
-        return new ChunkPos(i * this.spacing + l, j * this.spacing + i1);
+        return new ChunkPos(i * spacing + l, j * spacing + i1);
     }
 }

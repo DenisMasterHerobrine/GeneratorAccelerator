@@ -70,6 +70,15 @@ public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
     @SuppressWarnings("unchecked")
     private void ga2$update() {
         long now = System.nanoTime();
+        if (LightTasks.COLLECT_NANOS > 0 && !this.ga2$collected && now - this.ga2$lastEnd < LightTasks.BUSY_NANOS && this.lightTasks.isEmpty()
+            && this.ga2$fewQueued()) {
+            // a busy light thread with a small update ahead waits once for more tasks (LightTasks.COLLECT_NANOS). The scheduled flag
+            // stays set meanwhile, so nothing asks for a second update
+            this.ga2$collected = true;
+            LightTasks.later(() -> this.taskMailbox.tell(this::ga2$update));
+            return;
+        }
+        this.ga2$collected = false;
         Pair<Object, Runnable> entry;
         for (int room = LightTasks.BATCH - this.lightTasks.size(); room > 0 && (entry = this.ga2$queue.poll()) != null; room--) {
             LightTasks.taken(entry, now);
@@ -81,11 +90,28 @@ public abstract class ThreadedLightTasksMixin implements Ga2LightTasks {
             // The flag is cleared before the queue is looked at again. A task queued in between either sees the flag clear or is seen here.
             // Also when the update threw: a flag left set refuses every later update and the dimension's light stops for good. The
             // server thread's tryScheduleUpdate asks again.
+            this.ga2$lastEnd = System.nanoTime();
             this.scheduled.set(false);
         }
         if (this.ga2$hasTasks()) {
             this.ga2$schedule();
         }
+    }
+
+    /** End of the last update (light thread), and whether the update about to start already waited for more tasks. */
+    @Unique private long ga2$lastEnd;
+    @Unique private boolean ga2$collected;
+
+    /** Whether fewer than {@link LightTasks#COLLECT_BELOW} tasks are queued (counted up to that many). */
+    @Unique
+    private boolean ga2$fewQueued() {
+        int n = 0;
+        for (var it = this.ga2$queue.iterator(); it.hasNext(); it.next()) {
+            if (++n >= LightTasks.COLLECT_BELOW) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.codegen;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellBounds;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CoordDeps;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.RefCount;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SettledSums;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.NoiseSpec;
@@ -14,6 +15,7 @@ import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
@@ -184,6 +186,14 @@ public final class ProgramCompiler {
             roots.add(m.child());
         }
         Emitter emitter = new Emitter(cw, name, specs, blended, Emitter.Mode.COLUMN, new CoordDeps(true), compact);
+        Map<Node, SettledSums.Guard> settled = SettledSums.of(roots, blended);
+        emitter.setSettled(settled);
+        if (compact == 0) {
+            for (SettledSums.Guard g : settled.values()) {
+                Compiler.LOGGER.info("column program ({}): blended noise skipped where the rest of its sum reaches {} -> deep corners", debugName,
+                    String.format(Locale.ROOT, "%.4f", g.threshold() + g.bound()));
+            }
+        }
         emitter.plan(roots);
         if (compact > 0) {
             emitter.forceHelpers(roots);

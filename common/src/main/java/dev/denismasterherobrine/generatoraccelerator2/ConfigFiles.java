@@ -42,6 +42,11 @@ public final class ConfigFiles {
         }
     }
 
+    /** Another mod's file in the config folder. It may not exist. */
+    public static Path inConfigDir(String fileName) {
+        return configDir().resolve(fileName);
+    }
+
     private static Path oldName(Path dir, String part) {
         return dir.resolve("fastestnoisereworked-" + part + ".toml");
     }

@@ -63,6 +63,7 @@ import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures
 import dev.denismasterherobrine.generatoraccelerator2.compat.variantsandventures.VariantsAndVenturesMixins;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyFeatures;
 import dev.denismasterherobrine.generatoraccelerator2.compat.winterly.WinterlyMixins;
+import dev.denismasterherobrine.generatoraccelerator2.compat.structurify.StructurifyMixins;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.Compat;
 
 /**
@@ -110,6 +111,8 @@ public final class CompatModules {
         }
         if (Compat.isLoaded(RegionsUnexploredMixins.MOD_ID)) {
             RegionsUnexploredCarvers.register();
+            // nothing to set up: the snow test GA2 skips is false with or without the mod's change
+            CompatAdapters.register(FeatureTargets.compatKey("climate"), RegionsUnexploredMixins.BIOME, () -> true);
         }
         if (Compat.isLoaded(RepurposedStructuresMixins.MOD_ID)) {
             RepurposedStructuresFeatures.register();
@@ -214,5 +217,12 @@ public final class CompatModules {
         if (Compat.isLoaded(GtceuMixins.MOD_ID)) {
             GtceuVeins.register();
         }
+        if (Compat.isLoaded(StructurifyMixins.MOD_ID)) {
+            // nothing to set up: GA2's placement check reads the accessors Structurify changes
+            for (KnownMixins.Entry e : StructurifyMixins.ENTRIES) {
+                CompatAdapters.register(e.hook(), e.mixin(), () -> true);
+            }
+        }
+        CompatAdapters.markRegistered();
     }
 }

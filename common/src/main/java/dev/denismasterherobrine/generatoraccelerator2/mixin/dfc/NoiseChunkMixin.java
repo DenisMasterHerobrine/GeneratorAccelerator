@@ -230,12 +230,20 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
     @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/NoiseRouter;mapAll(Lnet/minecraft/world/level/levelgen/DensityFunction$Visitor;)Lnet/minecraft/world/level/levelgen/NoiseRouter;"))
     private NoiseRouter ga2$mapRouter(NoiseRouter router, DensityFunction.Visitor visitor, Operation<NoiseRouter> original) {
-        IdentityHashMap<Object, DensityFunction> memo = new IdentityHashMap<>();
+        // sized for as many pieces as the last router mapped, so the memo does not grow by doubling in every NoiseChunk
+        IdentityHashMap<Object, DensityFunction> memo = new IdentityHashMap<>(Math.max(64, ga2$memoSize));
         this.ga2$mapMemo = memo;
         NoiseRouter wrapped = MapAllMemo.with(memo, () -> original.call(router, visitor));
         this.ga2$wrappedRouter = wrapped;
         return wrapped;
     }
+
+    /**
+     * The most pieces a router's mapping kept so far (racy, a sizing hint). No initialiser: javac 25 can move a mixin's instance
+     * initialisers out of the copied constructor when a static initialiser sits below them.
+     */
+    @Unique
+    private static int ga2$memoSize;
 
     @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/world/level/levelgen/DensityFunction;mapAll(Lnet/minecraft/world/level/levelgen/DensityFunction$Visitor;)Lnet/minecraft/world/level/levelgen/DensityFunction;"))
@@ -243,6 +251,9 @@ public abstract class NoiseChunkMixin implements Ga2NoiseChunk, FastFill.Rules {
         IdentityHashMap<Object, DensityFunction> memo = this.ga2$mapMemo;
         DensityFunction mapped = memo == null ? original.call(function, visitor) : MapAllMemo.with(memo, () -> original.call(function, visitor));
         this.ga2$finalDensity = mapped;
+        if (memo != null && memo.size() > ga2$memoSize) {
+            ga2$memoSize = memo.size();
+        }
         return mapped;
     }
 

@@ -27,8 +27,8 @@ import net.minecraft.world.level.ChunkPos;
  * <p>Grants are all or nothing and never block. A request whose keys are not all free is parked. The release that
  * frees the keys grants the request on the releasing thread, which only dispatches the work. A holder never waits for
  * another lock, and every request is registered from the single worldgen mailbox thread, so there is no lock cycle.
- * Parked requests are retried on every release, the most urgent chunk first: by the chunk holder's queue level, then
- * by arrival. They are granted greedily. A later request may run before an earlier one it does not conflict with
+ * Parked requests are retried on every release, the most urgent chunk first: by the chunk holder's queue level, then by
+ * the lattice class most running decorations have ({@link #ALIGNED}), then by arrival. They are granted greedily. A later request may run before an earlier one it does not conflict with
  * right now. Each chunk decorates once, so nothing waits forever. Parked requests are indexed by the keys they need.
  * So a release retries only the requests that share a key with the released request. No other parked request can
  * have become grantable by that release. Running two conflicting steps one after the other, in either order, is
@@ -96,29 +96,49 @@ public final class AreaLocks {
         final boolean decoration;
         /** The chunk holder's queue level when the request was made (lower runs first). */
         final int level;
+        /** The chunk's lattice class, x and z each modulo 4 ({@link #ALIGNED}). */
+        final int lattice;
         Runnable onLateGrant;
         /** Arrival order (monitor), whether parked now, and the last release that retried it. */
         long seq;
         boolean parked;
         int visit;
 
-        Request(long[] read, long[] write, boolean decoration, int level) {
+        Request(long[] read, long[] write, boolean decoration, int level, int lattice) {
             this.read = read;
             this.write = write;
             this.decoration = decoration;
             this.level = level;
+            this.lattice = lattice;
         }
     }
 
     /** FEATURES of {@code pos}: reads the square within {@code guardRadius} (at least the 3x3), writes the 3x3. */
     public static Request features(ChunkPos pos, int guardRadius, int level) {
-        return new Request(square(pos, Math.max(1, guardRadius)), square(pos, 1), true, level);
+        return new Request(square(pos, Math.max(1, guardRadius)), square(pos, 1), true, level, lattice(pos));
     }
 
     /** INITIALIZE_LIGHT of {@code pos}: reads the chunk itself. */
     public static Request single(ChunkPos pos, int level) {
-        return new Request(new long[] { ChunkPos.asLong(pos.x, pos.z) }, new long[0], false, level);
+        return new Request(new long[] { ChunkPos.asLong(pos.x, pos.z) }, new long[0], false, level, -1);
     }
+
+    private static int lattice(ChunkPos pos) {
+        return (pos.x & 3) | (pos.z & 3) << 2;
+    }
+
+    /**
+     * Two decorations exclude each other when their chunks are at most 3 apart on both axes. The densest set that runs together
+     * is one lattice class, x and z each the same modulo 4: one chunk in 16. Granted greedily, the set that runs is whatever the
+     * arrivals leave, as thin as one in 49. Chunky's order makes it thinner: 16 consecutive chunks of its curve fill a 4x4 block,
+     * and those exclude each other. So at a release, among candidates of the same queue level, those of the class most running
+     * decorations have go first. A candidate of another class still runs when nothing it conflicts with is chosen first. Any
+     * order the locks allow is one vanilla's scheduling can produce. {@code -Dgeneratoraccelerator2.locks.aligned=false} grants by
+     * level and arrival alone.
+     */
+    static final boolean ALIGNED = !"false".equals(System.getProperty("generatoraccelerator2.locks.aligned"));
+    /** Running decorations per lattice class. */
+    private final int[] runningByLattice = new int[16];
 
     private static long[] square(ChunkPos pos, int radius) {
         int side = 2 * radius + 1;
@@ -208,6 +228,7 @@ public final class AreaLocks {
             holders--;
             if (request.decoration) {
                 decorations--;
+                runningByLattice[request.lattice]--;
             } else {
                 initializations--;
             }
@@ -253,7 +274,19 @@ public final class AreaLocks {
             return null;
         }
         List<Request> granted = null;
-        candidates.sort((a, b) -> a.level != b.level ? Integer.compare(a.level, b.level) : Long.compare(a.seq, b.seq));
+        int preferred = ALIGNED && candidates.size() > 1 ? preferredLattice() : -1;
+        if (preferred >= 0) {
+            candidates.sort((a, b) -> {
+                if (a.level != b.level) {
+                    return Integer.compare(a.level, b.level);
+                }
+                boolean pa = a.lattice == preferred;
+                boolean pb = b.lattice == preferred;
+                return pa != pb ? (pa ? -1 : 1) : Long.compare(a.seq, b.seq);
+            });
+        } else {
+            candidates.sort((a, b) -> a.level != b.level ? Integer.compare(a.level, b.level) : Long.compare(a.seq, b.seq));
+        }
         for (Request p : candidates) {
             if (p.parked && take(p)) {
                 unpark(p);
@@ -288,10 +321,24 @@ public final class AreaLocks {
         holders++;
         if (request.decoration) {
             decorations++;
+            runningByLattice[request.lattice]++;
         } else {
             initializations++;
         }
         return true;
+    }
+
+    /** The lattice class most running decorations have, or -1 when none runs (caller holds the monitor). */
+    private int preferredLattice() {
+        int best = -1;
+        int most = 0;
+        for (int c = 0; c < 16; c++) {
+            if (runningByLattice[c] > most) {
+                most = runningByLattice[c];
+                best = c;
+            }
+        }
+        return best;
     }
 
     /** Requests holding locks and parked, for {@code /ga2 steps stats}. */

@@ -1,6 +1,10 @@
 package dev.denismasterherobrine.generatoraccelerator2.beardifier;
 
 import dev.denismasterherobrine.generatoraccelerator2.Ga2Log;
+import dev.denismasterherobrine.generatoraccelerator2.compat.CodeShape;
+import dev.denismasterherobrine.generatoraccelerator2.platform.Names;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -20,6 +24,11 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.pools.JigsawJunction;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 
 /**
@@ -58,7 +67,13 @@ public final class EnhancedBeard {
      * actions, {@code carves}/{@code beards}/{@code inverted} Integrated API's. The override is YUNG's aquifer override.
      */
     public record Adaptation(Kind kind, int size, float[] kernel, int topMod, int bottomMod, boolean carves, boolean beards, boolean inverted,
-                             int overrideKind, @Nullable BlockState overrideState) {
+                             int overrideKind, @Nullable BlockState overrideState, boolean exactRoot) {
+        /** With {@code Mth.fastInvSqrt} (data made without the mods' classes, as in tests). */
+        public Adaptation(Kind kind, int size, float[] kernel, int topMod, int bottomMod, boolean carves, boolean beards, boolean inverted,
+                          int overrideKind, @Nullable BlockState overrideState) {
+            this(kind, size, kernel, topMod, bottomMod, carves, beards, inverted, overrideKind, overrideState, false);
+        }
+
         public int radius() {
             return size / 2;
         }
@@ -87,7 +102,7 @@ public final class EnhancedBeard {
 
     // ---- the mods' formulas
 
-    /** {@code Mth.invSqrt}. */
+    /** {@code Mth.fastInvSqrt}. */
     static double invSqrt(double n) {
         double d0 = 0.5 * n;
         long i = Double.doubleToRawLongBits(n);
@@ -109,12 +124,14 @@ public final class EnhancedBeard {
         float kv = a.kernel[k * size * size + i * size + j];
         double d0 = (double) yRel + 0.5;
         double d1 = (double) dx * (double) dx + d0 * d0 + (double) dz * (double) dz; // Mth.lengthSquared
+        // Mth.invSqrt (JOML's, 1 / sqrt) where the mod calls it, else Mth.fastInvSqrt
+        double root = a.exactRoot ? 1.0 / Math.sqrt(d1 / 2.0) : invSqrt(d1 / 2.0);
         if (a.kind == Kind.YUNG) {
-            double d2 = Math.abs(d0 * invSqrt(d1 / 2.0) / 2.0);
+            double d2 = Math.abs(d0 * root / 2.0);
             int mod = d0 > 0.0 ? a.topMod : a.bottomMod;
             return d2 * (double) kv * (double) mod;
         }
-        double d2 = -d0 * invSqrt(d1 / 2.0) / 2.0;
+        double d2 = -d0 * root / 2.0;
         if (d2 > 0.0 && !a.beards) {
             return 0.0;
         }
@@ -206,7 +223,7 @@ public final class EnhancedBeard {
                 out[b + 4] = a.carves ? 1 : 0;
                 out[b + 5] = a.beards ? 1 : 0;
                 out[b + 6] = a.inverted ? 1 : 0;
-                out[b + 7] = a.kind == Kind.YUNG ? 0 : 1;
+                out[b + 7] = (a.kind == Kind.YUNG ? 0 : 1) | (a.exactRoot ? 2 : 0);
                 out[b + 8] = a.overrideKind;
                 out[b + 9] = a.overrideKind == OVERRIDE_NONE ? -1 : overrideId.apply(a);
                 for (float f : a.kernel) {
@@ -254,7 +271,12 @@ public final class EnhancedBeard {
         final MethodHandle box, adaptation, rotation, junction, junctionAdaptation;
         final MethodHandle kernelSize, kernel, bottomOffset, padding, padX, padTop, padBottom, padZ, topAction, bottomAction, modifier, override;
         final MethodHandle carves, beards, direction, inverted;
+        /** The mod's factor takes {@code Mth.invSqrt} (1 / sqrt), not {@code Mth.fastInvSqrt}. */
+        final boolean exactRoot;
         final Object none;
+        /** YUNG's API 6 keeps NONE as a class of its own ({@code NoneAdaptation}), null before. */
+        @Nullable
+        final Class<?> noneClass;
         final Class<?> overrideNone, overrideSolidify, overrideReplace;
         final MethodHandle overrideState;
         /** Adaptations read so far, by identity: the same object every chunk. */
@@ -275,7 +297,21 @@ public final class EnhancedBeard {
             junctionAdaptation = lookup.unreflect(junctionClass.getMethod("pieceTerrainAdaptation")).asType(MethodType.methodType(Object.class, Object.class));
             kernelSize = lookup.unreflect(adapt.getMethod("getKernelSize")).asType(MethodType.methodType(int.class, Object.class));
             kernel = lookup.unreflect(adapt.getMethod("getKernel")).asType(MethodType.methodType(float[].class, Object.class));
-            none = adapt.getField("NONE").get(null);
+            Object noneValue;
+            Class<?> noneType = null;
+            try {
+                noneValue = adapt.getField("NONE").get(null);
+            } catch (NoSuchFieldException e) {
+                if (kind != Kind.YUNG) {
+                    throw e;
+                }
+                // YUNG's API 6: the NONE adaptation is a class of its own with one instance, and its factor is 0
+                noneType = Class.forName(pkg + "adaptations.NoneAdaptation", false, cl);
+                noneValue = noneType.getField("INSTANCE").get(null);
+            }
+            none = noneValue;
+            noneClass = noneType;
+            exactRoot = exactRoot(adapt);
             if (kind == Kind.YUNG) {
                 bottomOffset = lookup.unreflect(adapt.getMethod("getBottomOffset")).asType(MethodType.methodType(double.class, Object.class));
                 Class<?> paddingClass = Class.forName(pkg + "adaptations.EnhancedTerrainAdaptation$Padding", false, cl);
@@ -324,7 +360,7 @@ public final class EnhancedBeard {
         /** The adaptation record of the mod's object, or null for the mod's NONE. */
         @Nullable
         Adaptation adaptation(Object o) throws Throwable {
-            if (o == none) {
+            if (o == none || noneClass != null && noneClass.isInstance(o)) {
                 return null;
             }
             Adaptation a = adaptations.get(o);
@@ -352,10 +388,11 @@ public final class EnhancedBeard {
                 } else {
                     throw new IllegalStateException("unknown aquifer override " + ov.getClass().getName());
                 }
-                a = new Adaptation(kind, size, k, top, bottom, false, false, false, overrideKind, state);
+                a = new Adaptation(kind, size, k, top, bottom, false, false, false, overrideKind, state, exactRoot);
             } else {
                 boolean inv = (boolean) inverted.invokeExact((Object) direction.invokeExact(o));
-                a = new Adaptation(kind, size, k, 0, 0, (boolean) carves.invokeExact(o), (boolean) beards.invokeExact(o), inv, OVERRIDE_NONE, null);
+                a = new Adaptation(kind, size, k, 0, 0, (boolean) carves.invokeExact(o), (boolean) beards.invokeExact(o), inv, OVERRIDE_NONE, null,
+                    exactRoot);
             }
             adaptations.put(o, a);
             return a;
@@ -414,12 +451,48 @@ public final class EnhancedBeard {
                 float[] k = ((float[]) kernel.invokeExact(none)).clone();
                 a = kind == Kind.YUNG
                     ? new Adaptation(kind, size, k, (int) modifier.invokeExact((Object) topAction.invokeExact(none)),
-                        (int) modifier.invokeExact((Object) bottomAction.invokeExact(none)), false, false, false, OVERRIDE_NONE, null)
+                        (int) modifier.invokeExact((Object) bottomAction.invokeExact(none)), false, false, false, OVERRIDE_NONE, null, exactRoot)
                     : new Adaptation(kind, size, k, 0, 0, (boolean) carves.invokeExact(none), (boolean) beards.invokeExact(none),
-                        (boolean) inverted.invokeExact((Object) direction.invokeExact(none)), OVERRIDE_NONE, null);
+                        (boolean) inverted.invokeExact((Object) direction.invokeExact(none)), OVERRIDE_NONE, null, exactRoot);
                 noneJunction = a;
             }
             return a;
+        }
+
+        /**
+         * Which root the mod's {@code computeDensityFactor(IIII)D} takes: true for {@code Mth.invSqrt} (JOML's {@code 1 / sqrt}, as YUNG's
+         * API 5.1 and 6 take it), false for {@code Mth.fastInvSqrt}. False without the method, as before.
+         */
+        private static boolean exactRoot(Class<?> adapt) throws ReflectiveOperationException {
+            ClassNode node = CodeShape.classNode(adapt.getName());
+            if (node == null) {
+                // no mixin service (tests): the class file itself
+                try (InputStream in = adapt.getClassLoader().getResourceAsStream(adapt.getName().replace('.', '/') + ".class")) {
+                    if (in == null) {
+                        throw new ClassNotFoundException(adapt.getName() + " (class file)");
+                    }
+                    node = new ClassNode();
+                    new ClassReader(in).accept(node, 0);
+                } catch (IOException e) {
+                    throw new ClassNotFoundException(adapt.getName() + " (class file)", e);
+                }
+            }
+            MethodNode m = CodeShape.method(node, "computeDensityFactor", "(IIII)D");
+            if (m == null) {
+                return false;
+            }
+            for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (insn instanceof MethodInsnNode call && Names.mojangClass(call.owner).equals("net/minecraft/util/Mth")) {
+                    String name = Names.mojangMethod(call.name);
+                    if (name.equals("invSqrt")) {
+                        return true;
+                    }
+                    if (name.equals("fastInvSqrt")) {
+                        return false;
+                    }
+                }
+            }
+            throw new NoSuchMethodException("no inverse square root of Mth in " + adapt.getName() + ".computeDensityFactor");
         }
     }
 

@@ -3,6 +3,7 @@ package dev.denismasterherobrine.generatoraccelerator2.dfc.codegen;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CellCacheOnce;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.CoordDeps;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.RefCount;
+import dev.denismasterherobrine.generatoraccelerator2.dfc.analysis.SettledSums;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.BlendedSpec;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.INode;
 import dev.denismasterherobrine.generatoraccelerator2.dfc.ir.Node;
@@ -194,6 +195,13 @@ public final class Emitter {
         this.blended = blended;
         this.mode = mode;
         this.deps = deps;
+    }
+
+    /** Sums whose blended noise a corner may skip ({@link SettledSums}), column programs only. Set before {@link #plan}. */
+    private Map<Node, SettledSums.Guard> settled = Map.of();
+
+    public void setSettled(Map<Node, SettledSums.Guard> settled) {
+        this.settled = mode == Mode.COLUMN ? settled : Map.of();
     }
 
     public int slotCount() {
@@ -643,7 +651,7 @@ public final class Emitter {
     private int ownSize(Node n) {
         return switch (n) {
             case Node.Const c -> 3;
-            case Node.Ap2 a -> a.type() == Node.Ap2Type.ADD ? 1 : 20;
+            case Node.Ap2 a -> a.type() == Node.Ap2Type.ADD ? (settled.containsKey(a) ? 20 : 1) : 20;
             case Node.MulOrAdd m -> 4;
             case Node.Mapped m -> 4;
             case Node.Clamp c -> 10;
@@ -1422,6 +1430,11 @@ public final class Emitter {
                 return;
             }
         }
+        SettledSums.Guard guard = settled.get(a);
+        if (guard != null) {
+            emitSettled(mv, l, a, guard);
+            return;
+        }
         emit(mv, l, a.a());
         switch (a.type()) {
             case ADD -> {
@@ -1467,6 +1480,33 @@ public final class Emitter {
                 mv.visitLabel(keep);
             }
         }
+    }
+
+    /**
+     * A sum of a part and the old blended noise ({@link SettledSums}). When the part minus the noise's bound reaches the
+     * threshold, no root reads the sum's exact value, so the threshold stands in for it and the noise is not computed. Otherwise
+     * the noise is added as vanilla adds it (a sum's operands commute exactly). A NaN part takes the exact path.
+     */
+    private void emitSettled(MethodVisitor mv, Locals l, Node.Ap2 a, SettledSums.Guard g) {
+        boolean noiseFirst = a.a() instanceof Node.Blended;
+        Node part = noiseFirst ? a.b() : a.a();
+        Node noise = noiseFirst ? a.a() : a.b();
+        Label exact = new Label();
+        Label end = new Label();
+        emit(mv, l, part);
+        mv.visitInsn(Opcodes.DUP2);
+        mv.visitLdcInsn(g.bound());
+        mv.visitInsn(Opcodes.DSUB);
+        mv.visitLdcInsn(g.threshold());
+        mv.visitInsn(Opcodes.DCMPL);
+        mv.visitJumpInsn(Opcodes.IFLT, exact);
+        mv.visitInsn(Opcodes.POP2);
+        mv.visitLdcInsn(g.threshold());
+        mv.visitJumpInsn(Opcodes.GOTO, end);
+        mv.visitLabel(exact);
+        emit(mv, l, noise);
+        mv.visitInsn(Opcodes.DADD);
+        mv.visitLabel(end);
     }
 
     private void emitRangeChoice(MethodVisitor mv, Locals l, Node.RangeChoice r) {

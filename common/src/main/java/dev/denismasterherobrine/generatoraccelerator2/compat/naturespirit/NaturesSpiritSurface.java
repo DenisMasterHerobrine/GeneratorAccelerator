@@ -1,9 +1,17 @@
 package dev.denismasterherobrine.generatoraccelerator2.compat.naturespirit;
 
+import dev.denismasterherobrine.generatoraccelerator2.compat.CompatAdapters;
+import dev.denismasterherobrine.generatoraccelerator2.compat.HookTargets;
+import dev.denismasterherobrine.generatoraccelerator2.gpu.surface.SurfaceSpec;
 import dev.denismasterherobrine.generatoraccelerator2.surface.ColumnHooks;
 import java.lang.invoke.MethodHandle;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.BlockColumn;
 
 /**
@@ -17,6 +25,15 @@ public final class NaturesSpiritSurface {
 
     public static void register() {
         ColumnHooks.register(NaturesSpiritMixins.SURFACE, NaturesSpiritSurface::hooks);
+        // The pillars go up only in five biomes. A chunk whose biome window holds none of them gets the GPU's surface, where the
+        // handler would change nothing. The others build it on the CPU, with the pillars.
+        SurfaceSpec.declareStepWriter(NaturesSpiritMixins.SURFACE, Set.of(biome("sugi_forest"), biome("blooming_sugi_forest"),
+            biome("stratified_desert"), biome("lively_dunes"), biome("blooming_dunes")));
+        CompatAdapters.register(HookTargets.GPU_SURFACE, NaturesSpiritMixins.SURFACE, () -> true);
+    }
+
+    private static ResourceKey<Biome> biome(String path) {
+        return ResourceKey.create(Registries.BIOME, ResourceLocation.fromNamespaceAndPath(NaturesSpiritMixins.MOD_ID, path));
     }
 
     private static List<ColumnHooks.Hook> hooks() throws ReflectiveOperationException {
@@ -37,6 +54,12 @@ public final class NaturesSpiritSurface {
             @Override
             public boolean columnLocal() {
                 return true;
+            }
+
+            @Override
+            public boolean readsNoiseChunk() {
+                // the handler takes the NoiseChunk among buildSurface's arguments and never reads it
+                return false;
             }
 
             @Override

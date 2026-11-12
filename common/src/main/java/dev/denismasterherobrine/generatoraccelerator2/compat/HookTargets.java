@@ -231,6 +231,8 @@ public final class HookTargets {
     public static final String STRUCTURE_RING_BOUND = "structures.ringBound";
     /** {@code NoiseBasedChunkGenerator.getBaseHeight} and {@code iterateNoiseColumn}, whose answers {@code structure.HeightProbes} remembers. */
     public static final String STRUCTURE_HEIGHT_PROBE = "structures.heightProbe";
+    /** {@code RandomSpreadStructurePlacement.getPotentialStructureChunk}, replaced by GA2's version on the thread's random. */
+    public static final String STRUCTURE_PLACEMENT_CHUNK = "structures.placementChunk";
     /** {@code NoiseBasedChunkGenerator.createFluidPicker} and its lambda: the picker whose fluids depend on y alone. Whole-cell air relies on that. */
     public static final String NOISE_FLUID_PICKER = "noise.fluidPicker";
     public static final String STORAGE_PACK = "storage.pack";
@@ -244,6 +246,12 @@ public final class HookTargets {
     public static final String STORAGE_POST_PROCESSING = "storage.postProcessing";
     /** {@code ChunkMap.scheduleUnload}, {@code processUnloads} and {@code tick}: unloading chunks' sections encoded on the worker pool before their save ({@code storage.SavePrep}). */
     public static final String STORAGE_SAVE_PREP = "storage.savePrep";
+    /**
+     * {@code ChunkSerializer.read}'s marks, {@code ChunkMap.save}, {@code ChunkMap.upgradeChunkTag}, {@code ChunkStorage.upgradeChunkTag} and
+     * {@code ChunkAccess.setLightCorrect}: a full chunk read from disk is written again only when something changed it
+     * ({@code storage.CleanLoads}).
+     */
+    public static final String STORAGE_CLEAN_LOADS = "storage.cleanLoads";
     /**
      * The tick lists' save methods ({@code ChunkSerializer.saveTicks}, {@code LevelChunkTicks.save}, {@code ProtoChunkTicks.save}). Another
      * mod's change to these methods leaves the ticks to the save. The sections are still encoded ahead ({@link #STORAGE_SAVE_PREP}). An
@@ -274,6 +282,16 @@ public final class HookTargets {
      * answered at once instead of through a task on the server thread ({@code chunkload.PresentChunks}).
      */
     public static final String CHUNK_PRESENT_OFF_THREAD = "chunkLoad.presentOffThread";
+    /**
+     * {@code ServerChunkCache.tickChunks} and {@code ChunkHolder.updateFutures}: the ticking chunks are found among the block ticking
+     * holders instead of among every holder of the map ({@code chunkload.TickingHolders}).
+     */
+    public static final String CHUNK_TICKING_HOLDERS = "chunkLoad.tickingHolders";
+    /**
+     * {@code PalettedContainer.acquire} and {@code release}, the detector made in its constructors and every use of the detector
+     * field: block and biome containers without their own lock objects ({@code memory.ContainerLocks}).
+     */
+    public static final String MEMORY_CONTAINER_LOCKS = "memory.containerLocks";
     public static final String LIGHT_ENGINE = "light.engine";
     public static final String LIGHT_SOURCES = "light.sources";
     /** The propagation methods the parallel light propagation runs itself ({@code parallellight}). When changed, every batch runs vanilla's. */
@@ -400,6 +418,10 @@ public final class HookTargets {
         }
         boolean forced = forced(key);
         if (!forced && !INSPECTED.containsKey(key)) {
+            return false;
+        }
+        if (!forced && !FOREIGN.containsKey(key) && !CompatAdapters.registered() && !handledMixins(key).isEmpty()) {
+            // asked before the compat modules registered their adapters (Fabric bootstraps blocks first). Not kept
             return false;
         }
         boolean allowed = forced || !FOREIGN.containsKey(key) && CompatAdapters.ready(key, handledMixins(key));

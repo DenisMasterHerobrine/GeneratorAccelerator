@@ -42,6 +42,7 @@ import dev.denismasterherobrine.generatoraccelerator2.light.FastLight;
 import dev.denismasterherobrine.generatoraccelerator2.light.LightConfig;
 import dev.denismasterherobrine.generatoraccelerator2.memory.IdleTrims;
 import dev.denismasterherobrine.generatoraccelerator2.memory.MemoryPressure;
+import dev.denismasterherobrine.generatoraccelerator2.memory.UnloadBacklog;
 import dev.denismasterherobrine.generatoraccelerator2.noise.SelfCheck;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLight;
 import dev.denismasterherobrine.generatoraccelerator2.parallellight.ParallelLightConfig;
@@ -51,6 +52,7 @@ import dev.denismasterherobrine.generatoraccelerator2.state.PoiStates;
 import dev.denismasterherobrine.generatoraccelerator2.storage.SavePrep;
 import dev.denismasterherobrine.generatoraccelerator2.storage.StorageConfig;
 import dev.denismasterherobrine.generatoraccelerator2.structure.StructureLocks;
+import dev.denismasterherobrine.generatoraccelerator2.structure.TemplateLoads;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceBuilder;
 import dev.denismasterherobrine.generatoraccelerator2.surface.SurfaceConfig;
 import java.util.List;
@@ -182,6 +184,8 @@ public final class GeneratorAccelerator {
         GeodeFast.forgetSeeds();
         SurfaceBuilder.forgetShapes();
         StructureSteps.clear();
+        TemplateLoads.serverStopped();
+        UnloadBacklog.serverStopped();
         FlatClimateTree.forgetWorlds();
         BiolithSearch.forgetWorlds();
         if (Compat.isLoaded(LootrMixins.MOD_ID)) {

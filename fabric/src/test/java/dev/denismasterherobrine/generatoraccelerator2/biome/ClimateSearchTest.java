@@ -44,6 +44,27 @@ public class ClimateSearchTest {
         }
     }
 
+    /** Bounds beyond vanilla's range, and beyond {@code FlatClimateTree.SMALL}, where the walk sums every term. */
+    @Test
+    void wideListsMatchVanilla() {
+        Random r = new Random(9);
+        for (long scale : new long[] { 5, 40_000_000 }) {
+            for (int size : new int[] { 3, 60, 700 }) {
+                List<Pair<Climate.ParameterPoint, Integer>> entries = new ArrayList<>();
+                for (int i = 0; i < size; i++) {
+                    Climate.ParameterPoint p = randomPoint(r);
+                    entries.add(Pair.of(new Climate.ParameterPoint(scaled(p.temperature(), scale), scaled(p.humidity(), scale), scaled(p.continentalness(), scale),
+                        scaled(p.erosion(), scale), scaled(p.depth(), scale), scaled(p.weirdness(), scale), p.offset() * scale), i));
+                }
+                compare(new Climate.ParameterList<>(entries), 20_000);
+            }
+        }
+    }
+
+    private static Climate.Parameter scaled(Climate.Parameter p, long scale) {
+        return new Climate.Parameter(p.min() * scale, p.max() * scale);
+    }
+
     /** {@code FlatClimateTree.alone} against a count of the leaves at the nearest distance, ties included. */
     @Test
     void aloneMatchesLeafCount() {
